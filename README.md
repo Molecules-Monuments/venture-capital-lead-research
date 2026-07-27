@@ -713,7 +713,9 @@ Design decisions:
 
 Migrations `001` through `016` are immutable forward migrations and are
 checksum registered. Add a new migration; never edit one already deployed.
-See [DATA_MODEL.md](docs/DATA_MODEL.md).
+See [DATA_MODEL.md](docs/DATA_MODEL.md); for a single-file view of the whole
+schema, [docs/SCHEMA.sql](docs/SCHEMA.sql) is a generated, read-only DDL
+snapshot of the applied migration set (documentation, not a migration).
 
 ## Controlled evolution
 

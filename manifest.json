@@ -19,7 +19,7 @@
     "config/runtime/secrets/vcops_approval_pepper",
     "deployment-lock.json"
   ],
-  "file_count": 312,
+  "file_count": 313,
   "files": [
     {
       "mode": "0644",
@@ -84,8 +84,8 @@
     {
       "mode": "0644",
       "path": "README.md",
-      "sha256": "58ed170b689263b95b9878077e04b9a6b6fecdba41c5bf8700b73dd67cfabe54",
-      "size": 70327
+      "sha256": "bc2f85c5d286ad2f03181dd5f2ee2fc9565a31cf2c8df03c68755a1cda03522c",
+      "size": 70508
     },
     {
       "mode": "0644",
@@ -174,8 +174,8 @@
     {
       "mode": "0644",
       "path": "docs/DATA_MODEL.md",
-      "sha256": "d7b933c57957f3600d706c3a62c0b4d90f28ec89e21e091ac8d9a7025434749b",
-      "size": 27422
+      "sha256": "16d1c2218799e4e7eac3d66c7042fc1178025ad8f9a49db1ab3569795dd7b2fe",
+      "size": 27777
     },
     {
       "mode": "0644",
@@ -200,6 +200,12 @@
       "path": "docs/RUNBOOK.md",
       "sha256": "5ce9c2c49ae01a0151dff60d427cdfaf03ca22afa940c1c25045b8ccbadbc9d3",
       "size": 27110
+    },
+    {
+      "mode": "0644",
+      "path": "docs/SCHEMA.sql",
+      "sha256": "907ad302a5baf48dfea5e96714df1683abfe621dae68e4ef22087d3e05df1901",
+      "size": 226613
     },
     {
       "mode": "0644",

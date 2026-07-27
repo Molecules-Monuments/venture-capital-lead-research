@@ -5,6 +5,11 @@ PostgreSQL target: `17`
 Schema migrations: immutable ordered series; discover and apply every numbered
 file through the manifest's current highest migration. Never infer the current
 schema from this prose line.  
+Full DDL reference: [`SCHEMA.sql`](SCHEMA.sql) is a generated, read-only
+schema-only snapshot of the database after all migrations are applied — a
+single-file view of every table, function, trigger, constraint, and runtime
+grant. It is documentation, not a migration (nothing applies it); the
+`migrations/` directory remains the authoritative source.  
 Runtime grants begin in `migrations/002_runtime_grants.sql`; later migrations
 grant only their reviewed additions.
 
