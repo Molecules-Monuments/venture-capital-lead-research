@@ -1,0 +1,104 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openclaw.example/schemas/vc-chief-output.schema.json",
+  "title": "VC Chief machine-consumed output",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "role", "status", "lead_id", "run_id",
+    "policy_versions", "resolution", "decision", "delegations",
+    "evidence_refs", "missing_data", "contradictions", "resource_usage",
+    "terminal_reason", "approval_required", "warnings", "error"
+  ],
+  "properties": {
+    "schema_version": { "const": "3.0" },
+    "role": { "const": "vc-chief" },
+    "status": { "enum": ["ok", "insufficient_evidence", "needs_human_review", "failed"] },
+    "lead_id": { "type": ["string", "null"] },
+    "run_id": { "type": ["string", "null"] },
+    "policy_versions": { "type": "object", "additionalProperties": { "type": "string" } },
+    "resolution": {
+      "type": ["object", "null"]
+    },
+    "decision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["classification", "recommendation", "rationale", "cruxes", "what_would_change_view"],
+      "properties": {
+        "classification": { "enum": ["outbound", "inbound", "unspecified"] },
+        "recommendation": { "type": "string", "minLength": 1 },
+        "rationale": { "type": "array", "items": { "type": "string" } },
+        "cruxes": { "type": "array", "items": { "type": "string" } },
+        "what_would_change_view": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "delegations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["task_id", "agent", "pre_eval_ref", "return_assessment_ref", "disposition"],
+        "properties": {
+          "task_id": { "type": "string", "minLength": 1 },
+          "agent": { "$ref": "#/$defs/agent" },
+          "pre_eval_ref": { "type": "string", "minLength": 1 },
+          "return_assessment_ref": { "type": ["string", "null"], "minLength": 1 },
+          "disposition": { "enum": ["accept", "targeted_retry", "discard", "human_review", "not_returned"] }
+        }
+      }
+    },
+    "evidence_refs": { "type": "array", "items": { "type": "string" } },
+    "missing_data": { "type": "array", "items": { "type": "string" } },
+    "contradictions": { "type": "array", "items": { "type": "string" } },
+    "resource_usage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["agents_spawned", "sources_used", "minutes_elapsed", "cost", "currency", "budget_status"],
+      "properties": {
+        "agents_spawned": { "type": "integer", "minimum": 0 },
+        "sources_used": { "type": "integer", "minimum": 0 },
+        "minutes_elapsed": { "type": "number", "minimum": 0 },
+        "cost": { "type": "number", "minimum": 0 },
+        "currency": { "type": "string", "pattern": "^[A-Z]{3}$" },
+        "budget_status": { "enum": ["within", "exhausted", "unknown"] }
+      }
+    },
+    "terminal_reason": { "type": "string", "minLength": 1 },
+    "approval_required": { "type": "boolean" },
+    "warnings": { "type": "array", "items": { "type": "string" } },
+    "error": { "$ref": "#/$defs/error" }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "status": { "const": "ok" } }, "required": ["status"] },
+      "then": { "properties": { "error": { "type": "null" } } }
+    },
+    {
+      "if": { "properties": { "status": { "const": "failed" } }, "required": ["status"] },
+      "then": { "properties": { "error": { "type": "object" } } }
+    }
+  ],
+  "$defs": {
+    "agent": {
+      "enum": [
+        "vc-chief", "lead-router", "lead-signal-detector", "inbound-intake-analyst",
+        "document-intake-analyst", "outbound-scout", "founder-researcher", "traction-analyst",
+        "market-mapper", "qualification-analyst", "memo-writer", "data-steward"
+      ]
+    },
+    "error": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["code", "message"],
+          "properties": {
+            "code": { "type": "string", "minLength": 1 },
+            "message": { "type": "string", "minLength": 1 }
+          }
+        }
+      ]
+    }
+  }
+}

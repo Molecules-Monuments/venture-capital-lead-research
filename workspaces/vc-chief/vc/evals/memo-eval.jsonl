@@ -1,0 +1,3 @@
+{"id":"memo_requires_timeline","input":"memo markdown","required_sections":["Current synthesized view","Evidence timeline","Evidence appendix"]}
+{"id":"memo_requires_checks","input":"memo markdown","required_sections":["Contradictions and stale facts","Trajectory checks","Risks and missing data"]}
+{"id":"memo_requires_origin","input":"memo markdown","required_sections":["Executive view","Lead origin"]}

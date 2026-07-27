@@ -1,0 +1,557 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:openclaw:v3:lead-router:output",
+  "title": "Lead router output",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "role",
+    "status",
+    "lead_id",
+    "run_id",
+    "assumptions",
+    "missing_data",
+    "evidence",
+    "confidence",
+    "result",
+    "risks",
+    "warnings",
+    "recommended_next_agent",
+    "persistence_request",
+    "error"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "3.0"
+    },
+    "role": {
+      "const": "lead-router"
+    },
+    "status": {
+      "$ref": "#/$defs/status"
+    },
+    "lead_id": {
+      "$ref": "#/$defs/nullableId"
+    },
+    "run_id": {
+      "$ref": "#/$defs/nullableId"
+    },
+    "assumptions": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "missing_data": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/missingItem"
+      }
+    },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "source_ref",
+          "supports"
+        ],
+        "properties": {
+          "source_ref": {
+            "$ref": "#/$defs/id"
+          },
+          "supports": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "confidence": {
+      "$ref": "#/$defs/confidence"
+    },
+    "result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "lead_title",
+        "origin_group",
+        "origin_subtype",
+        "origin_confidence",
+        "candidate_action",
+        "duplicate_risk",
+        "required_agents",
+        "required_skills",
+        "route_steps",
+        "blockers",
+        "omitted_agents",
+        "approval_risk",
+        "next_step",
+        "reason"
+      ],
+      "properties": {
+        "lead_title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "origin_group": {
+          "enum": [
+            "outbound",
+            "inbound",
+            "unspecified"
+          ]
+        },
+        "origin_subtype": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "origin_confidence": {
+          "$ref": "#/$defs/confidence"
+        },
+        "candidate_action": {
+          "enum": [
+            "new_candidate",
+            "update_candidate",
+            "clarify",
+            "blocked"
+          ]
+        },
+        "duplicate_risk": {
+          "enum": [
+            "none",
+            "low",
+            "medium",
+            "high",
+            "unknown"
+          ]
+        },
+        "required_agents": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/agent"
+          }
+        },
+        "required_skills": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/skill"
+          }
+        },
+        "route_steps": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "step_id",
+              "sequence",
+              "agent",
+              "skills",
+              "decision_question",
+              "information_needed",
+              "depends_on",
+              "parallelizable",
+              "cost_class",
+              "acceptance_condition",
+              "stop_condition"
+            ],
+            "properties": {
+              "step_id": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+              },
+              "sequence": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "agent": {
+                "$ref": "#/$defs/agent"
+              },
+              "skills": {
+                "type": "array",
+                "minItems": 1,
+                "uniqueItems": true,
+                "items": {
+                  "$ref": "#/$defs/skill"
+                }
+              },
+              "decision_question": {
+                "type": "string",
+                "minLength": 1
+              },
+              "information_needed": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "depends_on": {
+                "type": "array",
+                "uniqueItems": true,
+                "items": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+                }
+              },
+              "parallelizable": {
+                "type": "boolean"
+              },
+              "cost_class": {
+                "enum": [
+                  "triage",
+                  "standard",
+                  "deep"
+                ]
+              },
+              "acceptance_condition": {
+                "type": "string",
+                "minLength": 1
+              },
+              "stop_condition": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        },
+        "blockers": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "code",
+              "reason",
+              "required_resolution"
+            ],
+            "properties": {
+              "code": {
+                "enum": [
+                  "identity_ambiguous",
+                  "origin_ambiguous",
+                  "missing_policy",
+                  "confidentiality_unclear",
+                  "approval_unclear",
+                  "missing_allowlist",
+                  "dangling_route",
+                  "budget_missing",
+                  "other"
+                ]
+              },
+              "reason": {
+                "type": "string",
+                "minLength": 1
+              },
+              "required_resolution": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        },
+        "omitted_agents": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "agent",
+              "reason"
+            ],
+            "properties": {
+              "agent": {
+                "$ref": "#/$defs/agent"
+              },
+              "reason": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        },
+        "approval_risk": {
+          "enum": [
+            "none",
+            "low",
+            "medium",
+            "high",
+            "unknown"
+          ]
+        },
+        "next_step": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "risks": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "recommended_next_agent": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/agent"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "persistence_request": {
+      "$ref": "#/$defs/persistenceRequest"
+    },
+    "error": {
+      "$ref": "#/$defs/error"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "ok"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "error": {
+            "type": "null"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "failed"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "error": {
+            "not": {
+              "type": "null"
+            }
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "status": {
+      "enum": [
+        "ok",
+        "insufficient_evidence",
+        "needs_human_review",
+        "failed"
+      ]
+    },
+    "id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "nullableId": {
+      "type": ["string", "null"],
+      "minLength": 1
+    },
+    "confidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "agent": {
+      "$comment": "Routable specialists only: the router never routes to the orchestrator vc-chief (its parent/spawner) or to itself (lead-router).",
+      "enum": [
+        "lead-signal-detector",
+        "inbound-intake-analyst",
+        "document-intake-analyst",
+        "outbound-scout",
+        "founder-researcher",
+        "traction-analyst",
+        "market-mapper",
+        "qualification-analyst",
+        "memo-writer",
+        "data-steward"
+      ]
+    },
+    "skill": {
+      "enum": [
+        "approval-gates",
+        "compiled-truth",
+        "contradiction-check",
+        "controlled-evolution",
+        "data-persistence",
+        "document-extraction",
+        "eval-fixture-check",
+        "evidence-research",
+        "evidence-scoring",
+        "governance-lint",
+        "inbound-intake",
+        "knowledge-modeling",
+        "lead-memory-lookup",
+        "lead-routing",
+        "lead-signal-detection",
+        "memo-writing",
+        "outbound-sourcing",
+        "quiet-hours-reporting",
+        "research-depth-control",
+        "resolver-check",
+        "schema-proposal",
+        "skillify",
+        "source-improvement",
+        "system-health-check",
+        "trajectory-check",
+        "trust-boundary"
+      ]
+    },
+    "missingItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "field",
+        "status",
+        "reason"
+      ],
+      "properties": {
+        "field": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "enum": [
+            "absent",
+            "not_disclosed",
+            "not_applicable",
+            "extraction_failed",
+            "not_requested"
+          ]
+        },
+        "reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "persistenceRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requested",
+        "operation",
+        "reason",
+        "steward_required"
+      ],
+      "properties": {
+        "requested": {
+          "type": "boolean"
+        },
+        "operation": {
+          "enum": [
+            "none",
+            "record_route"
+          ]
+        },
+        "reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "steward_required": {
+          "const": true
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "requested": {
+                "const": false
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "operation": {
+                "const": "none"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "requested": {
+                "const": true
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "operation": {
+                "const": "record_route"
+              },
+              "reason": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        }
+      ]
+    },
+    "error": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "code",
+            "message"
+          ],
+          "properties": {
+            "code": {
+              "type": "string",
+              "minLength": 1
+            },
+            "message": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      ]
+    }
+  }
+}

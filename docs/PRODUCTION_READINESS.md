@@ -1,0 +1,163 @@
+# Version 3.0 production-readiness decision
+
+Decision date: 2026-07-23 (final-audit session: every gate re-executed after the security/correctness remediation; supersedes the 2026-07-22 decision)
+Package: `openclaw-lead-research`
+Version: `3.0.0`
+Decision: **Deterministic package and deployment path VERIFIED. Live-model behavioral certification BLOCKED (never run against a model). Not certified for autonomous decision quality until commissioned.**
+
+## What changed since the 2026-07-21 decision
+
+The prior decision certified this package "PRODUCTION READY" while three of its
+workflows and its documented install were execution-verified broken, and while
+its live-model gates were labelled PASS without ever running against a model.
+The adversarial audit (retained in the project's internal audit archive)
+established that. Subsequent sessions applied the fixes and this file now
+reflects what was actually measured:
+
+- **The install works.** The `bootstrap.sh` credential proof that previously
+  aborted on the pinned Postgres image now completes (CR-002), execution-verified
+  end-to-end by the new deployment gate.
+- **All eighteen fixed workflows run.** The three that violated a database CHECK at
+  their first persistence step are fixed (CR-003); four new workflows persist
+  research intelligence and the memo autonomously (CR-001).
+- **The execution blind spot is closed.** New suites run the real `.lobster`
+  workflows and the real deployment end-to-end (CR-013).
+- **Live-model gates are relabelled honestly.** Gates whose behavioral portion
+  was never run against a model are BLOCKED, not PASS, per the frozen
+  pre-commitment (`01_PRECOMMITTED_EVALS.md`: "Environment-dependent live gates
+  may be reported BLOCKED, never PASS, without retained evidence").
+
+Full detail is retained in the project's internal audit archive (excluded from the published package).
+
+## Scope
+
+This decision covers source and release cohesion, fail-closed configuration,
+agent/tool authority, **eighteen** deterministic workflow boundaries (including the
+new autonomous claim/evidence/contradiction/trajectory/memo persistence lane),
+PostgreSQL state and migration contracts, verified multi-user context and bounded
+preferences, entity resolution at the declared reference size, channel-document
+security, configurable model/search rendering, dependency locking, backup
+authenticity, restore preflight logic, controlled-evolution boundaries, and
+release inventory.
+
+The component-by-component basis is retained in the project's internal audit
+archive (excluded from the published package).
+
+## Release proof (what was executed this session, 2026-07-23)
+
+| Proof | Result |
+| --- | --- |
+| Complete aggregate offline suites | 190 tests passed; 0 failed; 0 skipped; 24/24 offline checks pass |
+| Disposable PostgreSQL G4 | 80/80 across seven suites (semantics 6, document security 13, database contract 8, helper CLI 18, workflow execution 10, research intelligence 18, source surveillance 7); migrations 001–016 applied and registered twice |
+| Real deployment gate (G8) | PASS — `./scripts/bootstrap.sh` completes on the pinned images; the negative credential proof is rejected over TCP with no host trust rules remaining; fixed workflows run through real `vcrun`/Lobster inside the deployed gateway; an autonomous run leaves a non-empty knowledge base; teardown removes all state |
+| Exact-image gate (G6) | PASS — 8/8 against the image rebuilt from this tree |
+| Reference retrieval scale | PASS — 100k companies / 1m facts, all frozen thresholds met |
+| Release integrity | Current manifest (328 files), pristine inventory, workflow validation (18 workflows), Python/shell syntax, and Ruff pass |
+| Skills, agents, workflows | 26 skills, 12 agents, **18 workflows**, 0 findings (`validate_skill_system.py`) |
+
+The local image digest is deployment-specific: `bootstrap.sh` rebuilds the
+derived image from this tree and `record_images.py` records the resulting
+digest in `deployment-lock.json` at install time.
+
+The retrieval benchmark seeds deliberately **confusable clusters** — each fuzzy
+case is a target plus four trigram-close distractor companies (mean 5 candidates
+per case) — and scores **precision@1** (the top-ranked candidate must be the true
+target) alongside recall, with a mean-candidate floor so the result cannot regress
+to a no-confusables artifact. The real resolver scores recall = precision@1 = 1.0
+by ranking each target above its look-alikes; a resolver that could not rank the
+exact-ish match first would fail. This closes the former CR-013 dataset-artifact
+item (audit P1-014/P1-015).
+
+## BLOCKED — never run against a model (not a package pass)
+
+Per the frozen contract these are BLOCKED, not PASS:
+
+- Live model, search, channel, callback, and attachment-provider behavior.
+- Specialist output quality and memo decision-usefulness (semantic quality of the
+  model's prose and citations — the actual VC deliverable). The package validates
+  the *shape* of these outputs, never their semantic quality.
+- Destructive recovery and credential-rotation exercises on a real target.
+- Jurisdiction-, fund-, organization-, privacy-, and retention-specific review.
+- Chosen-model quality/cost/context/tool-use qualification and target-host
+  capacity/latency/monitoring/load qualification.
+
+These are commissioning facts that depend on the operator's accounts,
+infrastructure, policy, data, and legal context — and, for the model-behavioral
+gates, on a live model run that this package boundary does not perform.
+
+## Production operating boundary
+
+The distributed package is deliberately inert: `PRIMARY_CHANNEL=none`, no
+credentials, no cron, no autonomous outreach. An operator must create a
+mode-`0600` `.env`, retain an independent backup HMAC key, complete the
+customization validator, and deliberately activate only the integrations it
+needs.
+
+The deterministic package and the deployment path are verified. Whether the
+system's *autonomous decision quality* is fit for real capital allocation is
+**not established by this package** and requires the BLOCKED live-model gates to
+be run and reviewed. A cautious fund should additionally set the fact-promotion
+policy to require human confirmation (`config`: `fact_promotion_policy`,
+`auto_promote=false`) until the model-behavioral gates are commissioned.
+
+`scripts/verify_offline.py` is the unified package verifier. The complete release
+proof uses:
+
+```sh
+python3 scripts/verify_offline.py \
+  --with-g4-database \
+  --with-deployment \
+  --with-retrieval-scale \
+  --with-g6-image openclaw-lead-research:3.0.0
+```
+
+The runbook's live checklists and the BLOCKED gates above determine whether one
+configured deployment may be activated for real decisions; they are not
+retroactively redefined as package passes.
+
+## DB-layer enforcement gaps found by the 2026-07-23 audit — fixed in place
+
+The 2026-07-23 independent audit confirmed three defense-in-depth gaps where
+the database boundary enforced less than its comments or callers implied.
+Because no deployment of this package existed yet, all three were fixed
+directly in the migration files pre-release (permitted by the release rule
+"never edit one already deployed") and are proven at the SQL boundary by
+dedicated G4 tests that call the database directly as the runtime role,
+bypassing the helper's client-side checks:
+
+- `016_approved_data_erasure.sql`: `consume_approval_and_erase_lead` now
+  re-verifies the consumed approval's stored scope (and `lead_id` column,
+  when set) against the erasure target inside the function; an approval for
+  one lead can no longer erase a different lead even for a direct SQL caller,
+  and the rejected attempt rolls back without burning the approval.
+- `015_proposal_capture.sql`: a guard trigger rejects any INSERT born decided
+  and any direct UPDATE that enters a decided proposal status; decisions pass
+  only through the audited SECURITY DEFINER `decide_proposal(...)` function
+  (exposed as the operator-gated `proposal-decide` helper command), and
+  decided proposals are immutable to the runtime role.
+- `012_research_intelligence_persistence.sql`: web-evidence corroboration
+  independence is now keyed by **verified content hash**
+  (`sources.content_sha256`), not by host — two sources corroborate a claim
+  toward `verified_fact` only when their recorded content hashes differ, so two
+  bare URLs (no recorded content hash) or two URLs with byte-identical content
+  no longer count as independent corroboration, and disguised same-content URIs
+  cannot count twice. The remaining residual is that the content behind that
+  hash is still **model-supplied**: the package does not yet fetch the URL to
+  compute the hash independently — a boundary that fetches and hashes the
+  source itself remains the deferred CR-001 part-6 closure. It is backstopped
+  by the human `evaluate-lead` gate, and a cautious fund can still set
+  `fact_promotion_policy.auto_promote=false` (recommendation above).
+
+The 2026-07-23 final-audit session additionally closed, with execution-verified
+G4/G5/G7/v3 tests: the build-context secret exclusion (`.dockerignore`), the
+stage-first restore contract, pre-quiesce update preconditions, runtime-role
+session time bounds (`statement_timeout`/`lock_timeout`/idle-in-transaction,
+re-applied on every reconcile), model-lane watchlist boundary protection
+(`source-watch` cannot re-enable, reclassify, or re-own an operator-guarded
+entry), cross-lead document-provenance binding on `evidence-record`, the
+operator-lane verified-fact source requirement and source trust-downgrade
+refusal, quarantine containment for malformed OOXML, the approval-resume
+run-budget and cancel workflow-binding in `vcrun-control`, the `vcrun`
+one-JSON-object usage-error contract and kill-path reconciliation, the
+renderer's lifecycle-env guard, fail-closed trusted-context attachment
+blocking, and the `msteams` notification-provider spelling (migration 003).

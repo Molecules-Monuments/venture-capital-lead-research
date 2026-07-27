@@ -1,0 +1,891 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openclaw.local/schemas/market-mapper.output.schema.json",
+  "title": "Market Mapper Output v3.0",
+  "$comment": "The caller must additionally verify reference integrity, low <= high for two-point ranges, low <= base <= high for scenarios, and that deterministic calculations use the cited assumptions.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "role",
+    "status",
+    "lead_id",
+    "run_id",
+    "result",
+    "evidence",
+    "missing_data",
+    "warnings",
+    "persistence_request",
+    "error"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "3.0"
+    },
+    "role": {
+      "const": "market-mapper"
+    },
+    "status": {
+      "$ref": "#/$defs/status"
+    },
+    "lead_id": {
+      "$ref": "#/$defs/nullableId"
+    },
+    "run_id": {
+      "$ref": "#/$defs/nullableId"
+    },
+    "result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "category",
+        "category_definition",
+        "market_model_type",
+        "initial_wedge",
+        "reachable_market_now",
+        "assumptions",
+        "expansion_paths",
+        "buyer_journey",
+        "distribution_motions",
+        "competitors",
+        "substitutes",
+        "incumbent_responses",
+        "why_now",
+        "defensibility_evidence",
+        "market_risks",
+        "scenario_ranges",
+        "counter_case",
+        "falsifiers",
+        "confidence"
+      ],
+      "properties": {
+        "category": {
+          "type": "string",
+          "minLength": 1
+        },
+        "category_definition": {
+          "type": "string",
+          "minLength": 1
+        },
+        "market_model_type": {
+          "enum": [
+            "b2b_saas",
+            "consumer",
+            "marketplace",
+            "developer_open_source",
+            "fintech",
+            "regulated_enterprise",
+            "hardware_deep_tech",
+            "government_defense",
+            "other"
+          ]
+        },
+        "initial_wedge": {
+          "$ref": "#/$defs/initialWedge"
+        },
+        "reachable_market_now": {
+          "$ref": "#/$defs/reachableMarket"
+        },
+        "assumptions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/assumption"
+          }
+        },
+        "expansion_paths": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/expansionPath"
+          }
+        },
+        "buyer_journey": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/buyerStep"
+          }
+        },
+        "distribution_motions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/distributionMotion"
+          }
+        },
+        "competitors": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/alternative"
+          }
+        },
+        "substitutes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/alternative"
+          }
+        },
+        "incumbent_responses": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/incumbentResponse"
+          }
+        },
+        "why_now": {
+          "$ref": "#/$defs/whyNow"
+        },
+        "defensibility_evidence": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/defensibility"
+          }
+        },
+        "market_risks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/marketRisk"
+          }
+        },
+        "scenario_ranges": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/scenarioRange"
+          }
+        },
+        "counter_case": {
+          "type": "string",
+          "minLength": 1
+        },
+        "falsifiers": {
+          "$ref": "#/$defs/stringList"
+        },
+        "confidence": {
+          "$ref": "#/$defs/confidence"
+        }
+      }
+    },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/evidence"
+      }
+    },
+    "missing_data": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/missingData"
+      }
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "persistence_request": {
+      "$ref": "#/$defs/persistenceRequest"
+    },
+    "error": {
+      "$ref": "#/$defs/error"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "ok"
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "properties": {
+          "error": {
+            "type": "null"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "failed"
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "properties": {
+          "error": {
+            "type": "object"
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "status": {
+      "enum": [
+        "ok",
+        "insufficient_evidence",
+        "needs_human_review",
+        "failed"
+      ]
+    },
+    "confidence": {
+      "enum": [
+        "low",
+        "medium",
+        "high"
+      ]
+    },
+    "factStatus": {
+      "enum": [
+        "submitted_claim",
+        "verified_fact",
+        "derived_inference",
+        "contradicted",
+        "stale",
+        "retracted",
+        "unknown"
+      ]
+    },
+    "nullableId": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "minLength": 1
+    },
+    "stringList": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true
+    },
+    "range": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "low",
+        "high"
+      ],
+      "properties": {
+        "low": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "high": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        }
+      }
+    },
+    "initialWedge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "customer",
+        "problem",
+        "buyer",
+        "budget_owner",
+        "use_case",
+        "evidence_refs"
+      ],
+      "properties": {
+        "customer": {
+          "type": "string",
+          "minLength": 1
+        },
+        "problem": {
+          "type": "string",
+          "minLength": 1
+        },
+        "buyer": {
+          "type": "string",
+          "minLength": 1
+        },
+        "budget_owner": {
+          "type": "string",
+          "minLength": 1
+        },
+        "use_case": {
+          "type": "string",
+          "minLength": 1
+        },
+        "evidence_refs": {
+          "$ref": "#/$defs/stringList"
+        }
+      }
+    },
+    "reachableMarket": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "customer_count_range",
+        "annual_spend_range",
+        "currency",
+        "time_horizon_months",
+        "assumption_refs",
+        "deterministic_calculation_ref",
+        "limits"
+      ],
+      "properties": {
+        "customer_count_range": {
+          "$ref": "#/$defs/range"
+        },
+        "annual_spend_range": {
+          "$ref": "#/$defs/range"
+        },
+        "currency": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[A-Z]{3}$"
+        },
+        "time_horizon_months": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "assumption_refs": {
+          "$ref": "#/$defs/stringList"
+        },
+        "deterministic_calculation_ref": {
+          "$ref": "#/$defs/nullableId"
+        },
+        "limits": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "assumption": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "assumption_id",
+        "statement",
+        "source_refs",
+        "fact_status"
+      ],
+      "properties": {
+        "assumption_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "statement": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source_refs": {
+          "$ref": "#/$defs/stringList"
+        },
+        "fact_status": {
+          "$ref": "#/$defs/factStatus"
+        }
+      }
+    },
+    "expansionPath": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "from_wedge",
+        "to_segment_or_product",
+        "dependencies",
+        "evidence_refs",
+        "falsifier"
+      ],
+      "properties": {
+        "from_wedge": {
+          "type": "string",
+          "minLength": 1
+        },
+        "to_segment_or_product": {
+          "type": "string",
+          "minLength": 1
+        },
+        "dependencies": {
+          "$ref": "#/$defs/stringList"
+        },
+        "evidence_refs": {
+          "$ref": "#/$defs/stringList"
+        },
+        "falsifier": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "buyerStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "step",
+        "actor",
+        "friction",
+        "evidence_refs"
+      ],
+      "properties": {
+        "step": {
+          "type": "string",
+          "minLength": 1
+        },
+        "actor": {
+          "type": "string",
+          "minLength": 1
+        },
+        "friction": {
+          "type": "string",
+          "minLength": 1
+        },
+        "evidence_refs": {
+          "$ref": "#/$defs/stringList"
+        }
+      }
+    },
+    "distributionMotion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "motion",
+        "target",
+        "supporting_evidence_refs",
+        "risks",
+        "confidence"
+      ],
+      "properties": {
+        "motion": {
+          "type": "string",
+          "minLength": 1
+        },
+        "target": {
+          "type": "string",
+          "minLength": 1
+        },
+        "supporting_evidence_refs": {
+          "$ref": "#/$defs/stringList"
+        },
+        "risks": {
+          "$ref": "#/$defs/stringList"
+        },
+        "confidence": {
+          "$ref": "#/$defs/confidence"
+        }
+      }
+    },
+    "alternative": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "classification",
+        "inclusion_reason",
+        "source_refs",
+        "evidence_date",
+        "confidence"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "classification": {
+          "enum": [
+            "direct",
+            "adjacent",
+            "internal_build",
+            "status_quo",
+            "non_consumption"
+          ]
+        },
+        "inclusion_reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source_refs": {
+          "$ref": "#/$defs/stringList"
+        },
+        "evidence_date": {
+          "type": "string",
+          "format": "date"
+        },
+        "confidence": {
+          "$ref": "#/$defs/confidence"
+        }
+      }
+    },
+    "incumbentResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "incumbent_or_class",
+        "likely_response",
+        "trigger",
+        "company_counter",
+        "evidence_refs",
+        "falsifier"
+      ],
+      "properties": {
+        "incumbent_or_class": {
+          "type": "string",
+          "minLength": 1
+        },
+        "likely_response": {
+          "type": "string",
+          "minLength": 1
+        },
+        "trigger": {
+          "type": "string",
+          "minLength": 1
+        },
+        "company_counter": {
+          "type": "string",
+          "minLength": 1
+        },
+        "evidence_refs": {
+          "$ref": "#/$defs/stringList"
+        },
+        "falsifier": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "whyNow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "evidence",
+        "inference",
+        "counterevidence",
+        "confidence"
+      ],
+      "properties": {
+        "evidence": {
+          "$ref": "#/$defs/stringList"
+        },
+        "inference": {
+          "type": "string",
+          "minLength": 1
+        },
+        "counterevidence": {
+          "$ref": "#/$defs/stringList"
+        },
+        "confidence": {
+          "$ref": "#/$defs/confidence"
+        }
+      }
+    },
+    "defensibility": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mechanism",
+        "observed_evidence",
+        "evidence_refs",
+        "limits",
+        "falsifier"
+      ],
+      "properties": {
+        "mechanism": {
+          "type": "string",
+          "minLength": 1
+        },
+        "observed_evidence": {
+          "type": "string",
+          "minLength": 1
+        },
+        "evidence_refs": {
+          "$ref": "#/$defs/stringList"
+        },
+        "limits": {
+          "type": "string",
+          "minLength": 1
+        },
+        "falsifier": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "marketRisk": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "risk",
+        "evidence_refs",
+        "impact",
+        "unknowns"
+      ],
+      "properties": {
+        "risk": {
+          "type": "string",
+          "minLength": 1
+        },
+        "evidence_refs": {
+          "$ref": "#/$defs/stringList"
+        },
+        "impact": {
+          "enum": [
+            "low",
+            "medium",
+            "high"
+          ]
+        },
+        "unknowns": {
+          "$ref": "#/$defs/stringList"
+        }
+      }
+    },
+    "scenarioRange": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "low",
+        "base",
+        "high",
+        "unit",
+        "currency",
+        "horizon_months",
+        "assumption_refs",
+        "deterministic_calculation_ref",
+        "limits"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "low": {
+          "type": "number",
+          "minimum": 0
+        },
+        "base": {
+          "type": "number",
+          "minimum": 0
+        },
+        "high": {
+          "type": "number",
+          "minimum": 0
+        },
+        "unit": {
+          "type": "string",
+          "minLength": 1
+        },
+        "currency": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[A-Z]{3}$"
+        },
+        "horizon_months": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "assumption_refs": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true,
+          "minItems": 1
+        },
+        "deterministic_calculation_ref": {
+          "type": "string",
+          "minLength": 1
+        },
+        "limits": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "evidence_id",
+        "claim",
+        "source_url",
+        "published_or_observed_at",
+        "retrieved_at",
+        "fact_status",
+        "confidence",
+        "direct_source_inspected"
+      ],
+      "properties": {
+        "evidence_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "claim": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source_url": {
+          "type": "string",
+          "format": "uri",
+          "minLength": 1
+        },
+        "published_or_observed_at": {
+          "type": "string",
+          "minLength": 1
+        },
+        "retrieved_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "fact_status": {
+          "$ref": "#/$defs/factStatus"
+        },
+        "confidence": {
+          "$ref": "#/$defs/confidence"
+        },
+        "direct_source_inspected": {
+          "type": "boolean"
+        }
+      }
+    },
+    "missingData": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "field",
+        "state",
+        "reason",
+        "evidence_needed"
+      ],
+      "properties": {
+        "field": {
+          "type": "string",
+          "minLength": 1
+        },
+        "state": {
+          "enum": [
+            "missing",
+            "unknown",
+            "not_applicable",
+            "blocked"
+          ]
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "evidence_needed": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "error": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "code",
+            "message"
+          ],
+          "properties": {
+            "code": {
+              "type": "string",
+              "minLength": 1
+            },
+            "message": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      ]
+    },
+    "persistenceRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requested",
+        "operation",
+        "reason",
+        "steward_required"
+      ],
+      "properties": {
+        "requested": {
+          "type": "boolean"
+        },
+        "operation": {
+          "enum": [
+            "none",
+            "record_evidence"
+          ]
+        },
+        "reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "steward_required": {
+          "const": true
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "requested": {
+                "const": false
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "operation": {
+                "const": "none"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "requested": {
+                "const": true
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "operation": {
+                "const": "record_evidence"
+              },
+              "reason": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

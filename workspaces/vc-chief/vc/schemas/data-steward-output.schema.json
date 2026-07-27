@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openclaw.example/schemas/data-steward-output.schema.json",
+  "title": "Data Steward output",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "role", "status", "lead_id", "run_id", "result", "evidence_refs", "missing_data", "warnings", "error"],
+  "properties": {
+    "schema_version": { "const": "3.0" },
+    "role": { "const": "data-steward" },
+    "status": { "enum": ["ok", "insufficient_evidence", "needs_human_review", "failed"] },
+    "lead_id": { "type": ["string", "null"] },
+    "run_id": { "type": ["string", "null"] },
+    "result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["operation", "availability", "mode", "pre_state", "post_state", "record_ids", "revision", "idempotency_key", "rows_affected", "preview", "approval_required", "verification"],
+      "properties": {
+        "operation": { "type": "string", "minLength": 1 },
+        "availability": { "enum": ["fixed_workflow", "operator_only", "read_only", "unsupported"] },
+        "mode": { "enum": ["read_only", "dry_run", "fixed_workflow"] },
+        "pre_state": { "type": ["object", "null"] },
+        "post_state": { "type": ["object", "null"] },
+        "record_ids": { "type": "array", "items": { "type": "string" } },
+        "revision": { "type": ["integer", "null"], "minimum": 0 },
+        "idempotency_key": { "type": ["string", "null"] },
+        "rows_affected": { "type": "integer", "minimum": 0 },
+        "preview": { "type": ["object", "array", "null"] },
+        "approval_required": { "type": "boolean" },
+        "verification": { "type": "string", "minLength": 1 }
+      }
+    },
+    "evidence_refs": { "type": "array", "items": { "type": "string" } },
+    "missing_data": { "type": "array", "items": { "type": "string" } },
+    "warnings": { "type": "array", "items": { "type": "string" } },
+    "error": { "$ref": "#/$defs/error" }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "status": { "const": "ok" } }, "required": ["status"] },
+      "then": { "properties": { "error": { "type": "null" } } }
+    },
+    {
+      "if": { "properties": { "status": { "const": "failed" } }, "required": ["status"] },
+      "then": { "properties": { "error": { "type": "object" } } }
+    }
+  ],
+  "$defs": {
+    "error": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["code", "message"],
+          "properties": {
+            "code": { "type": "string", "minLength": 1 },
+            "message": { "type": "string", "minLength": 1 }
+          }
+        }
+      ]
+    }
+  }
+}

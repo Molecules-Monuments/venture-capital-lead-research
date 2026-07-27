@@ -1,0 +1,99 @@
+{
+  "profile_version": "3.0",
+  "status": "CUSTOMIZE_REQUIRED",
+  "organization": {
+    "name": "<LEGAL_OR_OPERATING_NAME>",
+    "timezone": "Europe/Berlin",
+    "deployment_owner": "<STABLE_OPERATOR_ID>"
+  },
+  "investment_policy": {
+    "fund_strategy": "<SEED_VC_OR_OTHER>",
+    "stages": ["<STAGE>"],
+    "sectors": ["<SECTOR>"],
+    "geographies": ["<GEOGRAPHY>"],
+    "check_size_currency": "EUR",
+    "check_size_min": 0,
+    "check_size_max": 0,
+    "ownership_target_percent": null,
+    "hard_exclusions_reviewed": false,
+    "rubric_reviewed": false,
+    "rubric_id": "<CUSTOM_RUBRIC_ID>",
+    "rubric_backtest_record": "<PATH_OR_ID>"
+  },
+  "operating_policy": {
+    "research_profiles_reviewed": false,
+    "source_allowlist_reviewed": false,
+    "cost_budget_reviewed": false,
+    "memo_template_reviewed": false
+  },
+  "models": {
+    "provider": "openai",
+    "primary": "<PROVIDER/MODEL>",
+    "fast": "<PROVIDER/MODEL>",
+    "benchmark_record": "<PATH_OR_ID>",
+    "provider_selection_reviewed": false,
+    "untrusted_input_policy_reviewed": false
+  },
+  "search": {
+    "provider": "auto",
+    "fetch_provider": "default",
+    "provider_selection_reviewed": false,
+    "source_quality_reviewed": false,
+    "evaluation_record": "<PATH_OR_ID>"
+  },
+  "approvals": {
+    "stable_approver_ids": ["<STABLE_ID>"],
+    "allowed_channel_ids": [],
+    "expiry_minutes": 30,
+    "separation_of_duties_reviewed": false
+  },
+  "privacy_retention": {
+    "jurisdictions": ["<JURISDICTION>"],
+    "lawful_bases_reviewed": false,
+    "confidentiality_classes_reviewed": false,
+    "retention_schedule_reviewed": false,
+    "deletion_and_legal_hold_tested": false,
+    "remote_processor_reviewed": false
+  },
+  "channels": {
+    "selected": "none",
+    "stable_identity_allowlist_reviewed": false,
+    "attachment_intake_reviewed": false,
+    "preference_memory_reviewed": false,
+    "live_acceptance_completed": false
+  },
+  "agent_profile": {
+    "roster": [
+      "vc-chief", "lead-router", "lead-signal-detector", "outbound-scout",
+      "inbound-intake-analyst", "document-intake-analyst",
+      "founder-researcher", "traction-analyst", "market-mapper",
+      "qualification-analyst", "memo-writer", "data-steward"
+    ],
+    "roster_or_route_changes": [],
+    "schema_and_eval_updates_completed": false
+  },
+  "review": {
+    "approved_by": "<STABLE_REVIEWER_ID>",
+    "approved_at": "<RFC3339_TIMESTAMP>",
+    "change_record": "<PATH_OR_ID>",
+    "reviewed_artifacts": {
+      "config/openclaw.json": "<SHA256>",
+      "tests/g3/routing_cases.jsonl": "<SHA256>",
+      "tests/g3/scoring_boundary_cases.jsonl": "<SHA256>",
+      "workspaces/vc-chief/USER.md": "<SHA256>",
+      "workspaces/vc-chief/vc/approval-policy.md": "<SHA256>",
+      "workspaces/vc-chief/vc/channel_policy.md": "<SHA256>",
+      "workspaces/vc-chief/vc/data_retention.md": "<SHA256>",
+      "workspaces/vc-chief/vc/document_intake.md": "<SHA256>",
+      "workspaces/vc-chief/vc/evals/memo-eval.jsonl": "<SHA256>",
+      "workspaces/vc-chief/vc/exclusion_criteria.md": "<SHA256>",
+      "workspaces/vc-chief/vc/prequalification.md": "<SHA256>",
+      "workspaces/vc-chief/vc/primary_sources.md": "<SHA256>",
+      "workspaces/vc-chief/vc/research_depth.md": "<SHA256>",
+      "workspaces/vc-chief/vc/scoring-rubric.v3.json": "<SHA256>",
+      "workspaces/vc-chief/vc/thesis.md": "<SHA256>",
+      "workspaces/vc-chief/vc/trust_boundaries.md": "<SHA256>",
+      "workspaces/vc-chief/vc/third_party_connectors.md": "<SHA256>"
+    }
+  }
+}

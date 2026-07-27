@@ -1,0 +1,70 @@
+{
+  "channels": {
+    "discord": {
+      "enabled": true,
+      "token": { "source": "env", "provider": "default", "id": "DISCORD_BOT_TOKEN" },
+      "applicationId": "__DISCORD_APPLICATION_ID__",
+      "configWrites": false,
+      "commands": { "native": false, "nativeSkills": false },
+      "dmPolicy": "allowlist",
+      "allowFrom": "__DISCORD_ALLOWED_USER_IDS__",
+      "dm": { "enabled": true, "groupEnabled": false },
+      "groupPolicy": "allowlist",
+      "guilds": {
+        "__DISCORD_ALLOWED_GUILD_ID__": {
+          "requireMention": true,
+          "ignoreOtherMentions": true,
+          "reactionNotifications": "off",
+          "users": "__DISCORD_ALLOWED_USER_IDS__",
+          "channels": {
+            "__DISCORD_ALLOWED_CHANNEL_ID__": {
+              "enabled": true,
+              "requireMention": true,
+              "ignoreOtherMentions": true,
+              "users": "__DISCORD_ALLOWED_USER_IDS__"
+            }
+          }
+        }
+      },
+      "allowBots": false,
+      "dangerouslyAllowNameMatching": false,
+      "contextVisibility": "allowlist",
+      "mediaMaxMb": "__VC_CHANNEL_MEDIA_MAX_MB__",
+      "execApprovals": { "enabled": false },
+      "agentComponents": { "enabled": false },
+      "threadBindings": {
+        "enabled": false,
+        "spawnSessions": false,
+        "spawnSubagentSessions": false,
+        "spawnAcpSessions": false
+      },
+      "intents": { "presence": false, "guildMembers": false, "voiceStates": false },
+      "voice": { "enabled": false },
+      "actions": {
+        "reactions": false,
+        "stickers": false,
+        "emojiUploads": false,
+        "stickerUploads": false,
+        "polls": false,
+        "permissions": false,
+        "messages": false,
+        "threads": false,
+        "pins": false,
+        "search": false,
+        "memberInfo": false,
+        "roleInfo": false,
+        "roles": false,
+        "channelInfo": false,
+        "voiceStatus": false,
+        "events": false,
+        "moderation": false,
+        "channels": false,
+        "presence": false
+      },
+      "retry": { "attempts": 3, "minDelayMs": 500, "maxDelayMs": 10000, "jitter": 0.2 }
+    }
+  },
+  "bindings": [
+    { "agentId": "vc-chief", "match": { "channel": "discord", "accountId": "default" } }
+  ]
+}

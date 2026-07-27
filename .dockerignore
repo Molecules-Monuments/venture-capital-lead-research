@@ -1,0 +1,21 @@
+*
+!Dockerfile.openclaw
+!requirements.lock
+!runtime-packages/
+!runtime-packages/**
+!runtime-extensions/
+!runtime-extensions/vc-trusted-context/
+!runtime-extensions/vc-trusted-context/**
+!workspaces/
+!workspaces/**
+# Host-generated workspace state must never bake into the reviewed image.
+workspaces/*/.openclaw/
+workspaces/*/memory/
+workspaces/**/__pycache__/
+workspaces/**/*.pyc
+workspaces/**/*.log
+# Only the exec-approvals seed may enter the build context. Never re-include
+# all of config/: lifecycle renders materialize live secrets under
+# config/runtime/secrets/ before `compose build` runs, and a blanket !config/
+# would ship them (plus operator profiles) into the builder context cache.
+!config/exec-approvals.json

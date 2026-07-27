@@ -1,0 +1,54 @@
+{
+  "_comment": [
+    "Third-party data connectors, wired natively via OpenClaw MCP servers.",
+    "Copy to config/connectors.json (gitignored, not in the release manifest) and edit.",
+    "render_channel_config.py injects each enabled entry as mcp.servers.<name> in the",
+    "rendered runtime config and grants its tools to the listed specialists via each",
+    "agent's tools.allow glob (<name>__*). Put API keys in the gateway environment and",
+    "reference them as ${VAR}; secrets are never written into this file or the config.",
+    "OpenClaw ships no Crunchbase/PitchBook server: point at a hosted third-party",
+    "MCP server URL or a thin MCP shim over the vendor's REST API. A stdio/npx",
+    "server cannot run in the shipped gateway container (read-only filesystem, no",
+    "registry access): baking its package into the derived image is a reviewed",
+    "commissioning change (runtime-packages pin, rebuild, G6).",
+    "Live connectivity is a deployment-commissioning check (openclaw mcp doctor <name> --probe)."
+  ],
+  "mcp_servers": {
+    "crunchbase": {
+      "enabled": false,
+      "grant_to": ["founder-researcher", "market-mapper"],
+      "server": {
+        "url": "https://mcp.example-crunchbase.invalid/mcp",
+        "transport": "streamable-http",
+        "headers": { "Authorization": "Bearer ${CRUNCHBASE_API_KEY}" },
+        "timeout": 30,
+        "connectTimeout": 5,
+        "toolFilter": { "include": ["search_*", "get_*"], "exclude": ["admin_*"] }
+      }
+    },
+    "pitchbook": {
+      "enabled": false,
+      "grant_to": ["market-mapper"],
+      "server": {
+        "url": "https://mcp.example-pitchbook.invalid/mcp",
+        "transport": "streamable-http",
+        "headers": { "Authorization": "Bearer ${PITCHBOOK_API_KEY}" },
+        "timeout": 30,
+        "connectTimeout": 5,
+        "toolFilter": { "include": ["search_companies", "get_company"] }
+      }
+    },
+    "dealroom": {
+      "enabled": false,
+      "grant_to": ["market-mapper", "traction-analyst"],
+      "server": {
+        "url": "https://mcp.example-dealroom.invalid/mcp",
+        "transport": "streamable-http",
+        "headers": { "Authorization": "Bearer ${DEALROOM_API_KEY}" },
+        "timeout": 30,
+        "connectTimeout": 5,
+        "toolFilter": { "include": ["search_*", "get_*"], "exclude": ["admin_*"] }
+      }
+    }
+  }
+}

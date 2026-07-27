@@ -1,0 +1,665 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openclaw.local/schemas/founder-researcher.output.schema.json",
+  "title": "Founder Researcher Output v3.0",
+  "$comment": "The caller must additionally verify that every person_id and evidence reference resolves within the assigned lead/run and that no protected-characteristic data entered the packet.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "role",
+    "status",
+    "lead_id",
+    "run_id",
+    "result",
+    "evidence",
+    "missing_data",
+    "warnings",
+    "persistence_request",
+    "error"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "3.0"
+    },
+    "role": {
+      "const": "founder-researcher"
+    },
+    "status": {
+      "$ref": "#/$defs/status"
+    },
+    "lead_id": {
+      "$ref": "#/$defs/nullableId"
+    },
+    "run_id": {
+      "$ref": "#/$defs/nullableId"
+    },
+    "result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "founders",
+        "team_assessment"
+      ],
+      "properties": {
+        "founders": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/founder"
+          }
+        },
+        "team_assessment": {
+          "$ref": "#/$defs/teamAssessment"
+        }
+      }
+    },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/evidence"
+      }
+    },
+    "missing_data": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/missingData"
+      }
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "persistence_request": {
+      "$ref": "#/$defs/persistenceRequest"
+    },
+    "error": {
+      "$ref": "#/$defs/error"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "ok"
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "properties": {
+          "error": {
+            "type": "null"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "failed"
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "properties": {
+          "error": {
+            "type": "object"
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "status": {
+      "enum": [
+        "ok",
+        "insufficient_evidence",
+        "needs_human_review",
+        "failed"
+      ]
+    },
+    "confidence": {
+      "enum": [
+        "low",
+        "medium",
+        "high"
+      ]
+    },
+    "nullableId": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "minLength": 1
+    },
+    "stringList": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true
+    },
+    "factStatus": {
+      "enum": [
+        "submitted_claim",
+        "verified_fact",
+        "derived_inference",
+        "contradicted",
+        "stale",
+        "retracted",
+        "unknown"
+      ]
+    },
+    "hypothesis": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "statement",
+        "evidence_refs",
+        "counterevidence_refs",
+        "falsifier",
+        "confidence"
+      ],
+      "properties": {
+        "statement": {
+          "type": "string",
+          "minLength": 1
+        },
+        "evidence_refs": {
+          "$ref": "#/$defs/stringList"
+        },
+        "counterevidence_refs": {
+          "$ref": "#/$defs/stringList"
+        },
+        "falsifier": {
+          "type": "string",
+          "minLength": 1
+        },
+        "confidence": {
+          "$ref": "#/$defs/confidence"
+        }
+      }
+    },
+    "capabilityEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "capability",
+        "assessment",
+        "evidence_refs",
+        "inference",
+        "confidence"
+      ],
+      "properties": {
+        "capability": {
+          "enum": [
+            "technical",
+            "product",
+            "domain",
+            "distribution",
+            "recruiting",
+            "company_building",
+            "other"
+          ]
+        },
+        "assessment": {
+          "enum": [
+            "strong",
+            "mixed",
+            "weak",
+            "unknown"
+          ]
+        },
+        "evidence_refs": {
+          "$ref": "#/$defs/stringList"
+        },
+        "inference": {
+          "type": "string",
+          "minLength": 1
+        },
+        "confidence": {
+          "$ref": "#/$defs/confidence"
+        }
+      }
+    },
+    "learningEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "situation",
+        "action_or_update",
+        "outcome",
+        "evidence_refs",
+        "confidence"
+      ],
+      "properties": {
+        "situation": {
+          "type": "string",
+          "minLength": 1
+        },
+        "action_or_update": {
+          "type": "string",
+          "minLength": 1
+        },
+        "outcome": {
+          "type": "string",
+          "minLength": 1
+        },
+        "evidence_refs": {
+          "$ref": "#/$defs/stringList"
+        },
+        "confidence": {
+          "$ref": "#/$defs/confidence"
+        }
+      }
+    },
+    "recruitingEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "claim",
+        "status",
+        "evidence_refs",
+        "confidence"
+      ],
+      "properties": {
+        "claim": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "$ref": "#/$defs/factStatus"
+        },
+        "evidence_refs": {
+          "$ref": "#/$defs/stringList"
+        },
+        "confidence": {
+          "$ref": "#/$defs/confidence"
+        }
+      }
+    },
+    "founder": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "person_id",
+        "name",
+        "role",
+        "identity_confidence",
+        "publicly_observable",
+        "capability_evidence",
+        "learning_evidence",
+        "recruiting_evidence",
+        "founder_market_fit_hypotheses",
+        "risks_or_gaps",
+        "key_person_dependencies",
+        "reference_questions"
+      ],
+      "properties": {
+        "person_id": {
+          "$ref": "#/$defs/nullableId"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "role": {
+          "type": "string",
+          "minLength": 1
+        },
+        "identity_confidence": {
+          "$ref": "#/$defs/confidence"
+        },
+        "publicly_observable": {
+          "type": "boolean"
+        },
+        "capability_evidence": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/capabilityEvidence"
+          }
+        },
+        "learning_evidence": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/learningEvidence"
+          }
+        },
+        "recruiting_evidence": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/recruitingEvidence"
+          }
+        },
+        "founder_market_fit_hypotheses": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/hypothesis"
+          }
+        },
+        "risks_or_gaps": {
+          "$ref": "#/$defs/stringList"
+        },
+        "key_person_dependencies": {
+          "$ref": "#/$defs/stringList"
+        },
+        "reference_questions": {
+          "$ref": "#/$defs/stringList"
+        }
+      }
+    },
+    "complementarity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "capability",
+        "covered_by_person_ids",
+        "status",
+        "evidence_refs",
+        "reason"
+      ],
+      "properties": {
+        "capability": {
+          "enum": [
+            "technical",
+            "product",
+            "domain",
+            "distribution",
+            "recruiting",
+            "company_building",
+            "other"
+          ]
+        },
+        "covered_by_person_ids": {
+          "$ref": "#/$defs/stringList"
+        },
+        "status": {
+          "enum": [
+            "covered",
+            "partial",
+            "gap",
+            "unknown"
+          ]
+        },
+        "evidence_refs": {
+          "$ref": "#/$defs/stringList"
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "prestigeBiasCheck": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ignored_cues",
+        "material_evidence_unchanged",
+        "notes"
+      ],
+      "properties": {
+        "ignored_cues": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "school",
+              "employer",
+              "investor",
+              "fame",
+              "network",
+              "display_name",
+              "demographic_proxy"
+            ]
+          },
+          "uniqueItems": true,
+          "minItems": 1
+        },
+        "material_evidence_unchanged": {
+          "type": "boolean"
+        },
+        "notes": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "teamAssessment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "complementarity",
+        "learning_hypothesis",
+        "recruiting_hypothesis",
+        "prestige_bias_check",
+        "falsifiers",
+        "overall_confidence"
+      ],
+      "properties": {
+        "complementarity": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/complementarity"
+          }
+        },
+        "learning_hypothesis": {
+          "$ref": "#/$defs/hypothesis"
+        },
+        "recruiting_hypothesis": {
+          "$ref": "#/$defs/hypothesis"
+        },
+        "prestige_bias_check": {
+          "$ref": "#/$defs/prestigeBiasCheck"
+        },
+        "falsifiers": {
+          "$ref": "#/$defs/stringList"
+        },
+        "overall_confidence": {
+          "$ref": "#/$defs/confidence"
+        }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "evidence_id",
+        "claim",
+        "person_id",
+        "source_url",
+        "publisher",
+        "source_class",
+        "published_or_observed_at",
+        "retrieved_at",
+        "fact_status",
+        "confidence",
+        "direct_source_inspected"
+      ],
+      "properties": {
+        "evidence_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "claim": {
+          "type": "string",
+          "minLength": 1
+        },
+        "person_id": {
+          "$ref": "#/$defs/nullableId"
+        },
+        "source_url": {
+          "type": "string",
+          "format": "uri",
+          "minLength": 1
+        },
+        "publisher": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source_class": {
+          "enum": [
+            "primary_company",
+            "direct_professional",
+            "institutional",
+            "court_or_regulatory",
+            "reputable_secondary",
+            "other"
+          ]
+        },
+        "published_or_observed_at": {
+          "type": "string",
+          "minLength": 1
+        },
+        "retrieved_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "fact_status": {
+          "$ref": "#/$defs/factStatus"
+        },
+        "confidence": {
+          "$ref": "#/$defs/confidence"
+        },
+        "direct_source_inspected": {
+          "type": "boolean"
+        }
+      }
+    },
+    "missingData": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "field",
+        "state",
+        "reason",
+        "evidence_needed"
+      ],
+      "properties": {
+        "field": {
+          "type": "string",
+          "minLength": 1
+        },
+        "state": {
+          "enum": [
+            "missing",
+            "unknown",
+            "not_applicable",
+            "blocked"
+          ]
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "evidence_needed": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "error": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "code",
+            "message"
+          ],
+          "properties": {
+            "code": {
+              "type": "string",
+              "minLength": 1
+            },
+            "message": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      ]
+    },
+    "persistenceRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requested",
+        "operation",
+        "reason",
+        "steward_required"
+      ],
+      "properties": {
+        "requested": {
+          "type": "boolean"
+        },
+        "operation": {
+          "enum": [
+            "none",
+            "record_evidence"
+          ]
+        },
+        "reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "steward_required": {
+          "const": true
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "requested": {
+                "const": false
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "operation": {
+                "const": "none"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "requested": {
+                "const": true
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "operation": {
+                "const": "record_evidence"
+              },
+              "reason": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

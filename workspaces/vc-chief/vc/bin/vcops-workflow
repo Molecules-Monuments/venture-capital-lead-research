@@ -1,0 +1,20 @@
+#!/bin/sh
+set -eu
+
+# Internal child-process boundary for the reviewed Lobster workflows.
+# This path must never appear in an OpenClaw agent exec allowlist.
+exec /usr/bin/env -i \
+  HOME=/home/node \
+  LANG=C.UTF-8 \
+  LC_ALL=C.UTF-8 \
+  PATH=/opt/vcops-venv/bin:/usr/local/bin:/usr/bin:/bin \
+  TZ=Europe/Berlin \
+  VCOPS_WORKFLOW_MODE=1 \
+  VCOPS_FIXED_RUNTIME=1 \
+  VCOPS_INBOX_ROOT=/inbox \
+  VCOPS_MEDIA_ROOT=/home/node/.openclaw/media/inbound \
+  VCOPS_QUARANTINE_ROOT=/quarantine \
+  VCOPS_STATE_ROOT=/home/node/.openclaw/vcops \
+  VCOPS_WORKSPACE_ROOT=/workspaces/vc-chief/vc \
+  /opt/vcops-venv/bin/python -I -B \
+  /workspaces/vc-chief/vc/bin/vcops.py "$@"

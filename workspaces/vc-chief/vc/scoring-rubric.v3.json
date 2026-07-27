@@ -1,0 +1,34 @@
+{
+  "rubric_id": "sample-early-stage-generalist",
+  "version": "3.0",
+  "customization_status": "sample_only_must_customize",
+  "stage_profile": "sample_pre_seed_to_series_a",
+  "sector_profile": "sample_generalist_software",
+  "criteria": [
+    {"key": "thesis_stage_geography_fit", "label": "Thesis, stage, and geography fit", "weight": 15},
+    {"key": "founder_team_signal", "label": "Founder and team evidence", "weight": 15},
+    {"key": "problem_product_depth", "label": "Problem and product depth", "weight": 15},
+    {"key": "technical_differentiation", "label": "Technical differentiation", "weight": 10},
+    {"key": "traction_adoption", "label": "Traction and adoption", "weight": 15},
+    {"key": "market_buyer_timing", "label": "Market, buyer, and timing", "weight": 10},
+    {"key": "business_commercial_evidence", "label": "Business and commercial evidence", "weight": 10},
+    {"key": "risk_decision_readiness", "label": "Risk and decision readiness", "weight": 10}
+  ],
+  "decision_readiness": {
+    "minimum_evaluated_criteria": 3,
+    "minimum_weighted_coverage": 0.4,
+    "required_criteria": ["founder_team_signal", "problem_product_depth"],
+    "high_priority_minimum_weighted_coverage": 0.75,
+    "high_priority_required_checks": ["contradiction_check_complete", "trajectory_check_complete"]
+  },
+  "adjustments": {
+    "material_unresolved_contradiction": [-10, -5],
+    "trajectory": {"maximum": 5, "minimum": -5}
+  },
+  "recommendation_intervals": [
+    {"maximum_exclusive": 50, "minimum": 0, "name": "pass"},
+    {"maximum_exclusive": 66, "minimum": 50, "name": "watch"},
+    {"maximum_exclusive": 82, "minimum": 66, "name": "research_deeper"},
+    {"maximum_inclusive": 100, "minimum": 82, "name": "high_priority"}
+  ]
+}

@@ -1,0 +1,11 @@
+#!/bin/sh
+set -eu
+
+exec /usr/bin/env -i \
+  HOME=/home/node \
+  LANG=C.UTF-8 \
+  LC_ALL=C.UTF-8 \
+  PATH=/opt/vcops-venv/bin:/usr/local/bin:/usr/bin:/bin \
+  TZ=Europe/Berlin \
+  /opt/vcops-venv/bin/python -I -B \
+  /workspaces/vc-chief/vc/bin/vcrun.py "$@"

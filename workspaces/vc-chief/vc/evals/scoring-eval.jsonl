@@ -1,0 +1,3 @@
+{"id":"claimed_arr_only","input":{"submitted_claims":["USD 1.2m ARR"],"verified_facts":[]},"expected_recommendation":"insufficient_evidence","expected_confidence":"low"}
+{"id":"verified_fit_no_traction","input":{"verified_facts":["AI infrastructure category","credible founder"],"missing":["traction"]},"expected_recommendation":"watch","expected_confidence":"medium"}
+{"id":"blocking_contradiction","input":{"contradictions":["ARR mismatch is high severity"]},"expected_recommendation":"needs_human_review","expected_confidence":"low"}

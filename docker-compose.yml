@@ -1,0 +1,267 @@
+name: openclaw-lead-research-v3
+
+services:
+  postgres:
+    image: ${POSTGRES_IMAGE:-postgres:17.10-bookworm@sha256:4f736ae292687621d4dbe0d499ffd024a36bd2ee7d8ca6f2ccd4c800f047b394}
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: openclaw
+      POSTGRES_USER: openclaw_owner
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_owner_password
+      OPENCLAW_DB_PASSWORD_FILE: /run/secrets/openclaw_db_password
+      PGDATA: /var/lib/postgresql/data/pgdata
+      # initdb's default pg_hba trusts loopback TCP ahead of the appended
+      # scram rule, which defeats the negative credential proof in
+      # migrations/000_roles.sh. Password auth must hold on every TCP path.
+      POSTGRES_HOST_AUTH_METHOD: scram-sha-256
+      POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256
+    secrets:
+      - postgres_owner_password
+      - openclaw_db_password
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./migrations/000_roles.sh:/docker-entrypoint-initdb.d/000_roles.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U openclaw_owner -d openclaw"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    networks: [backend]
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: ["ALL"]
+    cap_add: ["CHOWN", "DAC_OVERRIDE", "FOWNER", "SETGID", "SETUID"]
+    pids_limit: 256
+    mem_limit: ${POSTGRES_MEMORY_LIMIT:-1g}
+    cpus: ${POSTGRES_CPU_LIMIT:-1.0}
+    logging:
+      driver: json-file
+      options:
+        max-size: ${POSTGRES_LOG_MAX_SIZE:-10m}
+        max-file: ${POSTGRES_LOG_MAX_FILES:-5}
+
+  openclaw-state-init:
+    image: openclaw-lead-research:3.0.0
+    restart: "no"
+    user: "0:0"
+    entrypoint: ["/bin/sh", "-eu", "-c"]
+    command:
+      - |
+        umask 077
+        test -f /run/openclaw-source/openclaw.json
+        test ! -L /run/openclaw-source/openclaw.json
+        install -m 0400 -o node -g node /run/openclaw-source/openclaw.json /runtime-config/.openclaw.json.tmp
+        jq -e 'type == "object" and .gateway.auth.mode == "token" and .commands.config == false and .commands.plugins == false' /runtime-config/.openclaw.json.tmp >/dev/null
+        mv -f /runtime-config/.openclaw.json.tmp /runtime-config/openclaw.json
+        test -f /runtime-config/openclaw.json
+        test ! -L /runtime-config/openclaw.json
+        cmp -s /run/openclaw-source/openclaw.json /runtime-config/openclaw.json
+        stat -c '%U:%G:%a' /runtime-config/openclaw.json | grep -qx 'node:node:400'
+        if [ ! -e /home/node/.openclaw/exec-approvals.json ]; then
+          cp /opt/openclaw-seed/exec-approvals.json /home/node/.openclaw/exec-approvals.json
+        fi
+        install -d -m 0700 -o node -g node /home/node/.openclaw/media /home/node/.openclaw/media/inbound
+        test -f /home/node/.openclaw/exec-approvals.json
+        test ! -L /home/node/.openclaw/exec-approvals.json
+        chown node:node /home/node/.openclaw/exec-approvals.json
+        chmod 0600 /home/node/.openclaw/exec-approvals.json
+        jq -e '.version == 1 and .defaults.security == "deny" and .defaults.ask == "off" and .defaults.askFallback == "deny" and .defaults.autoAllowSkills == false and (.agents | keys == ["data-steward"]) and .agents["data-steward"].security == "allowlist" and .agents["data-steward"].ask == "off" and .agents["data-steward"].askFallback == "deny" and .agents["data-steward"].autoAllowSkills == false and (.agents["data-steward"].allowlist | length == 2) and ([.agents["data-steward"].allowlist[] | {id,pattern,source}] | sort_by(.id) == ([{"id":"2DC7C1B8-73D4-42D3-9B6F-CA3FAE54E070","pattern":"/workspaces/vc-chief/vc/bin/agent/vcops","source":"version-3-package"},{"id":"C62E453F-6D6C-4E78-85CE-BB139A57978D","pattern":"/workspaces/vc-chief/vc/bin/agent/vcrun","source":"version-3-fixed-workflows"}] | sort_by(.id)))' /home/node/.openclaw/exec-approvals.json >/dev/null
+    volumes:
+      - openclaw-state:/home/node/.openclaw
+      - openclaw-runtime-config:/runtime-config
+    configs:
+      - source: openclaw_runtime_config
+        target: /run/openclaw-source/openclaw.json
+    read_only: true
+    tmpfs: ["/tmp:rw,noexec,nosuid,size=16m"]
+    network_mode: none
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: ["ALL"]
+    cap_add: ["CHOWN", "DAC_OVERRIDE", "FOWNER"]
+    pids_limit: 32
+    mem_limit: ${OPENCLAW_INIT_MEMORY_LIMIT:-64m}
+    cpus: ${OPENCLAW_INIT_CPU_LIMIT:-0.25}
+    logging:
+      driver: json-file
+      options:
+        max-size: ${OPENCLAW_INIT_LOG_MAX_SIZE:-1m}
+        max-file: ${OPENCLAW_INIT_LOG_MAX_FILES:-1}
+
+  openclaw-gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile.openclaw
+      args:
+        OPENCLAW_IMAGE: ${OPENCLAW_IMAGE:-ghcr.io/openclaw/openclaw:2026.7.1@sha256:6a31d44b2944e7adcd2b582bf6fb463111264ebca97a0201795b799135bd102c}
+    image: openclaw-lead-research:3.0.0
+    user: node
+    restart: unless-stopped
+    init: true
+    depends_on:
+      postgres:
+        condition: service_healthy
+      openclaw-state-init:
+        condition: service_completed_successfully
+    environment:
+      TZ: ${TZ:-Europe/Berlin}
+      HOME: /home/node
+      OPENCLAW_STATE_DIR: /home/node/.openclaw
+      OPENCLAW_CONFIG_PATH: /home/node/.openclaw-config/openclaw.json
+      LOBSTER_STATE_DIR: /home/node/.openclaw/lobster/state
+      OPENCLAW_GATEWAY_TOKEN: ${OPENCLAW_GATEWAY_TOKEN:?OPENCLAW_GATEWAY_TOKEN is required}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      VC_CUSTOM_API_KEY: ${VC_CUSTOM_API_KEY:-}
+      FIRECRAWL_API_KEY: ${FIRECRAWL_API_KEY:-}
+      TAVILY_API_KEY: ${TAVILY_API_KEY:-}
+      BRAVE_API_KEY: ${BRAVE_API_KEY:-}
+      PERPLEXITY_API_KEY: ${PERPLEXITY_API_KEY:-}
+      EXA_API_KEY: ${EXA_API_KEY:-}
+      SEARXNG_BASE_URL: ${SEARXNG_BASE_URL:-}
+      CRUNCHBASE_API_KEY: ${CRUNCHBASE_API_KEY:-}
+      PITCHBOOK_API_KEY: ${PITCHBOOK_API_KEY:-}
+      DEALROOM_API_KEY: ${DEALROOM_API_KEY:-}
+      VC_PRIMARY_MODEL: ${VC_PRIMARY_MODEL:-openai/gpt-5.6}
+      VC_FAST_MODEL: ${VC_FAST_MODEL:-openai/gpt-5.6}
+      VCOPS_INBOX_ROOT: /inbox
+      VCOPS_MEDIA_ROOT: /home/node/.openclaw/media/inbound
+      VCOPS_QUARANTINE_ROOT: /quarantine
+      VCOPS_STATE_ROOT: /home/node/.openclaw/vcops
+      VC_TRUSTED_CONTEXT_KEY_FILE: /run/secrets/vc_trusted_context_key
+      SLACK_BOT_TOKEN: ${SLACK_BOT_TOKEN:-}
+      SLACK_APP_TOKEN: ${SLACK_APP_TOKEN:-}
+      MSTEAMS_APP_ID: ${MSTEAMS_APP_ID:-}
+      MSTEAMS_APP_PASSWORD: ${MSTEAMS_APP_PASSWORD:-}
+      MSTEAMS_TENANT_ID: ${MSTEAMS_TENANT_ID:-}
+      DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN:-}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+    secrets:
+      - openclaw_db_password
+      - vcops_approval_pepper
+      - vc_trusted_context_key
+    command: ["node", "dist/index.js", "gateway", "--bind", "lan", "--port", "18789"]
+    ports:
+      - "${OPENCLAW_HOST:-127.0.0.1}:${OPENCLAW_GATEWAY_PORT:-18789}:18789"
+      - "${MSTEAMS_WEBHOOK_HOST:-127.0.0.1}:${MSTEAMS_WEBHOOK_PORT:-3978}:3978"
+    volumes:
+      - openclaw-state:/home/node/.openclaw
+      - openclaw-runtime-config:/home/node/.openclaw-config:ro
+      - ./inbox:/inbox:ro
+      - vc-quarantine:/quarantine
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=256m
+    networks: [backend, egress]
+    extra_hosts: ["host.docker.internal:host-gateway"]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:18789/readyz >/dev/null"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 45s
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: ["ALL"]
+    pids_limit: 384
+    mem_limit: ${OPENCLAW_GATEWAY_MEMORY_LIMIT:-2g}
+    cpus: ${OPENCLAW_GATEWAY_CPU_LIMIT:-2.0}
+    logging:
+      driver: json-file
+      options:
+        max-size: ${OPENCLAW_GATEWAY_LOG_MAX_SIZE:-10m}
+        max-file: ${OPENCLAW_GATEWAY_LOG_MAX_FILES:-5}
+
+  openclaw-cli:
+    profiles: ["tools"]
+    image: openclaw-lead-research:3.0.0
+    user: node
+    depends_on:
+      openclaw-gateway:
+        condition: service_healthy
+    environment:
+      TZ: ${TZ:-Europe/Berlin}
+      HOME: /home/node
+      OPENCLAW_STATE_DIR: /home/node/.openclaw
+      OPENCLAW_CONFIG_PATH: /home/node/.openclaw-config/openclaw.json
+      LOBSTER_STATE_DIR: /home/node/.openclaw/lobster/state
+      OPENCLAW_GATEWAY_TOKEN: ${OPENCLAW_GATEWAY_TOKEN:?OPENCLAW_GATEWAY_TOKEN is required}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      VC_CUSTOM_API_KEY: ${VC_CUSTOM_API_KEY:-}
+      FIRECRAWL_API_KEY: ${FIRECRAWL_API_KEY:-}
+      TAVILY_API_KEY: ${TAVILY_API_KEY:-}
+      BRAVE_API_KEY: ${BRAVE_API_KEY:-}
+      PERPLEXITY_API_KEY: ${PERPLEXITY_API_KEY:-}
+      EXA_API_KEY: ${EXA_API_KEY:-}
+      SEARXNG_BASE_URL: ${SEARXNG_BASE_URL:-}
+      CRUNCHBASE_API_KEY: ${CRUNCHBASE_API_KEY:-}
+      PITCHBOOK_API_KEY: ${PITCHBOOK_API_KEY:-}
+      DEALROOM_API_KEY: ${DEALROOM_API_KEY:-}
+      VC_PRIMARY_MODEL: ${VC_PRIMARY_MODEL:-openai/gpt-5.6}
+      VC_FAST_MODEL: ${VC_FAST_MODEL:-openai/gpt-5.6}
+      VCOPS_INBOX_ROOT: /inbox
+      VCOPS_MEDIA_ROOT: /home/node/.openclaw/media/inbound
+      VCOPS_QUARANTINE_ROOT: /quarantine
+      VCOPS_STATE_ROOT: /home/node/.openclaw/vcops
+      VC_TRUSTED_CONTEXT_KEY_FILE: /run/secrets/vc_trusted_context_key
+      SLACK_BOT_TOKEN: ${SLACK_BOT_TOKEN:-}
+      SLACK_APP_TOKEN: ${SLACK_APP_TOKEN:-}
+      MSTEAMS_APP_ID: ${MSTEAMS_APP_ID:-}
+      MSTEAMS_APP_PASSWORD: ${MSTEAMS_APP_PASSWORD:-}
+      MSTEAMS_TENANT_ID: ${MSTEAMS_TENANT_ID:-}
+      DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN:-}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+    secrets:
+      - openclaw_db_password
+      - vcops_approval_pepper
+      - vc_trusted_context_key
+    volumes:
+      - openclaw-state:/home/node/.openclaw
+      - openclaw-runtime-config:/home/node/.openclaw-config:ro
+      - ./inbox:/inbox:ro
+      - vc-quarantine:/quarantine
+    read_only: true
+    tmpfs: ["/tmp:rw,noexec,nosuid,size=64m"]
+    networks: [backend, egress]
+    extra_hosts: ["host.docker.internal:host-gateway"]
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: ["ALL"]
+    pids_limit: 128
+    mem_limit: ${OPENCLAW_CLI_MEMORY_LIMIT:-1g}
+    cpus: ${OPENCLAW_CLI_CPU_LIMIT:-1.0}
+    logging:
+      driver: json-file
+      options:
+        max-size: ${OPENCLAW_CLI_LOG_MAX_SIZE:-5m}
+        max-file: ${OPENCLAW_CLI_LOG_MAX_FILES:-2}
+    entrypoint: ["node", "dist/index.js"]
+
+networks:
+  backend:
+    internal: true
+  egress:
+
+volumes:
+  postgres-data:
+  openclaw-state:
+  openclaw-runtime-config:
+    name: ${OPENCLAW_RUNTIME_CONFIG_VOLUME:-openclaw-lead-research-v3_runtime-config}
+  vc-quarantine:
+    name: ${VC_QUARANTINE_VOLUME:-openclaw-lead-research-v3_vc-quarantine}
+
+configs:
+  openclaw_runtime_config:
+    file: ./config/runtime/openclaw.json
+
+# File-sourced secrets: environment-sourced secrets cannot be injected into
+# read-only services (Compose materializes them by writing into the container
+# filesystem; `file` secrets bind-mount instead). scripts/render_channel_config.py
+# materializes these files from .env on every lifecycle path as mode-0444
+# inside a mode-0700 directory: the unprivileged container users must read the
+# bind-mounted files, so confidentiality comes from the directory boundary.
+secrets:
+  postgres_owner_password:
+    file: ./config/runtime/secrets/postgres_owner_password
+  openclaw_db_password:
+    file: ./config/runtime/secrets/openclaw_db_password
+  vcops_approval_pepper:
+    file: ./config/runtime/secrets/vcops_approval_pepper
+  vc_trusted_context_key:
+    file: ./config/runtime/secrets/vc_trusted_context_key

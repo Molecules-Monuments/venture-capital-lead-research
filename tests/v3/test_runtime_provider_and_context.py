@@ -1,0 +1,356 @@
+from __future__ import annotations
+
+import base64
+import hashlib
+import hmac
+import importlib.util
+import json
+import os
+import subprocess
+import sys
+import tempfile
+import time
+import unittest
+from pathlib import Path
+from unittest.mock import patch
+
+
+ROOT = Path(__file__).resolve().parents[2]
+CHECK_ENV_PATH = ROOT / "scripts/check_env.py"
+VCOPS_PATH = ROOT / "workspaces/vc-chief/vc/bin/vcops.py"
+PLUGIN_PATH = ROOT / "runtime-extensions/vc-trusted-context/index.js"
+
+
+def load_module(name: str, path: Path):
+    spec = importlib.util.spec_from_file_location(name, path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+check_env = load_module("runtime_choice_check_env", CHECK_ENV_PATH)
+vcops = load_module("runtime_choice_vcops", VCOPS_PATH)
+
+
+def configured_example() -> str:
+    body = (ROOT / ".env.example").read_text(encoding="utf-8")
+    replacements = {
+        "OPENCLAW_GATEWAY_TOKEN=": "OPENCLAW_GATEWAY_TOKEN=" + "a" * 64,
+        "POSTGRES_PASSWORD=": "POSTGRES_PASSWORD=" + "b" * 32,
+        "OPENCLAW_DB_PASSWORD=": "OPENCLAW_DB_PASSWORD=" + "c" * 32,
+        "VCOPS_APPROVAL_PEPPER=": "VCOPS_APPROVAL_PEPPER=" + "d" * 32,
+        "VC_TRUSTED_CONTEXT_KEY=": "VC_TRUSTED_CONTEXT_KEY=" + "e" * 64,
+        "BACKUP_HMAC_KEY=": "BACKUP_HMAC_KEY=" + "f" * 64,
+        "OPENAI_API_KEY=": "OPENAI_API_KEY=test-only-openai-key",
+    }
+    for source, target in replacements.items():
+        body = body.replace(source + "\n", target + "\n", 1)
+    return body
+
+
+def replace_line(body: str, key: str, value: str) -> str:
+    lines = body.splitlines()
+    found = False
+    for index, line in enumerate(lines):
+        if line.startswith(f"{key}="):
+            lines[index] = f"{key}={value}"
+            found = True
+            break
+    if not found:
+        raise AssertionError(f"missing environment key: {key}")
+    return "\n".join(lines) + "\n"
+
+
+class RuntimeProviderTests(unittest.TestCase):
+    def render(self, body: str) -> dict[str, object]:
+        with tempfile.TemporaryDirectory(prefix="provider-render-") as raw:
+            root = Path(raw)
+            env_path = root / "runtime.env"
+            output_path = root / "openclaw.json"
+            env_path.write_text(body, encoding="utf-8")
+            env_path.chmod(0o600)
+            parsed = check_env.parse_dotenv(env_path)
+            self.assertEqual([], check_env.validate_runtime_selection(parsed))
+            process = subprocess.run(
+                [
+                    sys.executable,
+                    "-B",
+                    str(ROOT / "scripts/render_channel_config.py"),
+                    str(env_path),
+                    str(output_path),
+                ],
+                cwd=ROOT,
+                text=True,
+                capture_output=True,
+                check=False,
+                env={
+                    "PATH": os.environ.get("PATH", ""),
+                    "PYTHONDONTWRITEBYTECODE": "1",
+                },
+            )
+            self.assertEqual(0, process.returncode, process.stdout + process.stderr)
+            return json.loads(output_path.read_text(encoding="utf-8"))
+
+    def test_control_ui_origins_follow_the_configured_gateway_port(self) -> None:
+        body = configured_example().replace(
+            "OPENCLAW_GATEWAY_PORT=18789", "OPENCLAW_GATEWAY_PORT=28789"
+        )
+        config = self.render(body)
+        self.assertEqual(
+            config["gateway"]["controlUi"]["allowedOrigins"],
+            ["http://localhost:28789", "http://127.0.0.1:28789"],
+        )
+
+    def test_validation_render_never_touches_package_secrets(self) -> None:
+        # Explicit-output renders are validation/test runs; only lifecycle
+        # renders (no output argument) may materialize config/runtime/secrets.
+        # Compare digests, never raw bytes, so a failure cannot leak a real
+        # deployment secret into gate logs.
+        secrets_dir = ROOT / "config" / "runtime" / "secrets"
+
+        def snapshot() -> dict[str, str] | None:
+            if not secrets_dir.exists():
+                return None
+            return {
+                item.name: hashlib.sha256(item.read_bytes()).hexdigest()
+                for item in sorted(secrets_dir.iterdir())
+                if item.is_file()
+            }
+
+        before = snapshot()
+        report = self.render(configured_example())
+        self.assertIn("agents", report)
+        self.assertEqual(before, snapshot())
+
+    def test_lifecycle_render_refuses_a_non_package_env(self) -> None:
+        # A lifecycle render (no output argument) overwrites the production
+        # runtime config and all four secret files; from anything but the
+        # package .env that is a footgun, so the renderer fails closed before
+        # reading the env. The credential-rotation snapshot authorizes itself
+        # via OPENCLAW_RENDER_ALLOW_SNAPSHOT=1.
+        secrets_dir = ROOT / "config" / "runtime" / "secrets"
+
+        def snapshot() -> dict[str, str] | None:
+            if not secrets_dir.exists():
+                return None
+            return {
+                item.name: hashlib.sha256(item.read_bytes()).hexdigest()
+                for item in sorted(secrets_dir.iterdir())
+                if item.is_file()
+            }
+
+        before = snapshot()
+        with tempfile.TemporaryDirectory(prefix="lifecycle-guard-") as raw:
+            env_path = Path(raw) / "scratch.env"
+            env_path.write_text(configured_example(), encoding="utf-8")
+            env_path.chmod(0o600)
+            process = subprocess.run(
+                [
+                    sys.executable,
+                    "-B",
+                    str(ROOT / "scripts/render_channel_config.py"),
+                    str(env_path),
+                ],
+                cwd=ROOT,
+                text=True,
+                capture_output=True,
+                check=False,
+                env={
+                    "PATH": os.environ.get("PATH", ""),
+                    "PYTHONDONTWRITEBYTECODE": "1",
+                },
+            )
+        self.assertEqual(1, process.returncode, process.stdout + process.stderr)
+        payload = json.loads(process.stderr)
+        self.assertEqual("FAIL", payload["result"])
+        self.assertIn("only accepts the package .env", payload["errors"][0])
+        self.assertEqual(before, snapshot())
+
+    def test_openai_default_keeps_generic_auto_search(self) -> None:
+        config = self.render(configured_example())
+        self.assertIn("openai", config["plugins"]["allow"])
+        self.assertNotIn("provider", config["tools"]["web"]["search"])
+        self.assertEqual("openclaw", config["models"]["providers"]["openai"]["agentRuntime"]["id"])
+
+    def test_ollama_and_duckduckgo_are_configuration_only_choices(self) -> None:
+        body = configured_example()
+        for key, value in {
+            "VC_MODEL_PROVIDER": "ollama",
+            "VC_PRIMARY_MODEL": "ollama/qwen3:14b",
+            "VC_FAST_MODEL": "ollama/qwen3:8b",
+            "OPENAI_API_KEY": "",
+            "VC_OLLAMA_BASE_URL": "http://host.docker.internal:11434",
+            "VC_WEB_SEARCH_PROVIDER": "duckduckgo",
+        }.items():
+            body = replace_line(body, key, value)
+        config = self.render(body)
+        self.assertTrue({"ollama", "duckduckgo", "vc-trusted-context"} <= set(config["plugins"]["allow"]))
+        provider = config["models"]["providers"]["ollama"]
+        self.assertEqual("ollama", provider["api"])
+        self.assertEqual("http://host.docker.internal:11434", provider["baseUrl"])
+        self.assertEqual("duckduckgo", config["tools"]["web"]["search"]["provider"])
+
+    def test_tavily_selection_adds_only_its_secret_ref(self) -> None:
+        body = replace_line(configured_example(), "VC_WEB_SEARCH_PROVIDER", "tavily")
+        body = replace_line(body, "TAVILY_API_KEY", "test-only-tavily-key")
+        config = self.render(body)
+        entry = config["plugins"]["entries"]["tavily"]
+        self.assertEqual("tavily", config["tools"]["web"]["search"]["provider"])
+        self.assertEqual(
+            {"source": "env", "provider": "default", "id": "TAVILY_API_KEY"},
+            entry["config"]["webSearch"]["apiKey"],
+        )
+        self.assertNotIn("firecrawl", config["plugins"]["allow"])
+
+    def test_custom_https_model_provider_renders_from_configuration(self) -> None:
+        body = configured_example()
+        for key, value in {
+            "VC_MODEL_PROVIDER": "custom",
+            "VC_PRIMARY_MODEL": "acme/model-primary",
+            "VC_FAST_MODEL": "acme/model-fast",
+            "OPENAI_API_KEY": "",
+            "VC_CUSTOM_PROVIDER_ID": "acme",
+            "VC_CUSTOM_BASE_URL": "https://models.example.test/v1",
+            "VC_CUSTOM_API": "openai-responses",
+            "VC_CUSTOM_API_KEY": "test-only-custom-key",
+            "VC_WEB_SEARCH_PROVIDER": "duckduckgo",
+        }.items():
+            body = replace_line(body, key, value)
+        config = self.render(body)
+        provider = config["models"]["providers"]["acme"]
+        self.assertEqual("openai-responses", provider["api"])
+        self.assertEqual("https://models.example.test/v1", provider["baseUrl"])
+        self.assertEqual(
+            {"source": "env", "provider": "default", "id": "VC_CUSTOM_API_KEY"},
+            provider["apiKey"],
+        )
+
+    def test_ollama_origin_rejects_public_or_api_compatible_urls(self) -> None:
+        accepted = (
+            "http://host.docker.internal:11434",
+            "http://ollama:11434",
+            "http://192.168.1.20:11434",
+            "http://modelbox.local:11434",
+        )
+        rejected = (
+            "https://host.docker.internal:11434",
+            "http://api.example.com:11434",
+            "http://host.docker.internal:11434/v1",
+            "http://user:pass@ollama:11434",
+            "http://ollama",
+        )
+        for value in accepted:
+            with self.subTest(accepted=value):
+                self.assertTrue(check_env._valid_ollama_origin(value))
+        for value in rejected:
+            with self.subTest(rejected=value):
+                self.assertFalse(check_env._valid_ollama_origin(value))
+
+
+class TrustedContextTests(unittest.TestCase):
+    def test_plugin_correlates_identity_media_and_dm_scope(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="trusted-plugin-") as raw:
+            key_path = Path(raw) / "key"
+            key = b"k" * 64
+            key_path.write_bytes(key)
+            script = f"""
+import plugin from {json.dumps(PLUGIN_PATH.as_uri())};
+const hooks = {{}};
+plugin.register({{on: (name, handler) => {{ hooks[name] = handler; }}}});
+hooks.message_received(
+  {{messageId: 'event-1', senderId: 'U12345678', runId: 'run-1', sessionKey: 'agent:vc-chief:slack:direct:u12345678', metadata: {{mediaPaths: ['/home/node/.openclaw/media/inbound/deck.pptx', '/home/node/.openclaw/media/inbound/nested/ignored.pdf']}}}},
+  {{channelId: 'slack', accountId: 'default', conversationId: 'D123', messageId: 'event-1', senderId: 'U12345678', runId: 'run-1', sessionKey: 'agent:vc-chief:slack:direct:u12345678'}}
+);
+const direct = hooks.before_prompt_build({{}}, {{runId: 'run-1', senderId: 'U12345678', sessionKey: 'agent:vc-chief:slack:direct:u12345678', messageProvider: 'slack'}});
+hooks.message_received(
+  {{messageId: 'event-2', senderId: 'U12345678', runId: 'run-2', sessionKey: 'agent:vc-chief:slack:channel:c123', metadata: {{}}}},
+  {{channelId: 'slack', accountId: 'default', conversationId: 'C123', messageId: 'event-2', senderId: 'U12345678', runId: 'run-2', sessionKey: 'agent:vc-chief:slack:channel:c123'}}
+);
+const group = hooks.before_prompt_build({{}}, {{runId: 'run-2', senderId: 'U12345678', sessionKey: 'agent:vc-chief:slack:channel:c123', messageProvider: 'slack'}});
+hooks.message_received(
+  {{messageId: 'event-3', senderId: 'U12345678', runId: 'run-3', sessionKey: 'agent:vc-chief:slack:direct:u12345678', metadata: {{mediaPaths: ['/home/node/.openclaw/media/inbound/photo.png']}}}},
+  {{channelId: 'slack', accountId: 'default', conversationId: 'D123', messageId: 'event-3', senderId: 'U12345678', runId: 'run-3', sessionKey: 'agent:vc-chief:slack:direct:u12345678'}}
+);
+hooks.before_model_resolve({{attachments: [{{kind: 'image', mimeType: 'image/png'}}]}}, {{runId: 'run-3'}});
+const blocked = hooks.before_agent_run({{}}, {{runId: 'run-3'}});
+console.log(JSON.stringify({{direct: direct.prependContext, group: group.prependContext, blocked}}));
+"""
+            process = subprocess.run(
+                ["node", "--input-type=module", "-e", script],
+                text=True,
+                capture_output=True,
+                check=False,
+                env={**os.environ, "VC_TRUSTED_CONTEXT_KEY_FILE": str(key_path)},
+            )
+            self.assertEqual(0, process.returncode, process.stderr)
+            rendered = json.loads(process.stdout)
+
+        def payload(context: str) -> dict[str, object]:
+            token = context.split("[VC_TRUSTED_CONTEXT_V1]\n", 1)[1].split("\n", 1)[0]
+            encoded, signature = token.split(".", 1)
+            expected = base64.urlsafe_b64encode(
+                hmac.new(key, encoded.encode("ascii"), hashlib.sha256).digest()
+            ).rstrip(b"=").decode("ascii")
+            self.assertTrue(hmac.compare_digest(signature, expected))
+            return json.loads(base64.urlsafe_b64decode(encoded + "=" * (-len(encoded) % 4)))
+
+        direct = payload(rendered["direct"])
+        group = payload(rendered["group"])
+        self.assertFalse(direct["is_group"])
+        self.assertTrue(group["is_group"])
+        self.assertEqual(["/home/node/.openclaw/media/inbound/deck.pptx"], direct["media_paths"])
+        path_hash = hashlib.sha256(direct["media_paths"][0].encode("utf-8")).hexdigest()
+        self.assertIn(f"document.ingest:{path_hash}", direct["scopes"])
+        self.assertEqual("block", rendered["blocked"]["outcome"])
+        self.assertEqual("unsupported_attachment_type", rendered["blocked"]["reason"])
+
+    def signed_token(self, key: bytes, *, exp_offset: int = 600) -> str:
+        now = int(time.time())
+        media_path = "/home/node/.openclaw/media/inbound/deck.pptx"
+        digest = hashlib.sha256(media_path.encode("utf-8")).hexdigest()
+        payload = {
+            "v": 1,
+            "nonce": "a" * 48,
+            "iat": now,
+            "exp": now + exp_offset,
+            "provider": "slack",
+            "account_id": "default",
+            "conversation_id": "D123",
+            "sender_id": "U12345678",
+            "session_hash": "b" * 64,
+            "run_id": "run-1",
+            "event_id": "event-1",
+            "is_group": False,
+            "media_paths": [media_path],
+            "scopes": ["preference.read", f"document.read:{digest}"],
+        }
+        encoded = base64.urlsafe_b64encode(
+            json.dumps(payload, separators=(",", ":")).encode("utf-8")
+        ).rstrip(b"=").decode("ascii")
+        signature = base64.urlsafe_b64encode(
+            hmac.new(key, encoded.encode("ascii"), hashlib.sha256).digest()
+        ).rstrip(b"=").decode("ascii")
+        return f"{encoded}.{signature}"
+
+    def test_python_verifier_rejects_tamper_expiry_and_wrong_scope(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="trusted-vcops-") as raw:
+            key_path = Path(raw) / "key"
+            key = b"z" * 64
+            key_path.write_bytes(key)
+            token = self.signed_token(key)
+            with patch.object(vcops, "TRUSTED_CONTEXT_KEY_FILE", key_path):
+                verified = vcops.verify_trusted_context(token, "preference.read")
+                self.assertEqual("U12345678", verified["sender_id"])
+                with self.assertRaises(vcops.VcopsError):
+                    vcops.verify_trusted_context(token + "x", "preference.read")
+                with self.assertRaises(vcops.VcopsError):
+                    vcops.verify_trusted_context(token, "preference.write")
+                expired = self.signed_token(key, exp_offset=-1)
+                with self.assertRaises(vcops.VcopsError):
+                    vcops.verify_trusted_context(expired, "preference.read")
+
+
+if __name__ == "__main__":
+    unittest.main()

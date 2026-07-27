@@ -1,0 +1,48 @@
+{
+  "channels": {
+    "slack": {
+      "enabled": true,
+      "mode": "socket",
+      "webhookPath": "/slack/events",
+      "botToken": { "source": "env", "provider": "default", "id": "SLACK_BOT_TOKEN" },
+      "appToken": { "source": "env", "provider": "default", "id": "SLACK_APP_TOKEN" },
+      "userTokenReadOnly": true,
+      "configWrites": false,
+      "commands": { "native": false, "nativeSkills": false },
+      "dmPolicy": "allowlist",
+      "allowFrom": "__SLACK_ALLOWED_USER_IDS__",
+      "dm": { "enabled": true, "groupEnabled": false },
+      "groupPolicy": "allowlist",
+      "channels": {
+        "__SLACK_ALLOWED_CHANNEL_ID__": {
+          "enabled": true,
+          "requireMention": true,
+          "ignoreOtherMentions": true,
+          "allowBots": false,
+          "users": "__SLACK_ALLOWED_USER_IDS__"
+        }
+      },
+      "allowBots": false,
+      "dangerouslyAllowNameMatching": false,
+      "execApprovals": { "enabled": false },
+      "thread": { "requireExplicitMention": true },
+      "unfurlLinks": false,
+      "unfurlMedia": false,
+      "mediaMaxMb": "__VC_CHANNEL_MEDIA_MAX_MB__",
+      "reactionNotifications": "off",
+      "actions": {
+        "reactions": false,
+        "messages": false,
+        "pins": false,
+        "search": false,
+        "permissions": false,
+        "memberInfo": false,
+        "channelInfo": false,
+        "emojiList": false
+      }
+    }
+  },
+  "bindings": [
+    { "agentId": "vc-chief", "match": { "channel": "slack", "accountId": "default" } }
+  ]
+}

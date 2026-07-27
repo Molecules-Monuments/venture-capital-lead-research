@@ -1,0 +1,128 @@
+# Version 3.0 release evidence
+
+Date: 2026-07-23 (final-audit session; supersedes the earlier 2026-07-23 and 2026-07-22 evidence)
+Package version: `3.0.0`
+Status: **Deterministic package + deployment path VERIFIED; live-model behavioral gates BLOCKED (not run). See `PRODUCTION_READINESS.md` for the exact boundary.**
+
+## 2026-07-23 final-audit evidence
+
+The final-audit session re-verified every claimed fix from the prior sessions
+first-hand, then applied and execution-verified a further security/correctness
+remediation: build-context secret exclusion (`.dockerignore`), the stage-first
+restore contract (every backup member staged with a single read before HMAC
+verification; no post-verification reads of the operator-writable backup
+directory), pre-quiesce update preconditions, `vcrun` one-JSON-object usage
+errors and kill-path reconciliation, the renderer's lifecycle-env guard,
+fail-closed trusted-context attachment blocking, runtime-role session time
+bounds, watchlist boundary protection (`source-watch`), cross-lead
+document-provenance binding (`evidence-record`), the verified-fact source
+requirement and trust-downgrade refusal (operator lane), quarantine containment
+for malformed OOXML, approval-resume run-budget and workflow binding, the
+proposals INSERT-forgery guard (migration 015), disguised-URI independence
+hardening (migration 012), and the `msteams` provider spelling (migration 003).
+Every gate below was executed after those changes:
+
+| Surface | Result | Command |
+| --- | ---: | --- |
+| Offline verification (all suites, ruff, shell syntax, fixed workflows, skill system, manifest currency, pristine) | **PASS — 190 tests, 24/24 checks** | `python3 scripts/verify_offline.py` |
+| Disposable Postgres hard gate | **PASS — 80/80** across seven suites, migrations 001–016 applied twice | `python3 scripts/run_g4.py` |
+| Exact-image gate against the image rebuilt from this tree | **PASS — 8/8** (provenance, workshop guard, all five channel schemas, unknown-field fail-closed) | `python3 scripts/run_g6_image.py --image openclaw-lead-research:3.0.0` |
+| Real deployment gate (bootstrap → negative-auth proof → live fixed workflows → teardown) | **PASS** | `python3 scripts/run_g8_deployment.py` |
+| Reference retrieval scale (100k companies / 1m facts) | PASS, all frozen thresholds met | `python3 scripts/run_retrieval_scale.py` |
+| Pristine release inventory | PASS — 328/328 | `python3 scripts/verify_release.py --pristine` |
+
+The DB-layer boundaries are proven at the SQL level by G4 tests that call the
+database directly as the runtime role: a cross-lead erasure attempt with a
+valid approval for a different lead fails and rolls back without burning the
+approval; a proposal cannot be born decided nor decided by direct UPDATE — only
+the audited `decide_proposal` lane succeeds, exactly once, with an audit event;
+two subdomains of one registrable host do not corroborate a claim, nor do
+disguised same-host URIs (userinfo prefix, trailing dot), while a second
+registrable host does; a document artifact bound to one lead cannot corroborate
+another lead; and an operator-disabled watchlist entry cannot be re-enabled,
+reclassified, or re-owned from a model-reachable lane.
+
+This evidence records what was executed. Live provider/recovery exercises,
+model-behavioral quality, organization-specific policy, and target-host capacity
+are BLOCKED (never run against a model) or deployment-commissioning activities,
+not package passes.
+
+## Passing evidence (executed 2026-07-23)
+
+| Surface | Result | Reproducible command |
+| --- | ---: | --- |
+| Agent schemas/contracts | 40/40 | `python3 -m unittest discover -s tests/contracts -p 'test*.py' -v` |
+| Version 3 providers/context/orchestration/customization/skill system | 45/45 | `python3 -m unittest discover -s tests/v3 -p 'test*.py' -v` |
+| Exact skill/agent/router/workflow inventory | 26 skills, 12 agents, **18 workflows**, 0 findings | `python3 scripts/validate_skill_system.py` |
+| Retrieval policy contracts | 7/7 | `python3 -m unittest discover -s tests/retrieval -p 'test*.py' -v` |
+| Infrastructure contracts | 19/19 | `python3 -m unittest discover -s tests/infrastructure -p 'test*.py' -v` |
+| G6 image/channel contract (offline) | 4/4 | `python3 -m unittest discover -s tests/g6 -p 'test*.py' -v` |
+| Fixed workflow/runner boundary | 32/32 | `python3 -m unittest discover -s tests/g5 -p 'test*.py' -v` |
+| Recovery/release lifecycle | 24/24 | `python3 -m unittest discover -s tests/g7 -p 'test*.py' -v` |
+| Scoring/helper semantics | 6/6 | `VCOPS_HELPER=workspaces/vc-chief/vc/bin/vcops.py python3 -m unittest discover -s tests/g4 -p 'test_semantics.py' -v` |
+| Document security | 13/13 | `VCOPS_HELPER=workspaces/vc-chief/vc/bin/vcops.py python3 -m unittest discover -s tests/g4 -p 'test_document_security.py' -v` |
+| Data/helper/Postgres hard gate | **80/80** | `python3 scripts/run_g4.py` |
+| Real deployment gate | PASS | `python3 scripts/run_g8_deployment.py` (or `verify_offline.py --with-deployment`) |
+
+The aggregate deterministic offline suites pass 190 tests with no failures or
+skips (24/24 offline checks). The G4 runner created a disposable PostgreSQL 17
+cluster, applied and registered migrations **001–016** twice, and — in addition
+to the prior trusted-context/preference/idempotency/approval/document coverage —
+now executes the **real `.lobster` workflow files end-to-end** against the live
+database (`test_workflow_execution.py`, including `evaluate-lead`'s approved and
+denied paths) and the **autonomous research-intelligence lane**
+(`test_research_intelligence.py`: claims land as `submitted_claim` with
+provenance; promotion to `verified_fact` fires only through the deterministic
+corroboration predicate; untrusted uploads never corroborate; a model cannot
+assert a status; memos persist only from the frozen approved snapshot and cannot
+cite outside it; the memo read-back is confidentiality-gated; concurrent writes
+respect the company-scoped dedup).
+
+The new deployment gate ran the real `./scripts/bootstrap.sh` to completion on
+the pinned images, re-proved that an invalid password is rejected over TCP with
+no host trust rules remaining, executed fixed workflows (including the three
+previously-dead ones plus `evidence-record`) through real `vcrun`/Lobster inside
+the deployed gateway, confirmed the autonomous run left a non-empty knowledge
+base, and tore the deployment down.
+
+## Image digests — regenerate at deployment
+
+The local image ID is host-specific: `bootstrap.sh` rebuilds
+`openclaw-lead-research:3.0.0` from this tree and `record_images.py` records
+the resulting digest in `deployment-lock.json` at install time. The G6 gate was
+re-run on 2026-07-23 against the image rebuilt from the current tree (8/8) and
+the retrieval-scale gate was re-run the same day (all thresholds met).
+
+The retrieval benchmark now seeds deliberately **confusable clusters** — each
+of the 100 fuzzy cases is a target company plus four trigram-close distractor
+companies, so a fuzzy query surfaces multiple competing candidates (mean 5 per
+case) rather than a name with no near-neighbours. The gate measures
+**precision@1** (the top-ranked candidate must be the true target, not a
+look-alike) and recall, and asserts the mean candidate count exceeds 1.5 so the
+1.0 result cannot regress to the old no-confusables artifact. The real resolver
+scores recall = precision@1 = 1.0 by correctly ranking each target above its
+four confusables; a resolver that could not rank the exact-ish match first
+would fail precision@1. This closes the former CR-013 dataset-artifact item
+(audit P1-014/P1-015).
+
+Recovery points use backup format 3. `BACKUP_AUTHENTICATION` authenticates the
+exact checksum manifest with a dedicated HMAC-SHA-256 key transferred outside the
+recovery point. Restore verifies this envelope before accepting inventory or
+mutating state. (These are executed by `tests/g7` at the source-contract level; a
+real destructive target restore is a BLOCKED commissioning exercise.)
+
+## BLOCKED — never run against a model
+
+- Live model/search/channel semantics, callbacks, reply delivery, and channel
+  document behavior.
+- Specialist output quality and memo decision-usefulness (semantic quality of the
+  model's prose and citations). The package validates output *shape*, not
+  semantic quality.
+- A destructive restore and credential-recovery exercise on the target.
+- Jurisdiction-, fund-, organization-, privacy-, and retention-specific policy.
+- Capacity, cost, latency, and quality qualification on chosen models and host.
+
+The package is inert until an operator supplies reviewed configuration. Passing
+the deterministic and deployment gates certifies the software and its install;
+it does not certify the model-behavioral decision quality, which the BLOCKED
+gates above must establish.

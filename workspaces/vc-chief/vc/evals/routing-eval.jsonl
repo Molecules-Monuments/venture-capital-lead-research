@@ -1,0 +1,6 @@
+{"id":"inbound_founder_deck","input":"Founder submitted a deck through Slack","expected_origin_group":"inbound","expected_skill":"inbound-intake"}
+{"id":"outbound_event_source","input":"Research companies from the robotics demo day list","expected_origin_group":"outbound","expected_skill":"outbound-sourcing"}
+{"id":"vague_slack_approval","input":"Looks good, send it","expected_origin_group":"unspecified","expected_skill":"lead-signal-detection"}
+{"id":"deep_research_budget","input":"Run deep diligence with paid sources on lead 42","expected_origin_group":"unspecified","expected_skill":"research-depth-control"}
+{"id":"schema_gap","input":"We keep needing a lead urgency reason field","expected_origin_group":"unspecified","expected_skill":"schema-proposal"}
+{"id":"quiet_hours_digest","input":"Post the weekly lead report to Slack tonight","expected_origin_group":"unspecified","expected_skill":"quiet-hours-reporting"}

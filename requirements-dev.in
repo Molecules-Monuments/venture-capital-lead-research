@@ -1,0 +1,10 @@
+# Complete developer/test environment. Compile as one standalone hash-locked
+# graph; do not reference requirements.lock because that would activate hash
+# mode before the developer requirements have hashes.
+-r requirements.in
+pytest==8.4.1
+pytest-cov==6.2.1
+ruff==0.12.3
+jsonschema==4.26.0
+PyYAML==6.0.3
+typing-extensions==4.16.0

@@ -1,0 +1,706 @@
+{
+  "founder-researcher": {
+    "schema_version": "3.0",
+    "role": "founder-researcher",
+    "status": "ok",
+    "lead_id": "lead-1",
+    "run_id": "run-1",
+    "result": {
+      "founders": [
+        {
+          "person_id": "person-1",
+          "name": "Alex Example",
+          "role": "CEO",
+          "identity_confidence": "high",
+          "publicly_observable": true,
+          "capability_evidence": [
+            {
+              "capability": "domain",
+              "assessment": "strong",
+              "evidence_refs": [
+                "ev-f1"
+              ],
+              "inference": "The prior operating role is directly relevant to the initial customer problem.",
+              "confidence": "medium"
+            }
+          ],
+          "learning_evidence": [
+            {
+              "situation": "A prior product missed its target segment.",
+              "action_or_update": "The founder narrowed the segment after customer evidence.",
+              "outcome": "A narrower product shipped.",
+              "evidence_refs": [
+                "ev-f1"
+              ],
+              "confidence": "medium"
+            }
+          ],
+          "recruiting_evidence": [
+            {
+              "claim": "Recruited a role-complementary cofounder.",
+              "status": "verified_fact",
+              "evidence_refs": [
+                "ev-f1"
+              ],
+              "confidence": "medium"
+            }
+          ],
+          "founder_market_fit_hypotheses": [
+            {
+              "statement": "Relevant domain exposure may shorten customer-learning cycles.",
+              "evidence_refs": [
+                "ev-f1"
+              ],
+              "counterevidence_refs": [],
+              "falsifier": "Repeated inability to translate domain access into customer learning.",
+              "confidence": "medium"
+            }
+          ],
+          "risks_or_gaps": [
+            "Limited public evidence of scaled recruiting."
+          ],
+          "key_person_dependencies": [
+            "Customer access appears concentrated in the CEO."
+          ],
+          "reference_questions": [
+            "Which senior hires declined, and why?"
+          ]
+        }
+      ],
+      "team_assessment": {
+        "complementarity": [
+          {
+            "capability": "technical",
+            "covered_by_person_ids": [
+              "person-1"
+            ],
+            "status": "partial",
+            "evidence_refs": [
+              "ev-f1"
+            ],
+            "reason": "Evidence shows product delivery but not deep systems leadership."
+          }
+        ],
+        "learning_hypothesis": {
+          "statement": "The team appears willing to revise product scope when evidence changes.",
+          "evidence_refs": [
+            "ev-f1"
+          ],
+          "counterevidence_refs": [],
+          "falsifier": "Future decisions show no update after contrary customer evidence.",
+          "confidence": "medium"
+        },
+        "recruiting_hypothesis": {
+          "statement": "The team can recruit complementary early leaders but scale is unproven.",
+          "evidence_refs": [
+            "ev-f1"
+          ],
+          "counterevidence_refs": [],
+          "falsifier": "Reference checks show repeated inability to close priority hires.",
+          "confidence": "low"
+        },
+        "prestige_bias_check": {
+          "ignored_cues": [
+            "school",
+            "employer",
+            "investor",
+            "fame",
+            "network"
+          ],
+          "material_evidence_unchanged": true,
+          "notes": "Assessment uses role-relevant actions and outcomes, not affiliations."
+        },
+        "falsifiers": [
+          "References contradict the described learning event."
+        ],
+        "overall_confidence": "medium"
+      }
+    },
+    "evidence": [
+      {
+        "evidence_id": "ev-f1",
+        "claim": "Alex led the cited product iteration.",
+        "person_id": "person-1",
+        "source_url": "https://example.com/founder-source",
+        "publisher": "Example publication",
+        "source_class": "direct_professional",
+        "published_or_observed_at": "2026-01-10",
+        "retrieved_at": "2026-07-20T10:00:00Z",
+        "fact_status": "verified_fact",
+        "confidence": "medium",
+        "direct_source_inspected": true
+      }
+    ],
+    "missing_data": [],
+    "warnings": [],
+    "persistence_request": {
+      "requested": true,
+      "operation": "record_evidence",
+      "reason": "sourced evidence items are ready for the knowledge base",
+      "steward_required": true
+    },
+    "error": null
+  },
+  "traction-analyst": {
+    "schema_version": "3.0",
+    "role": "traction-analyst",
+    "status": "ok",
+    "lead_id": "lead-1",
+    "run_id": "run-1",
+    "result": {
+      "metric_observations": [
+        {
+          "observation_id": "obs-1",
+          "metric_key": "weekly_active_teams",
+          "metric_definition": "Teams completing at least one workflow in a seven-day window.",
+          "value": {
+            "raw": "100",
+            "normalized_number": 100
+          },
+          "unit": "teams",
+          "currency": null,
+          "period": {
+            "start": "2026-01-01",
+            "end": "2026-01-07"
+          },
+          "cohort": null,
+          "as_of": "2026-01-07",
+          "source_ref": "ev-t1",
+          "fact_status": "verified_fact",
+          "evidence_type": "direct",
+          "evidence_quality": "high",
+          "is_current": false,
+          "currentness_reason": "Superseded by a later comparable observation.",
+          "comparable_key": "weekly_active_teams:v1:teams:all"
+        },
+        {
+          "observation_id": "obs-2",
+          "metric_key": "weekly_active_teams",
+          "metric_definition": "Teams completing at least one workflow in a seven-day window.",
+          "value": {
+            "raw": "140",
+            "normalized_number": 140
+          },
+          "unit": "teams",
+          "currency": null,
+          "period": {
+            "start": "2026-04-01",
+            "end": "2026-04-07"
+          },
+          "cohort": null,
+          "as_of": "2026-04-07",
+          "source_ref": "ev-t2",
+          "fact_status": "submitted_claim",
+          "evidence_type": "direct",
+          "evidence_quality": "medium",
+          "is_current": true,
+          "currentness_reason": "Latest supplied observation.",
+          "comparable_key": "weekly_active_teams:v1:teams:all"
+        }
+      ],
+      "comparisons": [
+        {
+          "left_observation_id": "obs-1",
+          "right_observation_id": "obs-2",
+          "comparable": true,
+          "incompatibilities": [],
+          "normalization": "Both observations use the same definition, unit, and cohort scope.",
+          "direction": "up",
+          "change_absolute": 40,
+          "change_percent": 40,
+          "calculation_source": "provided_deterministic",
+          "calculation_ref": "calc-traction-1",
+          "limits": "The latest value remains a submitted claim."
+        }
+      ],
+      "quality_view": {
+        "scale": {
+          "status": "observed",
+          "summary": "Current claimed scale is 140 weekly active teams.",
+          "evidence_refs": [
+            "obs-2"
+          ],
+          "limits": "Submitted claim."
+        },
+        "growth": {
+          "status": "observed",
+          "summary": "A comparable supplied calculation indicates growth.",
+          "evidence_refs": [
+            "obs-1",
+            "obs-2"
+          ],
+          "limits": "Only two observations."
+        },
+        "retention": {
+          "status": "unknown",
+          "summary": "No retention cohort was supplied.",
+          "evidence_refs": [],
+          "limits": "Cannot infer retention from activity."
+        },
+        "engagement_depth": {
+          "status": "unknown",
+          "summary": "Depth is not measured.",
+          "evidence_refs": [],
+          "limits": "Active-team count is insufficient."
+        },
+        "revenue_quality": {
+          "status": "unknown",
+          "summary": "No revenue-quality data was supplied.",
+          "evidence_refs": [],
+          "limits": "No inference."
+        },
+        "customer_concentration": {
+          "status": "unknown",
+          "summary": "No concentration data was supplied.",
+          "evidence_refs": [],
+          "limits": "No inference."
+        },
+        "sales_efficiency": {
+          "status": "unknown",
+          "summary": "No sales-efficiency inputs were supplied.",
+          "evidence_refs": [],
+          "limits": "No inference."
+        }
+      },
+      "proxy_findings": []
+    },
+    "evidence": [
+      {
+        "evidence_id": "ev-t1",
+        "claim": "The first metric observation is stated in the supplied report.",
+        "source_url": "https://example.com/traction-1",
+        "published_or_observed_at": "2026-01-07",
+        "retrieved_at": "2026-07-20T10:00:00Z",
+        "fact_status": "verified_fact",
+        "confidence": "high",
+        "direct_source_inspected": true
+      },
+      {
+        "evidence_id": "ev-t2",
+        "claim": "The company states the second metric observation.",
+        "source_url": "https://example.com/traction-2",
+        "published_or_observed_at": "2026-04-07",
+        "retrieved_at": "2026-07-20T10:00:00Z",
+        "fact_status": "submitted_claim",
+        "confidence": "medium",
+        "direct_source_inspected": true
+      }
+    ],
+    "missing_data": [
+      {
+        "field": "retention",
+        "state": "missing",
+        "reason": "No comparable cohort data.",
+        "evidence_needed": "Dated cohort retention table."
+      }
+    ],
+    "warnings": [
+      "The latest value is self-reported."
+    ],
+    "persistence_request": {
+      "requested": true,
+      "operation": "record_evidence",
+      "reason": "sourced evidence items are ready for the knowledge base",
+      "steward_required": true
+    },
+    "error": null
+  },
+  "market-mapper": {
+    "schema_version": "3.0",
+    "role": "market-mapper",
+    "status": "ok",
+    "lead_id": "lead-1",
+    "run_id": "run-1",
+    "result": {
+      "category": "Workflow software",
+      "category_definition": "Software used by operations teams to execute a defined recurring workflow.",
+      "market_model_type": "b2b_saas",
+      "initial_wedge": {
+        "customer": "Mid-market operations teams",
+        "problem": "Manual recurring workflow",
+        "buyer": "VP Operations",
+        "budget_owner": "COO",
+        "use_case": "Weekly exception handling",
+        "evidence_refs": [
+          "ev-m1"
+        ]
+      },
+      "reachable_market_now": {
+        "customer_count_range": {
+          "low": 100,
+          "high": 500
+        },
+        "annual_spend_range": {
+          "low": 10000,
+          "high": 30000
+        },
+        "currency": "USD",
+        "time_horizon_months": 24,
+        "assumption_refs": [
+          "assumption-1"
+        ],
+        "deterministic_calculation_ref": "calc-market-1",
+        "limits": "Bottom-up scenario, not TAM."
+      },
+      "assumptions": [
+        {
+          "assumption_id": "assumption-1",
+          "statement": "The scoped customer list contains 100 to 500 plausible accounts.",
+          "source_refs": [
+            "ev-m1"
+          ],
+          "fact_status": "derived_inference"
+        }
+      ],
+      "expansion_paths": [
+        {
+          "from_wedge": "Mid-market operations",
+          "to_segment_or_product": "Enterprise operations",
+          "dependencies": [
+            "Security certification",
+            "Enterprise sales capability"
+          ],
+          "evidence_refs": [],
+          "falsifier": "Enterprise buyers reject the product category after pilots."
+        }
+      ],
+      "buyer_journey": [
+        {
+          "step": "problem discovery",
+          "actor": "Operations manager",
+          "friction": "Status quo appears cheap",
+          "evidence_refs": [
+            "ev-m1"
+          ]
+        }
+      ],
+      "distribution_motions": [
+        {
+          "motion": "founder-led outbound",
+          "target": "VP Operations",
+          "supporting_evidence_refs": [
+            "ev-m1"
+          ],
+          "risks": [
+            "Long enterprise sales cycle"
+          ],
+          "confidence": "low"
+        }
+      ],
+      "competitors": [
+        {
+          "name": "Example incumbent",
+          "classification": "direct",
+          "inclusion_reason": "Serves the same buyer and workflow.",
+          "source_refs": [
+            "ev-m1"
+          ],
+          "evidence_date": "2026-06-01",
+          "confidence": "medium"
+        }
+      ],
+      "substitutes": [
+        {
+          "name": "Spreadsheets",
+          "classification": "status_quo",
+          "inclusion_reason": "Supports the current workflow manually.",
+          "source_refs": [
+            "ev-m1"
+          ],
+          "evidence_date": "2026-06-01",
+          "confidence": "medium"
+        }
+      ],
+      "incumbent_responses": [
+        {
+          "incumbent_or_class": "Suite vendors",
+          "likely_response": "Bundle an adjacent workflow feature.",
+          "trigger": "Visible enterprise demand",
+          "company_counter": "Prove workflow depth and faster deployment.",
+          "evidence_refs": [],
+          "falsifier": "Suite vendors lack distribution to the buyer."
+        }
+      ],
+      "why_now": {
+        "evidence": [
+          "ev-m1"
+        ],
+        "inference": "A workflow change may create adoption willingness.",
+        "counterevidence": [
+          "Budget ownership remains unclear."
+        ],
+        "confidence": "low"
+      },
+      "defensibility_evidence": [
+        {
+          "mechanism": "workflow_data",
+          "observed_evidence": "The product captures recurring exception data.",
+          "evidence_refs": [
+            "ev-m1"
+          ],
+          "limits": "Data capture does not establish a moat.",
+          "falsifier": "Customers can export and reproduce all value easily."
+        }
+      ],
+      "market_risks": [
+        {
+          "risk": "Incumbent bundling",
+          "evidence_refs": [],
+          "impact": "high",
+          "unknowns": [
+            "Buyer willingness to unbundle"
+          ]
+        }
+      ],
+      "scenario_ranges": [
+        {
+          "name": "reachable annual contract value",
+          "low": 1000000,
+          "base": 5000000,
+          "high": 15000000,
+          "unit": "USD_ARR",
+          "currency": "USD",
+          "horizon_months": 24,
+          "assumption_refs": [
+            "assumption-1"
+          ],
+          "deterministic_calculation_ref": "calc-market-1",
+          "limits": "Scenario only; not a forecast."
+        }
+      ],
+      "counter_case": "The wedge may be a feature that incumbents can bundle before the company establishes distribution.",
+      "falsifiers": [
+        "Target buyers consistently refuse a separate budget line."
+      ],
+      "confidence": "low"
+    },
+    "evidence": [
+      {
+        "evidence_id": "ev-m1",
+        "claim": "The source supports the stated buyer workflow.",
+        "source_url": "https://example.com/market-source",
+        "published_or_observed_at": "2026-06-01",
+        "retrieved_at": "2026-07-20T10:00:00Z",
+        "fact_status": "verified_fact",
+        "confidence": "medium",
+        "direct_source_inspected": true
+      }
+    ],
+    "missing_data": [],
+    "warnings": [
+      "Scenario ranges depend on a low-confidence account-count assumption."
+    ],
+    "persistence_request": {
+      "requested": true,
+      "operation": "record_evidence",
+      "reason": "sourced evidence items are ready for the knowledge base",
+      "steward_required": true
+    },
+    "error": null
+  },
+  "qualification-analyst": {
+    "schema_version": "3.0",
+    "role": "qualification-analyst",
+    "status": "ok",
+    "lead_id": "lead-1",
+    "run_id": "run-1",
+    "result": {
+      "snapshot": {
+        "snapshot_id": "snapshot-1",
+        "as_of": "2026-07-20T09:00:00Z",
+        "content_hash": "sha256:example"
+      },
+      "rubric": {
+        "rubric_id": "custom-seed",
+        "version": "3.0.1",
+        "content_hash": "sha256:rubric",
+        "stage_profile": "seed",
+        "sector_profile": "horizontal_saas",
+        "weights": [
+          {
+            "criterion_id": "team",
+            "weight": 100
+          }
+        ]
+      },
+      "gate_outcome": "research_deeper",
+      "hard_exclusions": [],
+      "soft_risks": [
+        "Retention is unknown."
+      ],
+      "criteria": [
+        {
+          "criterion_id": "team",
+          "evidence_state": "mixed",
+          "quality_score": 3,
+          "coverage": "partial",
+          "evidence_quality": "medium",
+          "evidence_refs": [
+            "ev-f1"
+          ],
+          "counterevidence_refs": [],
+          "rationale": "Role-relevant evidence exists but scaled recruiting remains unknown.",
+          "what_would_change": "Reference evidence on priority hires."
+        }
+      ],
+      "score": {
+        "raw_100": 60,
+        "final_100": 60,
+        "display_5": 3,
+        "calculation_mode": "provided_deterministic",
+        "calculation_ref": "calc-score-1",
+        "adjustments": []
+      },
+      "coverage": {
+        "criteria_total": 1,
+        "evaluated": 1,
+        "complete": 0,
+        "unknown": 0,
+        "negative": 0,
+        "weighted_fraction": 1,
+        "evidence_quality_summary": "One medium-quality, partially covered criterion."
+      },
+      "contradictions": {
+        "status": "clear",
+        "check_refs": [
+          "check-c1"
+        ],
+        "unresolved": []
+      },
+      "trajectory": {
+        "status": "partial",
+        "check_refs": [
+          "check-t1"
+        ],
+        "limits": "Retention trajectory is absent."
+      },
+      "required_next_research": [
+        {
+          "priority": 1,
+          "question": "What is cohort retention?",
+          "reason": "It is a decision crux.",
+          "expected_evidence": "Dated cohort table."
+        }
+      ],
+      "decision_confidence": "medium",
+      "rationale": "The supplied rubric yields research_deeper; missing retention blocks escalation."
+    },
+    "evidence_refs": [
+      "ev-f1",
+      "check-c1",
+      "check-t1",
+      "calc-score-1"
+    ],
+    "missing_data": [
+      {
+        "field": "retention",
+        "state": "missing",
+        "reason": "No cohort evidence.",
+        "evidence_needed": "Cohort retention table."
+      }
+    ],
+    "warnings": [],
+    "error": null
+  },
+  "memo-writer": {
+    "schema_version": "3.0",
+    "role": "memo-writer",
+    "status": "ok",
+    "lead_id": "lead-1",
+    "run_id": "run-1",
+    "result": {
+      "memo_title": "ExampleCo \u2014 diligence memo",
+      "snapshot": {
+        "snapshot_id": "snapshot-1",
+        "as_of": "2026-07-20T09:00:00Z",
+        "content_hash": "sha256:example"
+      },
+      "recommendation": "research_deeper",
+      "recommendation_confidence": "medium",
+      "investment_case": "A role-relevant team is addressing a specific workflow with early activity evidence.",
+      "counter_case": "Retention is unknown and incumbents may bundle the wedge.",
+      "cruxes": [
+        {
+          "crux_id": "crux-1",
+          "question": "Does the product retain teams?",
+          "current_view": "Unknown",
+          "evidence_refs": [],
+          "counterevidence_refs": [],
+          "falsifier": "A mature cohort shows weak retention."
+        }
+      ],
+      "falsifiers": [
+        "Comparable cohorts show persistent weak retention."
+      ],
+      "next_diligence": [
+        {
+          "priority": 1,
+          "question": "Review cohort retention.",
+          "why": "It resolves the main crux.",
+          "evidence_needed": "Dated cohort table.",
+          "owner": "human"
+        }
+      ],
+      "claim_evidence_map": [
+        {
+          "claim_id": "claim-1",
+          "section": "team",
+          "claim_text": "The founder has relevant domain operating experience.",
+          "claim_status": "verified_fact",
+          "evidence_refs": [
+            "ev-f1"
+          ],
+          "counterevidence_refs": [],
+          "inference_basis": [],
+          "freshness": "current",
+          "confidence": "medium"
+        },
+        {
+          "claim_id": "claim-2",
+          "section": "market",
+          "claim_text": "The initial wedge may expand into enterprise operations.",
+          "claim_status": "derived_inference",
+          "evidence_refs": [],
+          "counterevidence_refs": [],
+          "inference_basis": [
+            "ev-m1"
+          ],
+          "freshness": "current",
+          "confidence": "low"
+        }
+      ],
+      "evidence_coverage": {
+        "supported_claims": 1,
+        "inferred_claims": 1,
+        "unsupported_claims": 0,
+        "stale_claims": 0,
+        "summary": "The main team claim is supported; market expansion remains inference."
+      },
+      "timeline": [
+        {
+          "date": "2026-04-07",
+          "event": "Latest activity observation",
+          "evidence_refs": [
+            "ev-t2"
+          ]
+        }
+      ],
+      "memo_markdown": "# ExampleCo\n\n## Current view\nResearch deeper.\n\n## Investment case\nRole-relevant team and early activity.\n\n## Counter-case\nRetention is unknown.\n\n## Cruxes and falsifiers\nRetention is the main crux.\n\n## Next diligence\nReview cohort retention.\n\n## Evidence timeline\n2026-04-07: latest activity observation.\n\n## Appendix\nSee the structured claim-evidence map."
+    },
+    "evidence_refs": [
+      "ev-f1",
+      "ev-m1",
+      "ev-t2"
+    ],
+    "missing_data": [
+      {
+        "field": "retention",
+        "state": "missing",
+        "reason": "No cohort evidence.",
+        "evidence_needed": "Dated cohort retention table."
+      }
+    ],
+    "warnings": [],
+    "error": null
+  }
+}

@@ -1,0 +1,26 @@
+#!/bin/sh
+set -eu
+
+operator_id="${VCOPS_OPERATOR_ID:-}"
+if [ -z "$operator_id" ]; then
+  echo '{"error":{"code":"operator_id_missing","message":"VCOPS_OPERATOR_ID is required"},"ok":false}' >&2
+  exit 2
+fi
+
+# This path is for direct operator use and must never appear in exec approvals.
+exec /usr/bin/env -i \
+  HOME=/home/node \
+  LANG=C.UTF-8 \
+  LC_ALL=C.UTF-8 \
+  PATH=/opt/vcops-venv/bin:/usr/local/bin:/usr/bin:/bin \
+  TZ=Europe/Berlin \
+  VCOPS_FIXED_RUNTIME=1 \
+  VCOPS_OPERATOR_MODE=1 \
+  VCOPS_OPERATOR_ID="$operator_id" \
+  VCOPS_INBOX_ROOT=/inbox \
+  VCOPS_MEDIA_ROOT=/home/node/.openclaw/media/inbound \
+  VCOPS_QUARANTINE_ROOT=/quarantine \
+  VCOPS_STATE_ROOT=/home/node/.openclaw/vcops \
+  VCOPS_WORKSPACE_ROOT=/workspaces/vc-chief/vc \
+  /opt/vcops-venv/bin/python -I -B \
+  /workspaces/vc-chief/vc/bin/vcops.py "$@"

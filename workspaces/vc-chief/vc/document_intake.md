@@ -1,0 +1,25 @@
+# Document Intake and Trust Boundary
+
+> [REVIEW_AND_CONFIRM] Deployment may lower file/page/sheet/cell/time limits after
+> capacity and threat testing. Supported formats must exactly match the
+> deterministic extractor; legacy XLS is quarantine/conversion, not supported.
+
+Policy version: `3.0`
+
+Supported content is PDF, PPTX, XLSX, and CSV only after magic/MIME verification. A filename extension is not evidence of type. Legacy binary XLS and macro-enabled Office files are not parsed; quarantine them and require an operator-controlled conversion that preserves the original artifact hash and conversion provenance.
+
+## Safe sequence
+
+1. Accept an attachment only from the selected allowlisted channel or the authenticated host-operator `/inbox` lane. OpenClaw stages channel bytes under its private inbound-media root; a signed per-turn capability binds the sender, event, and exact direct-child path.
+2. Reject symlinks, traversal/path escape, devices, archives, active content, macros, encrypted/password-protected files, unsupported MIME, and malformed containers.
+3. Hash before parsing and record original filename separately.
+4. Enforce configurable byte, page, sheet, row, column, cell, decompression, runtime, and memory limits while streaming; do not load an unlimited workbook first and truncate later.
+5. Extract without running formulas, macros, links, or embedded instructions.
+6. Preserve PDF page/context, PPTX slide/notes, workbook sheet/cell/formula, and CSV row/column provenance.
+7. `document-ingest` creates the content-addressed snapshot and extraction. `document-lead-intake` binds the same verified principal and artifact to a canonical lead. The host-only `inbound-intake` workflow remains available for `/inbox`. Additional fact persistence requires a separately reviewed workflow or the non-allowlisted operator helper; direct agent-mode mutation is forbidden.
+
+Default channel maximum is 25 MiB. The extractor also bounds pages/slides, archive members and expansion ratio, sheets, rows, columns, cells, extracted characters, runtime, and parser memory. Deployment may lower these limits; raising them requires measured threat and capacity review.
+
+Artifact identity is the content hash, but a join record links one artifact to multiple leads; the global hash must not prevent legitimate reuse. Parsing failure produces `quarantined` or `failed` plus a review item and never authorizes raw-path access.
+
+No document is uploaded, forwarded, or summarized externally without scoped approval.

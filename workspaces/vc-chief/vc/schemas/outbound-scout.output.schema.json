@@ -1,0 +1,235 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:openclaw:v3:outbound-scout:output",
+  "title": "Outbound scout output",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "role", "status", "lead_id", "run_id", "assumptions", "missing_data",
+    "evidence", "confidence", "result", "risks", "warnings", "recommended_next_agent", "persistence_request", "error"
+  ],
+  "properties": {
+    "schema_version": { "const": "3.0" },
+    "role": { "const": "outbound-scout" },
+    "status": { "$ref": "#/$defs/status" },
+    "lead_id": { "$ref": "#/$defs/nullableId" },
+    "run_id": { "$ref": "#/$defs/nullableId" },
+    "assumptions": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+    "missing_data": { "type": "array", "items": { "$ref": "#/$defs/missingItem" } },
+    "evidence": { "type": "array", "items": { "$ref": "#/$defs/evidenceItem" } },
+    "confidence": { "$ref": "#/$defs/confidence" },
+    "result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "candidates", "duplicates", "sources_used", "budget", "yield_summary", "stop_reason", "blocked_sources"
+      ],
+      "properties": {
+        "candidates": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "candidate_ref", "company_name", "website", "normalized_domain", "origin_subtype", "source_ids",
+              "memory_match_ids", "duplicate_or_merge_risk", "description", "thesis_signal", "fit_inference",
+              "thesis_gap", "outlier_reason", "novelty", "source_independence", "evidence_refs", "confidence"
+            ],
+            "properties": {
+              "candidate_ref": { "$ref": "#/$defs/id" },
+              "company_name": { "type": "string", "minLength": 1 },
+              "website": { "type": ["string", "null"], "format": "uri" },
+              "normalized_domain": { "type": ["string", "null"], "pattern": "^[a-z0-9.-]+$" },
+              "origin_subtype": { "type": "string", "minLength": 1 },
+              "source_ids": {
+                "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "#/$defs/id" }
+              },
+              "memory_match_ids": {
+                "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/id" }
+              },
+              "duplicate_or_merge_risk": { "enum": ["none", "low", "medium", "high", "unknown"] },
+              "description": { "type": "string", "minLength": 1 },
+              "thesis_signal": { "type": "string", "minLength": 1 },
+              "fit_inference": { "type": "string", "minLength": 1 },
+              "thesis_gap": { "type": ["string", "null"] },
+              "outlier_reason": { "type": ["string", "null"] },
+              "novelty": { "enum": ["new", "changed", "known", "unknown"] },
+              "source_independence": { "enum": ["independent", "circular", "single_source", "unknown"] },
+              "evidence_refs": {
+                "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "#/$defs/id" }
+              },
+              "confidence": { "$ref": "#/$defs/confidence" }
+            }
+          }
+        },
+        "duplicates": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["candidate_ref", "match_ids", "method", "confidence", "resolution"] ,
+            "properties": {
+              "candidate_ref": { "$ref": "#/$defs/id" },
+              "match_ids": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "#/$defs/id" } },
+              "method": { "enum": ["exact_domain", "exact_name", "alias", "semantic", "manual_hint"] },
+              "confidence": { "$ref": "#/$defs/confidence" },
+              "resolution": { "enum": ["exclude", "possible_update", "needs_human_review"] }
+            }
+          }
+        },
+        "sources_used": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "source_id", "url", "source_class", "query_count", "results_inspected", "candidates_yielded", "accessed_at"
+            ],
+            "properties": {
+              "source_id": { "$ref": "#/$defs/id" },
+              "url": { "type": "string", "format": "uri" },
+              "source_class": {
+                "enum": ["company", "regulator", "repository", "investor_portfolio", "media", "database", "other"]
+              },
+              "query_count": { "type": "integer", "minimum": 0 },
+              "results_inspected": { "type": "integer", "minimum": 0 },
+              "candidates_yielded": { "type": "integer", "minimum": 0 },
+              "accessed_at": { "type": "string", "format": "date-time" }
+            }
+          }
+        },
+        "budget": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["limit", "used"],
+          "properties": {
+            "limit": { "$ref": "#/$defs/budgetCounters" },
+            "used": { "$ref": "#/$defs/budgetCounters" }
+          }
+        },
+        "yield_summary": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["raw_results", "unique_candidates", "duplicate_candidates", "candidates_proposed", "marginal_yield"],
+          "properties": {
+            "raw_results": { "type": "integer", "minimum": 0 },
+            "unique_candidates": { "type": "integer", "minimum": 0 },
+            "duplicate_candidates": { "type": "integer", "minimum": 0 },
+            "candidates_proposed": { "type": "integer", "minimum": 0 },
+            "marginal_yield": { "type": "number", "minimum": 0 }
+          }
+        },
+        "stop_reason": {
+          "enum": ["sufficient_evidence", "budget_exhausted", "no_more_yield", "blocked", "no_results"]
+        },
+        "blocked_sources": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["source_ref", "reason", "approval_required"],
+            "properties": {
+              "source_ref": { "type": "string", "minLength": 1 },
+              "reason": { "type": "string", "minLength": 1 },
+              "approval_required": { "type": "boolean" }
+            }
+          }
+        }
+      }
+    },
+    "risks": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+    "warnings": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+    "recommended_next_agent": {
+      "anyOf": [{ "enum": ["lead-router", "founder-researcher", "data-steward", "vc-chief"] }, { "type": "null" }]
+    },
+    "persistence_request": { "$ref": "#/$defs/persistenceRequest" },
+    "error": { "$ref": "#/$defs/error" }
+  },
+  "allOf": [
+    { "if": { "properties": { "status": { "const": "ok" } } }, "then": { "properties": { "error": { "type": "null" } } } },
+    { "if": { "properties": { "status": { "const": "failed" } } }, "then": { "properties": { "error": { "not": { "type": "null" } } } } }
+  ],
+  "$defs": {
+    "status": { "enum": ["ok", "insufficient_evidence", "needs_human_review", "failed"] },
+    "id": { "type": "string", "minLength": 1 },
+    "nullableId": { "type": ["string", "null"], "minLength": 1 },
+    "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+    "missingItem": {
+      "type": "object", "additionalProperties": false, "required": ["field", "status", "reason"],
+      "properties": {
+        "field": { "type": "string", "minLength": 1 },
+        "status": { "enum": ["absent", "not_disclosed", "not_applicable", "extraction_failed", "not_requested"] },
+        "reason": { "type": ["string", "null"] }
+      }
+    },
+    "evidenceItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["evidence_id", "candidate_ref", "claim", "url", "source_id", "published_at", "accessed_at", "fact_status", "confidence"],
+      "properties": {
+        "evidence_id": { "$ref": "#/$defs/id" },
+        "candidate_ref": { "$ref": "#/$defs/id" },
+        "claim": { "type": "string", "minLength": 1 },
+        "url": { "type": "string", "format": "uri" },
+        "source_id": { "$ref": "#/$defs/id" },
+        "published_at": { "anyOf": [{ "type": "string", "format": "date-time" }, { "type": "null" }] },
+        "accessed_at": { "type": "string", "format": "date-time" },
+        "fact_status": { "enum": ["verified_fact", "submitted_claim", "inference"] },
+        "confidence": { "$ref": "#/$defs/confidence" }
+      }
+    },
+    "budgetCounters": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["queries", "results_inspected", "page_fetches", "sources", "elapsed_minutes"],
+      "properties": {
+        "queries": { "type": "integer", "minimum": 0 },
+        "results_inspected": { "type": "integer", "minimum": 0 },
+        "page_fetches": { "type": "integer", "minimum": 0 },
+        "sources": { "type": "integer", "minimum": 0 },
+        "elapsed_minutes": { "type": "number", "minimum": 0 }
+      }
+    },
+    "persistenceRequest": {
+      "type": "object", "additionalProperties": false,
+      "required": ["requested", "operation", "candidate_refs", "reason", "steward_required"],
+      "properties": {
+        "requested": { "type": "boolean" },
+        "operation": { "enum": ["none", "capture_candidates", "record_source_outcomes"] },
+        "candidate_refs": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/id" } },
+        "reason": { "type": ["string", "null"] },
+        "steward_required": { "const": true }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "requested": { "const": false } } },
+          "then": { "properties": { "operation": { "const": "none" }, "candidate_refs": { "maxItems": 0 } } }
+        },
+        {
+          "if": { "properties": { "requested": { "const": true } } },
+          "then": {
+            "properties": {
+              "operation": { "enum": ["capture_candidates", "record_source_outcomes"] },
+              "reason": { "type": "string", "minLength": 1 }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "operation": { "const": "capture_candidates" } } },
+          "then": { "properties": { "candidate_refs": { "minItems": 1 } } }
+        }
+      ]
+    },
+    "error": {
+      "oneOf": [
+        { "type": "null" }, {
+          "type": "object", "additionalProperties": false, "required": ["code", "message"],
+          "properties": {
+            "code": { "type": "string", "minLength": 1 },
+            "message": { "type": "string", "minLength": 1 }
+          }
+        }
+      ]
+    }
+  }
+}

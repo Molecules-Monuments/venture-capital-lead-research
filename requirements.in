@@ -1,0 +1,7 @@
+# Direct runtime dependencies. Compile with hashes into requirements.lock.
+openpyxl==3.1.5
+psycopg[binary]==3.2.13
+pypdf==5.7.0
+# psycopg requires this on the image's Python 3.11; keep it direct so a lock
+# compiled by a newer host Python remains complete for the pinned image.
+typing-extensions==4.16.0

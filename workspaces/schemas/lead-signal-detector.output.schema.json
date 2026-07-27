@@ -1,0 +1,196 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:openclaw:v3:lead-signal-detector:output",
+  "title": "Lead signal detector output",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "role",
+    "status",
+    "lead_id",
+    "run_id",
+    "assumptions",
+    "missing_data",
+    "evidence",
+    "confidence",
+    "result",
+    "risks",
+    "warnings",
+    "recommended_next_agent",
+    "persistence_request",
+    "error"
+  ],
+  "properties": {
+    "schema_version": { "const": "3.0" },
+    "role": { "const": "lead-signal-detector" },
+    "status": { "$ref": "#/$defs/status" },
+    "lead_id": { "$ref": "#/$defs/nullableId" },
+    "run_id": { "$ref": "#/$defs/nullableId" },
+    "assumptions": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+    "missing_data": { "type": "array", "items": { "$ref": "#/$defs/missingItem" } },
+    "evidence": { "type": "array", "items": { "$ref": "#/$defs/evidenceItem" } },
+    "confidence": { "$ref": "#/$defs/confidence" },
+    "result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "signal_type",
+        "signal_text",
+        "proposed_action",
+        "source_ids",
+        "origin_hint",
+        "materiality",
+        "urgency",
+        "novelty",
+        "source_independence",
+        "freshness",
+        "identity_confidence",
+        "memory_summary",
+        "duplicate_or_update_risk",
+        "approval_risk",
+        "reason",
+        "what_would_change_action"
+      ],
+      "properties": {
+        "signal_type": {
+          "enum": [
+            "possible_lead",
+            "correction",
+            "status_request",
+            "traction",
+            "funding",
+            "product",
+            "hiring",
+            "approval_intent",
+            "rejection_intent",
+            "risk",
+            "other"
+          ]
+        },
+        "signal_text": { "type": "string", "minLength": 1 },
+        "proposed_action": {
+          "enum": ["ignore", "capture_candidate", "update_candidate", "ask_clarification", "escalate"]
+        },
+        "source_ids": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/id" }
+        },
+        "origin_hint": { "enum": ["inbound", "outbound", "unspecified"] },
+        "materiality": { "enum": ["low", "medium", "high", "critical"] },
+        "urgency": { "enum": ["routine", "soon", "immediate"] },
+        "novelty": { "enum": ["new", "changed", "repeated", "unknown"] },
+        "source_independence": { "enum": ["direct", "independent", "circular", "single_source", "unknown"] },
+        "freshness": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["observed_at", "prior_state_observed_at", "assessment"],
+          "properties": {
+            "observed_at": { "type": "string", "format": "date-time" },
+            "prior_state_observed_at": {
+              "anyOf": [{ "type": "string", "format": "date-time" }, { "type": "null" }]
+            },
+            "assessment": { "enum": ["current", "stale", "unknown"] }
+          }
+        },
+        "identity_confidence": { "$ref": "#/$defs/confidence" },
+        "memory_summary": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "match_ids"],
+          "properties": {
+            "status": { "enum": ["not_run", "no_match", "possible_match"] },
+            "match_ids": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": { "$ref": "#/$defs/id" }
+            }
+          }
+        },
+        "duplicate_or_update_risk": { "enum": ["none", "low", "medium", "high", "unknown"] },
+        "approval_risk": { "enum": ["none", "low", "medium", "high", "unknown"] },
+        "reason": { "type": "string", "minLength": 1 },
+        "what_would_change_action": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "risks": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+    "warnings": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+    "recommended_next_agent": {
+      "anyOf": [
+        { "enum": ["lead-router", "inbound-intake-analyst", "outbound-scout", "data-steward", "vc-chief"] },
+        { "type": "null" }
+      ]
+    },
+    "persistence_request": { "$ref": "#/$defs/persistenceRequest" },
+    "error": { "$ref": "#/$defs/error" }
+  },
+  "allOf": [
+    { "if": { "properties": { "status": { "const": "ok" } } }, "then": { "properties": { "error": { "type": "null" } } } },
+    { "if": { "properties": { "status": { "const": "failed" } } }, "then": { "properties": { "error": { "not": { "type": "null" } } } } }
+  ],
+  "$defs": {
+    "status": { "enum": ["ok", "insufficient_evidence", "needs_human_review", "failed"] },
+    "id": { "type": "string", "minLength": 1 },
+    "nullableId": { "type": ["string", "null"], "minLength": 1 },
+    "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+    "missingItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["field", "status", "reason"],
+      "properties": {
+        "field": { "type": "string", "minLength": 1 },
+        "status": { "enum": ["absent", "not_disclosed", "not_applicable", "extraction_failed", "not_requested"] },
+        "reason": { "type": ["string", "null"] }
+      }
+    },
+    "evidenceItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["claim", "source_ref", "observed_at", "fact_status", "confidence"],
+      "properties": {
+        "claim": { "type": "string", "minLength": 1 },
+        "source_ref": { "$ref": "#/$defs/id" },
+        "observed_at": { "type": "string", "format": "date-time" },
+        "fact_status": { "enum": ["submitted_claim", "verified_fact", "inference"] },
+        "confidence": { "$ref": "#/$defs/confidence" }
+      }
+    },
+    "persistenceRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["requested", "operation", "reason", "steward_required"],
+      "properties": {
+        "requested": { "type": "boolean" },
+        "operation": { "enum": ["none", "capture_candidate", "update_candidate"] },
+        "reason": { "type": ["string", "null"] },
+        "steward_required": { "const": true }
+      },
+      "allOf": [
+        { "if": { "properties": { "requested": { "const": false } } }, "then": { "properties": { "operation": { "const": "none" } } } },
+        {
+          "if": { "properties": { "requested": { "const": true } } },
+          "then": { "properties": { "operation": { "enum": ["capture_candidate", "update_candidate"] }, "reason": { "type": "string", "minLength": 1 } } }
+        }
+      ]
+    },
+    "error": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["code", "message"],
+          "properties": {
+            "code": { "type": "string", "minLength": 1 },
+            "message": { "type": "string", "minLength": 1 }
+          }
+        }
+      ]
+    }
+  }
+}

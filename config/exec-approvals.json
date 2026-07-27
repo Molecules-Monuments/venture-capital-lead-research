@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "defaults": {
+    "security": "deny",
+    "ask": "off",
+    "askFallback": "deny",
+    "autoAllowSkills": false
+  },
+  "agents": {
+    "data-steward": {
+      "security": "allowlist",
+      "ask": "off",
+      "askFallback": "deny",
+      "autoAllowSkills": false,
+      "_comment": "The two agent-reachable launchers live in an isolated bin/agent/ directory so that no allowlisted path is a string prefix of a privileged sibling entrypoint (vcops-operator, vcops-workflow, vcrun-control, and the *.py implementations all live in bin/, never bin/agent/). This keeps the boundary safe under exact-match, prefix-match, or glob matcher semantics rather than depending on OpenClaw matching these paths exactly.",
+      "allowlist": [
+        {
+          "id": "2DC7C1B8-73D4-42D3-9B6F-CA3FAE54E070",
+          "pattern": "/workspaces/vc-chief/vc/bin/agent/vcops",
+          "source": "version-3-package"
+        },
+        {
+          "id": "C62E453F-6D6C-4E78-85CE-BB139A57978D",
+          "pattern": "/workspaces/vc-chief/vc/bin/agent/vcrun",
+          "source": "version-3-fixed-workflows"
+        }
+      ]
+    }
+  }
+}

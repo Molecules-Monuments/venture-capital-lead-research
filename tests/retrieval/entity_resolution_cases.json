@@ -1,0 +1,83 @@
+[
+  {
+    "name": "canonical domain collision reuses the existing company",
+    "identity": {"name": "Acme", "domain": "acme.example"},
+    "purpose": "company_creation",
+    "exact_matches": [
+      {"company_id": 41, "match_method": "verified_domain", "confidence": 1.0}
+    ],
+    "fuzzy_candidates": [],
+    "denied_exact_count": 0,
+    "expected_outcome": "existing",
+    "expected_company_id": 41
+  },
+  {
+    "name": "an exact known alias resolves an existing company",
+    "identity": {"alias": "Acme Cloud"},
+    "purpose": "research",
+    "exact_matches": [
+      {"company_id": 41, "match_method": "exact_alias", "confidence": 0.95}
+    ],
+    "fuzzy_candidates": [],
+    "denied_exact_count": 0,
+    "expected_outcome": "existing",
+    "expected_company_id": 41
+  },
+  {
+    "name": "a former name plus an unseen rebrand domain needs review",
+    "identity": {"name": "Former Acme", "domain": "rebrand-acme.example"},
+    "purpose": "company_creation",
+    "exact_matches": [
+      {"company_id": 41, "match_method": "exact_alias", "confidence": 0.95}
+    ],
+    "fuzzy_candidates": [],
+    "denied_exact_count": 0,
+    "expected_outcome": "human_review",
+    "expected_company_id": null
+  },
+  {
+    "name": "conflicting exact identifiers require review",
+    "identity": {"name": "Acme", "domain": "acme.example"},
+    "purpose": "company_creation",
+    "exact_matches": [
+      {"company_id": 41, "match_method": "verified_domain", "confidence": 1.0},
+      {"company_id": 99, "match_method": "external_id", "confidence": 1.0}
+    ],
+    "fuzzy_candidates": [],
+    "denied_exact_count": 0,
+    "expected_outcome": "human_review",
+    "expected_company_id": null
+  },
+  {
+    "name": "a name typo is candidate evidence only",
+    "identity": {"name": "Acmee", "domain": "new-acmee.example"},
+    "purpose": "company_creation",
+    "exact_matches": [],
+    "fuzzy_candidates": [
+      {"company_id": 41, "match_method": "fuzzy_name", "confidence": 0.82}
+    ],
+    "denied_exact_count": 0,
+    "expected_outcome": "human_review",
+    "expected_company_id": null
+  },
+  {
+    "name": "new company needs name and stable domain",
+    "identity": {"name": "NovelCo", "domain": "novel.example"},
+    "purpose": "company_creation",
+    "exact_matches": [],
+    "fuzzy_candidates": [],
+    "denied_exact_count": 0,
+    "expected_outcome": "new_allowed",
+    "expected_company_id": null
+  },
+  {
+    "name": "a hidden exact match cannot become a duplicate",
+    "identity": {"name": "SecretCo", "domain": "secret.example"},
+    "purpose": "company_creation",
+    "exact_matches": [],
+    "fuzzy_candidates": [],
+    "denied_exact_count": 1,
+    "expected_outcome": "denied",
+    "expected_company_id": null
+  }
+]

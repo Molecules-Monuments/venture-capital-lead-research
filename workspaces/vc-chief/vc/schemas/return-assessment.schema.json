@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openclaw.example/schemas/return-assessment.schema.json",
+  "title": "VC Chief post-return assessment",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "task_id", "agent", "packet_schema_valid",
+    "identifiers_match", "scope_respected", "source_policy_respected",
+    "budget_respected", "material_claims_cited", "acceptance_results",
+    "unexpected_evidence", "contradictions", "disposition", "reason"
+  ],
+  "properties": {
+    "schema_version": { "const": "3.0" },
+    "task_id": { "type": "string", "minLength": 1 },
+    "agent": { "type": "string", "minLength": 1 },
+    "packet_schema_valid": { "type": "boolean" },
+    "identifiers_match": { "type": "boolean" },
+    "scope_respected": { "type": "boolean" },
+    "source_policy_respected": { "type": "boolean" },
+    "budget_respected": { "type": "boolean" },
+    "material_claims_cited": { "type": "boolean" },
+    "acceptance_results": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["test_id", "status", "evidence_refs", "reason"],
+        "properties": {
+          "test_id": { "type": "string", "minLength": 1 },
+          "status": { "enum": ["pass", "fail", "not_testable"] },
+          "evidence_refs": { "type": "array", "items": { "type": "string" } },
+          "reason": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "unexpected_evidence": { "type": "array", "items": { "type": "string" } },
+    "contradictions": { "type": "array", "items": { "type": "string" } },
+    "disposition": { "enum": ["accept", "targeted_retry", "discard", "human_review"] },
+    "reason": { "type": "string", "minLength": 1 }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "disposition": { "const": "accept" } }, "required": ["disposition"] },
+      "then": {
+        "properties": {
+          "packet_schema_valid": { "const": true },
+          "identifiers_match": { "const": true },
+          "scope_respected": { "const": true },
+          "source_policy_respected": { "const": true },
+          "budget_respected": { "const": true },
+          "material_claims_cited": { "const": true },
+          "acceptance_results": {
+            "not": {
+              "contains": {
+                "type": "object",
+                "properties": { "status": { "const": "fail" } },
+                "required": ["status"]
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

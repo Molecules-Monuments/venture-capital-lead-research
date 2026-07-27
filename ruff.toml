@@ -1,0 +1,4 @@
+[lint.per-file-ignores]
+# The parser inventory is intentionally compact and declarative. Its behavior
+# is derived and checked by the fixed-workflow validator and contract tests.
+"workspaces/vc-chief/vc/bin/vcops.py" = ["E702"]

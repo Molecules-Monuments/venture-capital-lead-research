@@ -1,0 +1,689 @@
+{
+  "gateway": {
+    "mode": "local",
+    "bind": "lan",
+    "port": 18789,
+    "auth": {
+      "mode": "token",
+      "token": "${OPENCLAW_GATEWAY_TOKEN}"
+    },
+    "controlUi": {
+      "allowedOrigins": [
+        "http://localhost:18789",
+        "http://127.0.0.1:18789"
+      ]
+    },
+    "tools": {
+      "deny": [
+        "browser",
+        "exec",
+        "spawn",
+        "shell",
+        "fs_write",
+        "fs_delete",
+        "fs_move",
+        "apply_patch",
+        "sessions_spawn",
+        "sessions_send",
+        "cron",
+        "gateway",
+        "nodes"
+      ]
+    }
+  },
+  "plugins": {
+    "allow": [
+      "vc-trusted-context"
+    ],
+    "load": {
+      "paths": [
+        "/app/extensions/vc-trusted-context"
+      ]
+    },
+    "slots": {},
+    "entries": {
+      "vc-trusted-context": {
+        "enabled": true
+      }
+    }
+  },
+  "models": {
+    "providers": {}
+  },
+  "commands": {
+    "native": false,
+    "nativeSkills": false,
+    "text": false,
+    "bash": false,
+    "config": false,
+    "mcp": false,
+    "plugins": false,
+    "debug": false,
+    "restart": false,
+    "useAccessGroups": true
+  },
+  "skills": {
+    "load": {
+      "extraDirs": [
+        "/workspaces/shared-skills"
+      ]
+    },
+    "workshop": {
+      "autonomous": {
+        "enabled": false
+      },
+      "approvalPolicy": "pending",
+      "allowSymlinkTargetWrites": false,
+      "maxPending": 10,
+      "maxSkillBytes": 40000
+    },
+    "entries": {
+      "lead-routing": {
+        "enabled": true
+      },
+      "inbound-intake": {
+        "enabled": true
+      },
+      "outbound-sourcing": {
+        "enabled": true
+      },
+      "document-extraction": {
+        "enabled": true
+      },
+      "evidence-research": {
+        "enabled": true
+      },
+      "evidence-scoring": {
+        "enabled": true
+      },
+      "approval-gates": {
+        "enabled": true
+      },
+      "data-persistence": {
+        "enabled": true
+      },
+      "trust-boundary": {
+        "enabled": true
+      },
+      "knowledge-modeling": {
+        "enabled": true
+      },
+      "lead-memory-lookup": {
+        "enabled": true
+      },
+      "compiled-truth": {
+        "enabled": true
+      },
+      "lead-signal-detection": {
+        "enabled": true
+      },
+      "contradiction-check": {
+        "enabled": true
+      },
+      "trajectory-check": {
+        "enabled": true
+      },
+      "governance-lint": {
+        "enabled": true
+      },
+      "eval-fixture-check": {
+        "enabled": true
+      },
+      "system-health-check": {
+        "enabled": true
+      },
+      "memo-writing": {
+        "enabled": true
+      },
+      "source-improvement": {
+        "enabled": true
+      },
+      "skillify": {
+        "enabled": true
+      },
+      "resolver-check": {
+        "enabled": true
+      },
+      "research-depth-control": {
+        "enabled": true
+      },
+      "schema-proposal": {
+        "enabled": true
+      },
+      "quiet-hours-reporting": {
+        "enabled": true
+      },
+      "controlled-evolution": {
+        "enabled": true
+      }
+    }
+  },
+  "tools": {
+    "profile": "coding",
+    "alsoAllow": [
+      "agents_list",
+      "skill_workshop"
+    ],
+    "deny": [
+      "gateway",
+      "cron",
+      "nodes",
+      "sessions_send",
+      "apply_patch"
+    ],
+    "fs": {
+      "workspaceOnly": true
+    },
+    "exec": {
+      "host": "gateway",
+      "mode": "allowlist",
+      "timeoutSec": 420,
+      "strictInlineEval": true,
+      "notifyOnExit": true
+    },
+    "elevated": {
+      "enabled": false
+    },
+    "subagents": {
+      "tools": {
+        "allow": [
+          "exec",
+          "read",
+          "web_search",
+          "web_fetch",
+          "session_status"
+        ],
+        "deny": [
+          "gateway",
+          "cron",
+          "nodes",
+          "sessions_spawn",
+          "sessions_send",
+          "apply_patch",
+          "write",
+          "edit",
+          "skill_workshop"
+        ]
+      }
+    }
+  },
+  "agents": {
+    "defaults": {
+      "userTimezone": "Europe/Berlin",
+      "skipBootstrap": true,
+      "sandbox": {
+        "mode": "off",
+        "workspaceAccess": "none"
+      },
+      "compaction": {
+        "memoryFlush": {
+          "enabled": false
+        }
+      },
+      "memorySearch": {
+        "enabled": false,
+        "sources": [
+          "memory"
+        ],
+        "provider": "none",
+        "store": {
+          "fts": {
+            "tokenizer": "unicode61"
+          },
+          "vector": {
+            "enabled": false
+          }
+        }
+      },
+      "subagents": {
+        "maxConcurrent": 3,
+        "maxSpawnDepth": 1,
+        "maxChildrenPerAgent": 3,
+        "runTimeoutSeconds": 2700,
+        "requireAgentId": true
+      }
+    },
+    "list": [
+      {
+        "id": "vc-chief",
+        "default": true,
+        "name": "VC Chief",
+        "workspace": "/workspaces/vc-chief",
+        "agentDir": "/home/node/.openclaw/agents/vc-chief/agent",
+        "model": "${VC_PRIMARY_MODEL}",
+        "skills": [
+          "lead-routing",
+          "inbound-intake",
+          "outbound-sourcing",
+          "document-extraction",
+          "evidence-research",
+          "evidence-scoring",
+          "approval-gates",
+          "data-persistence",
+          "trust-boundary",
+          "knowledge-modeling",
+          "lead-memory-lookup",
+          "compiled-truth",
+          "lead-signal-detection",
+          "contradiction-check",
+          "trajectory-check",
+          "governance-lint",
+          "eval-fixture-check",
+          "system-health-check",
+          "memo-writing",
+          "source-improvement",
+          "skillify",
+          "resolver-check",
+          "research-depth-control",
+          "schema-proposal",
+          "quiet-hours-reporting",
+          "controlled-evolution"
+        ],
+        "tools": {
+          "allow": [
+            "sessions_spawn",
+            "sessions_yield",
+            "agents_list",
+            "sessions_list",
+            "sessions_history",
+            "session_status",
+            "read",
+            "skill_workshop"
+          ],
+          "deny": [
+            "exec",
+            "lobster",
+            "gateway",
+            "cron",
+            "nodes",
+            "sessions_send",
+            "memory_search",
+            "memory_get",
+            "apply_patch",
+            "write",
+            "edit"
+          ]
+        },
+        "subagents": {
+          "allowAgents": [
+            "lead-router",
+            "lead-signal-detector",
+            "outbound-scout",
+            "inbound-intake-analyst",
+            "document-intake-analyst",
+            "founder-researcher",
+            "traction-analyst",
+            "market-mapper",
+            "qualification-analyst",
+            "memo-writer",
+            "data-steward"
+          ],
+          "requireAgentId": true
+        }
+      },
+      {
+        "id": "lead-signal-detector",
+        "workspace": "/workspaces/lead-signal-detector",
+        "agentDir": "/home/node/.openclaw/agents/lead-signal-detector/agent",
+        "model": "${VC_FAST_MODEL}",
+        "skills": [
+          "lead-signal-detection"
+        ],
+        "tools": {
+          "allow": [
+            "read",
+            "web_search",
+            "web_fetch",
+            "session_status"
+          ],
+          "deny": [
+            "exec",
+            "gateway",
+            "cron",
+            "nodes",
+            "sessions_spawn",
+            "sessions_send",
+            "memory_search",
+            "memory_get",
+            "write",
+            "edit",
+            "apply_patch",
+            "skill_workshop"
+          ]
+        }
+      },
+      {
+        "id": "lead-router",
+        "workspace": "/workspaces/lead-router",
+        "agentDir": "/home/node/.openclaw/agents/lead-router/agent",
+        "model": "${VC_FAST_MODEL}",
+        "skills": [
+          "lead-routing"
+        ],
+        "tools": {
+          "allow": [
+            "read",
+            "session_status"
+          ],
+          "deny": [
+            "exec",
+            "gateway",
+            "cron",
+            "nodes",
+            "sessions_spawn",
+            "sessions_send",
+            "memory_search",
+            "memory_get",
+            "write",
+            "edit",
+            "apply_patch",
+            "skill_workshop"
+          ]
+        }
+      },
+      {
+        "id": "outbound-scout",
+        "workspace": "/workspaces/outbound-scout",
+        "agentDir": "/home/node/.openclaw/agents/outbound-scout/agent",
+        "model": "${VC_FAST_MODEL}",
+        "skills": [
+          "outbound-sourcing"
+        ],
+        "tools": {
+          "allow": [
+            "read",
+            "web_search",
+            "web_fetch",
+            "session_status"
+          ],
+          "deny": [
+            "exec",
+            "gateway",
+            "cron",
+            "nodes",
+            "sessions_spawn",
+            "sessions_send",
+            "memory_search",
+            "memory_get",
+            "write",
+            "edit",
+            "apply_patch",
+            "skill_workshop"
+          ]
+        }
+      },
+      {
+        "id": "inbound-intake-analyst",
+        "workspace": "/workspaces/inbound-intake-analyst",
+        "agentDir": "/home/node/.openclaw/agents/inbound-intake-analyst/agent",
+        "model": "${VC_FAST_MODEL}",
+        "skills": [
+          "inbound-intake"
+        ],
+        "tools": {
+          "allow": [
+            "read",
+            "session_status"
+          ],
+          "deny": [
+            "exec",
+            "gateway",
+            "cron",
+            "nodes",
+            "sessions_spawn",
+            "sessions_send",
+            "memory_search",
+            "memory_get",
+            "write",
+            "edit",
+            "apply_patch",
+            "skill_workshop"
+          ]
+        }
+      },
+      {
+        "id": "document-intake-analyst",
+        "workspace": "/workspaces/document-intake-analyst",
+        "agentDir": "/home/node/.openclaw/agents/document-intake-analyst/agent",
+        "model": "${VC_FAST_MODEL}",
+        "skills": [
+          "document-extraction"
+        ],
+        "tools": {
+          "allow": [
+            "read",
+            "session_status"
+          ],
+          "deny": [
+            "exec",
+            "web_search",
+            "web_fetch",
+            "gateway",
+            "cron",
+            "nodes",
+            "sessions_spawn",
+            "sessions_send",
+            "memory_search",
+            "memory_get",
+            "write",
+            "edit",
+            "apply_patch",
+            "skill_workshop"
+          ]
+        }
+      },
+      {
+        "id": "founder-researcher",
+        "workspace": "/workspaces/founder-researcher",
+        "agentDir": "/home/node/.openclaw/agents/founder-researcher/agent",
+        "model": "${VC_FAST_MODEL}",
+        "skills": [
+          "evidence-research"
+        ],
+        "tools": {
+          "allow": [
+            "read",
+            "web_search",
+            "web_fetch",
+            "session_status"
+          ],
+          "deny": [
+            "exec",
+            "gateway",
+            "cron",
+            "nodes",
+            "sessions_spawn",
+            "sessions_send",
+            "memory_search",
+            "memory_get",
+            "write",
+            "edit",
+            "apply_patch",
+            "skill_workshop"
+          ]
+        }
+      },
+      {
+        "id": "traction-analyst",
+        "workspace": "/workspaces/traction-analyst",
+        "agentDir": "/home/node/.openclaw/agents/traction-analyst/agent",
+        "model": "${VC_FAST_MODEL}",
+        "skills": [
+          "evidence-research",
+          "trajectory-check"
+        ],
+        "tools": {
+          "allow": [
+            "read",
+            "web_search",
+            "web_fetch",
+            "session_status"
+          ],
+          "deny": [
+            "exec",
+            "gateway",
+            "cron",
+            "nodes",
+            "sessions_spawn",
+            "sessions_send",
+            "memory_search",
+            "memory_get",
+            "write",
+            "edit",
+            "apply_patch",
+            "skill_workshop"
+          ]
+        }
+      },
+      {
+        "id": "market-mapper",
+        "workspace": "/workspaces/market-mapper",
+        "agentDir": "/home/node/.openclaw/agents/market-mapper/agent",
+        "model": "${VC_PRIMARY_MODEL}",
+        "skills": [
+          "evidence-research"
+        ],
+        "tools": {
+          "allow": [
+            "read",
+            "web_search",
+            "web_fetch",
+            "session_status"
+          ],
+          "deny": [
+            "exec",
+            "gateway",
+            "cron",
+            "nodes",
+            "sessions_spawn",
+            "sessions_send",
+            "memory_search",
+            "memory_get",
+            "write",
+            "edit",
+            "apply_patch",
+            "skill_workshop"
+          ]
+        }
+      },
+      {
+        "id": "qualification-analyst",
+        "workspace": "/workspaces/qualification-analyst",
+        "agentDir": "/home/node/.openclaw/agents/qualification-analyst/agent",
+        "model": "${VC_FAST_MODEL}",
+        "skills": [
+          "evidence-scoring"
+        ],
+        "tools": {
+          "allow": [
+            "read",
+            "session_status"
+          ],
+          "deny": [
+            "exec",
+            "web_search",
+            "web_fetch",
+            "gateway",
+            "cron",
+            "nodes",
+            "sessions_spawn",
+            "sessions_send",
+            "memory_search",
+            "memory_get",
+            "write",
+            "edit",
+            "apply_patch",
+            "skill_workshop"
+          ]
+        }
+      },
+      {
+        "id": "memo-writer",
+        "workspace": "/workspaces/memo-writer",
+        "agentDir": "/home/node/.openclaw/agents/memo-writer/agent",
+        "model": "${VC_PRIMARY_MODEL}",
+        "skills": [
+          "memo-writing"
+        ],
+        "tools": {
+          "allow": [
+            "read",
+            "session_status"
+          ],
+          "deny": [
+            "exec",
+            "web_search",
+            "web_fetch",
+            "gateway",
+            "cron",
+            "nodes",
+            "sessions_spawn",
+            "sessions_send",
+            "memory_search",
+            "memory_get",
+            "write",
+            "edit",
+            "apply_patch",
+            "skill_workshop"
+          ]
+        }
+      },
+      {
+        "id": "data-steward",
+        "workspace": "/workspaces/data-steward",
+        "agentDir": "/home/node/.openclaw/agents/data-steward/agent",
+        "model": "${VC_FAST_MODEL}",
+        "skills": [
+          "data-persistence",
+          "trust-boundary",
+          "knowledge-modeling",
+          "lead-memory-lookup",
+          "approval-gates"
+        ],
+        "tools": {
+          "allow": [
+            "exec",
+            "read",
+            "session_status"
+          ],
+          "deny": [
+            "web_search",
+            "web_fetch",
+            "gateway",
+            "cron",
+            "nodes",
+            "sessions_spawn",
+            "sessions_send",
+            "memory_search",
+            "memory_get",
+            "write",
+            "edit",
+            "apply_patch",
+            "skill_workshop"
+          ],
+          "exec": {
+            "host": "gateway",
+            "mode": "allowlist",
+            "strictInlineEval": true,
+            "timeoutSec": 420
+          }
+        }
+      }
+    ]
+  },
+  "session": {
+    "dmScope": "per-channel-peer",
+    "maintenance": {
+      "mode": "enforce",
+      "pruneAfter": "30d",
+      "maxEntries": 500
+    }
+  },
+  "cron": {
+    "enabled": false,
+    "maxConcurrentRuns": 1
+  },
+  "logging": {
+    "maxFileBytes": 10485760
+  }
+}

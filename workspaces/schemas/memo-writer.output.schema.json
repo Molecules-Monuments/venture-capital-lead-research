@@ -1,0 +1,150 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openclaw.local/schemas/memo-writer.output.schema.json",
+  "title": "Memo Writer Output v3.0",
+  "$comment": "The caller must additionally verify reference integrity, claim-map coverage counts, and exact recommendation parity with the supplied qualification result.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "role", "status", "lead_id", "run_id", "result", "evidence_refs", "missing_data", "warnings", "error"],
+  "properties": {
+    "schema_version": {"const": "3.0"},
+    "role": {"const": "memo-writer"},
+    "status": {"$ref": "#/$defs/status"},
+    "lead_id": {"$ref": "#/$defs/nullableId"},
+    "run_id": {"$ref": "#/$defs/nullableId"},
+    "result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["memo_title", "snapshot", "recommendation", "recommendation_confidence", "investment_case", "counter_case", "cruxes", "falsifiers", "next_diligence", "claim_evidence_map", "evidence_coverage", "timeline", "memo_markdown"],
+      "properties": {
+        "memo_title": {"type": "string", "minLength": 1},
+        "snapshot": {"$ref": "#/$defs/snapshot"},
+        "recommendation": {"enum": ["pass", "watch", "research_deeper", "high_priority", "needs_human_review", "insufficient_evidence"]},
+        "recommendation_confidence": {"$ref": "#/$defs/confidence"},
+        "investment_case": {"type": "string", "minLength": 1},
+        "counter_case": {"type": "string", "minLength": 1},
+        "cruxes": {"type": "array", "items": {"$ref": "#/$defs/crux"}, "minItems": 1},
+        "falsifiers": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true, "minItems": 1},
+        "next_diligence": {"type": "array", "items": {"$ref": "#/$defs/nextDiligence"}},
+        "claim_evidence_map": {"type": "array", "items": {"$ref": "#/$defs/claimEvidence"}, "minItems": 1},
+        "evidence_coverage": {"$ref": "#/$defs/evidenceCoverage"},
+        "timeline": {"type": "array", "items": {"$ref": "#/$defs/timelineItem"}},
+        "memo_markdown": {"type": "string", "minLength": 1}
+      }
+    },
+    "evidence_refs": {"$ref": "#/$defs/stringList"},
+    "missing_data": {"type": "array", "items": {"$ref": "#/$defs/missingData"}},
+    "warnings": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "error": {"$ref": "#/$defs/error"}
+  },
+  "allOf": [
+    {"if": {"properties": {"status": {"const": "ok"}}, "required": ["status"]}, "then": {"properties": {"error": {"type": "null"}}}},
+    {"if": {"properties": {"status": {"const": "failed"}}, "required": ["status"]}, "then": {"properties": {"error": {"type": "object"}}}}
+  ],
+  "$defs": {
+    "status": {"enum": ["ok", "insufficient_evidence", "needs_human_review", "failed"]},
+    "confidence": {"enum": ["low", "medium", "high"]},
+    "nullableId": {"type": ["string", "null"], "minLength": 1},
+    "stringList": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
+    "snapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["snapshot_id", "as_of", "content_hash"],
+      "properties": {
+        "snapshot_id": {"type": "string", "minLength": 1},
+        "as_of": {"type": "string", "format": "date-time"},
+        "content_hash": {"type": "string", "minLength": 1}
+      }
+    },
+    "crux": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["crux_id", "question", "current_view", "evidence_refs", "counterevidence_refs", "falsifier"],
+      "properties": {
+        "crux_id": {"type": "string", "minLength": 1},
+        "question": {"type": "string", "minLength": 1},
+        "current_view": {"type": "string", "minLength": 1},
+        "evidence_refs": {"$ref": "#/$defs/stringList"},
+        "counterevidence_refs": {"$ref": "#/$defs/stringList"},
+        "falsifier": {"type": "string", "minLength": 1}
+      }
+    },
+    "nextDiligence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["priority", "question", "why", "evidence_needed", "owner"],
+      "properties": {
+        "priority": {"type": "integer", "minimum": 1},
+        "question": {"type": "string", "minLength": 1},
+        "why": {"type": "string", "minLength": 1},
+        "evidence_needed": {"type": "string", "minLength": 1},
+        "owner": {"enum": ["human", "vc-chief", "specialist"]}
+      }
+    },
+    "claimEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["claim_id", "section", "claim_text", "claim_status", "evidence_refs", "counterevidence_refs", "inference_basis", "freshness", "confidence"],
+      "properties": {
+        "claim_id": {"type": "string", "minLength": 1},
+        "section": {"type": "string", "minLength": 1},
+        "claim_text": {"type": "string", "minLength": 1},
+        "claim_status": {"enum": ["submitted_claim", "verified_fact", "derived_inference", "contradicted", "unknown"]},
+        "evidence_refs": {"$ref": "#/$defs/stringList"},
+        "counterevidence_refs": {"$ref": "#/$defs/stringList"},
+        "inference_basis": {"$ref": "#/$defs/stringList"},
+        "freshness": {"enum": ["current", "stale", "unknown"]},
+        "confidence": {"$ref": "#/$defs/confidence"}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"claim_status": {"enum": ["submitted_claim", "verified_fact", "contradicted"]}}, "required": ["claim_status"]},
+          "then": {"properties": {"evidence_refs": {"minItems": 1}}}
+        },
+        {
+          "if": {"properties": {"claim_status": {"const": "derived_inference"}}, "required": ["claim_status"]},
+          "then": {"properties": {"inference_basis": {"minItems": 1}}}
+        }
+      ]
+    },
+    "evidenceCoverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["supported_claims", "inferred_claims", "unsupported_claims", "stale_claims", "summary"],
+      "properties": {
+        "supported_claims": {"type": "integer", "minimum": 0},
+        "inferred_claims": {"type": "integer", "minimum": 0},
+        "unsupported_claims": {"type": "integer", "minimum": 0},
+        "stale_claims": {"type": "integer", "minimum": 0},
+        "summary": {"type": "string", "minLength": 1}
+      }
+    },
+    "timelineItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["date", "event", "evidence_refs"],
+      "properties": {
+        "date": {"type": "string", "minLength": 1},
+        "event": {"type": "string", "minLength": 1},
+        "evidence_refs": {"$ref": "#/$defs/stringList"}
+      }
+    },
+    "missingData": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["field", "state", "reason", "evidence_needed"],
+      "properties": {
+        "field": {"type": "string", "minLength": 1},
+        "state": {"enum": ["missing", "unknown", "not_applicable", "blocked"]},
+        "reason": {"type": "string", "minLength": 1},
+        "evidence_needed": {"type": "string", "minLength": 1}
+      }
+    },
+    "error": {
+      "oneOf": [
+        {"type": "null"},
+        {"type": "object", "additionalProperties": false, "required": ["code", "message"], "properties": {"code": {"type": "string", "minLength": 1}, "message": {"type": "string", "minLength": 1}}}
+      ]
+    }
+  }
+}

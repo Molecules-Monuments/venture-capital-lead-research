@@ -1,0 +1,38 @@
+{
+  "channels": {
+    "msteams": {
+      "enabled": true,
+      "appId": "${MSTEAMS_APP_ID}",
+      "appPassword": { "source": "env", "provider": "default", "id": "MSTEAMS_APP_PASSWORD" },
+      "tenantId": "${MSTEAMS_TENANT_ID}",
+      "cloud": "Public",
+      "authType": "secret",
+      "configWrites": false,
+      "dangerouslyAllowNameMatching": false,
+      "webhook": { "port": 3978, "path": "/api/messages" },
+      "dmPolicy": "allowlist",
+      "allowFrom": "__MSTEAMS_ALLOWED_USER_IDS__",
+      "groupPolicy": "allowlist",
+      "groupAllowFrom": "__MSTEAMS_ALLOWED_USER_IDS__",
+      "requireMention": true,
+      "teams": {
+        "__MSTEAMS_ALLOWED_TEAM_ID__": {
+          "requireMention": true,
+          "channels": {
+            "__MSTEAMS_ALLOWED_CHANNEL_ID__": { "requireMention": true }
+          }
+        }
+      },
+      "contextVisibility": "allowlist",
+      "mediaMaxMb": "__VC_CHANNEL_MEDIA_MAX_MB__",
+      "welcomeCard": false,
+      "groupWelcomeCard": false,
+      "feedbackEnabled": false,
+      "delegatedAuth": { "enabled": false },
+      "sso": { "enabled": false }
+    }
+  },
+  "bindings": [
+    { "agentId": "vc-chief", "match": { "channel": "msteams", "accountId": "default" } }
+  ]
+}

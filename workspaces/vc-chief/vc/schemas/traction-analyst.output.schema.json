@@ -1,0 +1,817 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openclaw.local/schemas/traction-analyst.output.schema.json",
+  "title": "Traction Analyst Output v3.0",
+  "$comment": "The caller must additionally verify observation/source reference integrity, that compared observation IDs exist, and that comparable observations share the same comparable_key.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "role",
+    "status",
+    "lead_id",
+    "run_id",
+    "result",
+    "evidence",
+    "missing_data",
+    "warnings",
+    "persistence_request",
+    "error"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "3.0"
+    },
+    "role": {
+      "const": "traction-analyst"
+    },
+    "status": {
+      "$ref": "#/$defs/status"
+    },
+    "lead_id": {
+      "$ref": "#/$defs/nullableId"
+    },
+    "run_id": {
+      "$ref": "#/$defs/nullableId"
+    },
+    "result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "metric_observations",
+        "comparisons",
+        "quality_view",
+        "proxy_findings"
+      ],
+      "properties": {
+        "metric_observations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/metricObservation"
+          }
+        },
+        "comparisons": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/comparison"
+          }
+        },
+        "quality_view": {
+          "$ref": "#/$defs/qualityView"
+        },
+        "proxy_findings": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/proxyFinding"
+          }
+        }
+      }
+    },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/evidence"
+      }
+    },
+    "missing_data": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/missingData"
+      }
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "persistence_request": {
+      "$ref": "#/$defs/persistenceRequest"
+    },
+    "error": {
+      "$ref": "#/$defs/error"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "ok"
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "properties": {
+          "error": {
+            "type": "null"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "failed"
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "properties": {
+          "error": {
+            "type": "object"
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "status": {
+      "enum": [
+        "ok",
+        "insufficient_evidence",
+        "needs_human_review",
+        "failed"
+      ]
+    },
+    "confidence": {
+      "enum": [
+        "low",
+        "medium",
+        "high"
+      ]
+    },
+    "factStatus": {
+      "enum": [
+        "submitted_claim",
+        "verified_fact",
+        "derived_inference",
+        "contradicted",
+        "stale",
+        "retracted",
+        "unknown"
+      ]
+    },
+    "nullableId": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "minLength": 1
+    },
+    "stringList": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true
+    },
+    "period": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "start",
+        "end"
+      ],
+      "properties": {
+        "start": {
+          "type": "string",
+          "format": "date"
+        },
+        "end": {
+          "type": "string",
+          "format": "date"
+        }
+      }
+    },
+    "cohort": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "label",
+            "start",
+            "end"
+          ],
+          "properties": {
+            "label": {
+              "type": "string",
+              "minLength": 1
+            },
+            "start": {
+              "type": "string",
+              "format": "date"
+            },
+            "end": {
+              "type": "string",
+              "format": "date"
+            }
+          }
+        }
+      ]
+    },
+    "value": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "raw",
+        "normalized_number"
+      ],
+      "properties": {
+        "raw": {
+          "type": "string",
+          "minLength": 1
+        },
+        "normalized_number": {
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      }
+    },
+    "metricObservation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "observation_id",
+        "metric_key",
+        "metric_definition",
+        "value",
+        "unit",
+        "currency",
+        "period",
+        "cohort",
+        "as_of",
+        "source_ref",
+        "fact_status",
+        "evidence_type",
+        "evidence_quality",
+        "is_current",
+        "currentness_reason",
+        "comparable_key"
+      ],
+      "properties": {
+        "observation_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "metric_key": {
+          "type": "string",
+          "minLength": 1
+        },
+        "metric_definition": {
+          "type": "string",
+          "minLength": 1
+        },
+        "value": {
+          "$ref": "#/$defs/value"
+        },
+        "unit": {
+          "type": "string",
+          "minLength": 1
+        },
+        "currency": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[A-Z]{3}$"
+        },
+        "period": {
+          "$ref": "#/$defs/period"
+        },
+        "cohort": {
+          "$ref": "#/$defs/cohort"
+        },
+        "as_of": {
+          "type": "string",
+          "format": "date"
+        },
+        "source_ref": {
+          "type": "string",
+          "minLength": 1
+        },
+        "fact_status": {
+          "$ref": "#/$defs/factStatus"
+        },
+        "evidence_type": {
+          "enum": [
+            "direct",
+            "indirect",
+            "weak"
+          ]
+        },
+        "evidence_quality": {
+          "enum": [
+            "high",
+            "medium",
+            "low",
+            "unusable"
+          ]
+        },
+        "is_current": {
+          "type": "boolean"
+        },
+        "currentness_reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "comparable_key": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "comparison": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "left_observation_id",
+        "right_observation_id",
+        "comparable",
+        "incompatibilities",
+        "normalization",
+        "direction",
+        "change_absolute",
+        "change_percent",
+        "calculation_source",
+        "calculation_ref",
+        "limits"
+      ],
+      "properties": {
+        "left_observation_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "right_observation_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "comparable": {
+          "type": "boolean"
+        },
+        "incompatibilities": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "metric_definition",
+              "unit",
+              "currency",
+              "period",
+              "cohort",
+              "gross_vs_net",
+              "source_quality",
+              "other"
+            ]
+          },
+          "uniqueItems": true
+        },
+        "normalization": {
+          "type": "string",
+          "minLength": 1
+        },
+        "direction": {
+          "enum": [
+            "up",
+            "down",
+            "flat",
+            "volatile",
+            "unknown",
+            "not_comparable"
+          ]
+        },
+        "change_absolute": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "change_percent": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "calculation_source": {
+          "enum": [
+            "provided_deterministic",
+            "not_calculated"
+          ]
+        },
+        "calculation_ref": {
+          "$ref": "#/$defs/nullableId"
+        },
+        "limits": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "comparable": {
+                "const": false
+              }
+            },
+            "required": [
+              "comparable"
+            ]
+          },
+          "then": {
+            "properties": {
+              "direction": {
+                "const": "not_comparable"
+              },
+              "change_absolute": {
+                "type": "null"
+              },
+              "change_percent": {
+                "type": "null"
+              },
+              "calculation_source": {
+                "const": "not_calculated"
+              },
+              "calculation_ref": {
+                "type": "null"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "calculation_source": {
+                "const": "provided_deterministic"
+              }
+            },
+            "required": [
+              "calculation_source"
+            ]
+          },
+          "then": {
+            "properties": {
+              "calculation_ref": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "comparable": {
+                "const": true
+              }
+            },
+            "required": [
+              "comparable"
+            ]
+          },
+          "then": {
+            "properties": {
+              "incompatibilities": {
+                "maxItems": 0
+              },
+              "direction": {
+                "enum": [
+                  "up",
+                  "down",
+                  "flat",
+                  "volatile",
+                  "unknown"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "direction": {
+                "enum": [
+                  "up",
+                  "down",
+                  "flat"
+                ]
+              }
+            },
+            "required": [
+              "direction"
+            ]
+          },
+          "then": {
+            "properties": {
+              "change_absolute": {
+                "type": "number"
+              },
+              "change_percent": {
+                "type": "number"
+              },
+              "calculation_source": {
+                "const": "provided_deterministic"
+              },
+              "calculation_ref": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        }
+      ]
+    },
+    "qualityDimension": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "summary",
+        "evidence_refs",
+        "limits"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "observed",
+            "mixed",
+            "weak",
+            "unknown",
+            "not_applicable"
+          ]
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1
+        },
+        "evidence_refs": {
+          "$ref": "#/$defs/stringList"
+        },
+        "limits": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "qualityView": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "scale",
+        "growth",
+        "retention",
+        "engagement_depth",
+        "revenue_quality",
+        "customer_concentration",
+        "sales_efficiency"
+      ],
+      "properties": {
+        "scale": {
+          "$ref": "#/$defs/qualityDimension"
+        },
+        "growth": {
+          "$ref": "#/$defs/qualityDimension"
+        },
+        "retention": {
+          "$ref": "#/$defs/qualityDimension"
+        },
+        "engagement_depth": {
+          "$ref": "#/$defs/qualityDimension"
+        },
+        "revenue_quality": {
+          "$ref": "#/$defs/qualityDimension"
+        },
+        "customer_concentration": {
+          "$ref": "#/$defs/qualityDimension"
+        },
+        "sales_efficiency": {
+          "$ref": "#/$defs/qualityDimension"
+        }
+      }
+    },
+    "proxyFinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "proxy_type",
+        "narrow_inference",
+        "prohibited_inferences",
+        "evidence_refs",
+        "confidence"
+      ],
+      "properties": {
+        "proxy_type": {
+          "enum": [
+            "logo",
+            "press",
+            "hiring",
+            "github",
+            "packages",
+            "launch",
+            "web_traffic",
+            "funding_announcement",
+            "other"
+          ]
+        },
+        "narrow_inference": {
+          "type": "string",
+          "minLength": 1
+        },
+        "prohibited_inferences": {
+          "$ref": "#/$defs/stringList"
+        },
+        "evidence_refs": {
+          "$ref": "#/$defs/stringList"
+        },
+        "confidence": {
+          "$ref": "#/$defs/confidence"
+        }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "evidence_id",
+        "claim",
+        "source_url",
+        "published_or_observed_at",
+        "retrieved_at",
+        "fact_status",
+        "confidence",
+        "direct_source_inspected"
+      ],
+      "properties": {
+        "evidence_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "claim": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source_url": {
+          "type": "string",
+          "format": "uri",
+          "minLength": 1
+        },
+        "published_or_observed_at": {
+          "type": "string",
+          "minLength": 1
+        },
+        "retrieved_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "fact_status": {
+          "$ref": "#/$defs/factStatus"
+        },
+        "confidence": {
+          "$ref": "#/$defs/confidence"
+        },
+        "direct_source_inspected": {
+          "type": "boolean"
+        }
+      }
+    },
+    "missingData": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "field",
+        "state",
+        "reason",
+        "evidence_needed"
+      ],
+      "properties": {
+        "field": {
+          "type": "string",
+          "minLength": 1
+        },
+        "state": {
+          "enum": [
+            "missing",
+            "unknown",
+            "not_applicable",
+            "blocked"
+          ]
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "evidence_needed": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "error": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "code",
+            "message"
+          ],
+          "properties": {
+            "code": {
+              "type": "string",
+              "minLength": 1
+            },
+            "message": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      ]
+    },
+    "persistenceRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requested",
+        "operation",
+        "reason",
+        "steward_required"
+      ],
+      "properties": {
+        "requested": {
+          "type": "boolean"
+        },
+        "operation": {
+          "enum": [
+            "none",
+            "record_evidence"
+          ]
+        },
+        "reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "steward_required": {
+          "const": true
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "requested": {
+                "const": false
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "operation": {
+                "const": "none"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "requested": {
+                "const": true
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "operation": {
+                "const": "record_evidence"
+              },
+              "reason": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

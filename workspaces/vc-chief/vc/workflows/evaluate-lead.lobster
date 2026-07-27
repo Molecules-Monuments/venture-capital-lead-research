@@ -1,0 +1,98 @@
+name: vc-evaluate-lead-v3
+
+args:
+  idempotency_key:
+    default: ""
+  lead_id:
+    default: ""
+  criteria_json:
+    default: ""
+  decision_context_json:
+    default: ""
+
+steps:
+  - id: preflight
+    run: /workspaces/vc-chief/vc/bin/vcops-workflow preflight
+    timeout_ms: 10000
+
+  - id: lead_show
+    run: >-
+      /workspaces/vc-chief/vc/bin/vcops-workflow lead-show
+      --lead-id "$LOBSTER_ARG_LEAD_ID"
+    timeout_ms: 20000
+
+  - id: workflow_start
+    run: >-
+      /workspaces/vc-chief/vc/bin/vcops-workflow workflow-start
+      --workflow evaluate-lead
+      --lead-id "$LOBSTER_ARG_LEAD_ID"
+      --idempotency-key "$LOBSTER_ARG_IDEMPOTENCY_KEY"
+    timeout_ms: 20000
+
+  - id: workflow_running
+    env:
+      VCOPS_RUN_ID: "$workflow_start.json.workflow_run.run_id"
+      VCOPS_EXPECTED_REVISION: "$workflow_start.json.workflow_run.record_version"
+    run: >-
+      /workspaces/vc-chief/vc/bin/vcops-workflow workflow-transition
+      --run-id "$VCOPS_RUN_ID"
+      --status running
+      --expected-revision "$VCOPS_EXPECTED_REVISION"
+    timeout_ms: 20000
+
+  - id: prequalify
+    run: >-
+      /workspaces/vc-chief/vc/bin/vcops-workflow prequalify
+      --criteria "$LOBSTER_ARG_CRITERIA_JSON"
+      --decision-context "$LOBSTER_ARG_DECISION_CONTEXT_JSON"
+    timeout_ms: 20000
+
+  - id: persist_approval
+    approval:
+      prompt: Persist this evaluation and its new compiled-truth snapshot?
+    stdin: >-
+      {"workflow_run":{"run_id":"$workflow_running.json.workflow_run.run_id","record_version":$workflow_running.json.workflow_run.record_version},"evaluation":$prequalify.json.evaluation}
+
+  - id: compiled_truth
+    env:
+      VCOPS_WORKFLOW_ROW_ID: "$workflow_start.json.workflow_run.id"
+    run: >-
+      /workspaces/vc-chief/vc/bin/vcops-workflow compiled-truth
+      --lead-id "$LOBSTER_ARG_LEAD_ID"
+      --workflow-run-id "$VCOPS_WORKFLOW_ROW_ID"
+      --min-confidence 0.7
+      --policy-version 3.0
+      --compiled-by vcops
+    condition: "$persist_approval.approved"
+    timeout_ms: 30000
+
+  - id: evaluation_save
+    env:
+      VCOPS_WORKFLOW_ROW_ID: "$workflow_start.json.workflow_run.id"
+      VCOPS_COMPILED_TRUTH_ID: "$compiled_truth.json.snapshot.id"
+      VCOPS_EVIDENCE_HASH: "$compiled_truth.json.snapshot.evidence_packet_hash"
+    run: >-
+      /workspaces/vc-chief/vc/bin/vcops-workflow evaluation-save
+      --lead-id "$LOBSTER_ARG_LEAD_ID"
+      --workflow-run-id "$VCOPS_WORKFLOW_ROW_ID"
+      --compiled-truth-id "$VCOPS_COMPILED_TRUTH_ID"
+      --criteria "$LOBSTER_ARG_CRITERIA_JSON"
+      --decision-context "$LOBSTER_ARG_DECISION_CONTEXT_JSON"
+      --status final
+      --policy-version 3.0
+      --evidence-hash "$VCOPS_EVIDENCE_HASH"
+      --evaluated-by vcops
+    condition: "$persist_approval.approved"
+    timeout_ms: 30000
+
+  - id: workflow_succeeded
+    env:
+      VCOPS_RUN_ID: "$workflow_running.json.workflow_run.run_id"
+      VCOPS_EXPECTED_REVISION: "$workflow_running.json.workflow_run.record_version"
+    run: >-
+      /workspaces/vc-chief/vc/bin/vcops-workflow workflow-transition
+      --run-id "$VCOPS_RUN_ID"
+      --status succeeded
+      --expected-revision "$VCOPS_EXPECTED_REVISION"
+    condition: "$persist_approval.approved"
+    timeout_ms: 20000

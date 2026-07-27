@@ -1,0 +1,174 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openclaw.example/schemas/delegation-eval.schema.json",
+  "title": "VC Chief pre-spawn delegation evaluation",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "task_id", "lead_id", "run_id", "identifier_state",
+    "identifier_null_reason", "agent", "decision_question",
+    "why_this_agent", "dependencies", "dependency_packet_hash", "authoritative_inputs",
+    "contradictions_to_resolve", "allowed_sources", "prohibited_actions",
+    "policy_packets", "budget", "expected_schema", "acceptance_tests",
+    "evidence_requirements", "stop_conditions", "downstream_consumer", "on_failure"
+  ],
+  "properties": {
+    "schema_version": { "const": "3.0" },
+    "task_id": { "type": "string", "minLength": 1, "maxLength": 160 },
+    "lead_id": { "type": ["string", "null"] },
+    "run_id": { "type": ["string", "null"] },
+    "identifier_state": { "enum": ["present", "precreation", "not_applicable"] },
+    "identifier_null_reason": { "type": ["string", "null"] },
+    "agent": {
+      "enum": [
+        "lead-router", "lead-signal-detector", "outbound-scout",
+        "inbound-intake-analyst", "document-intake-analyst",
+        "founder-researcher", "traction-analyst", "market-mapper",
+        "qualification-analyst", "memo-writer", "data-steward"
+      ]
+    },
+    "decision_question": { "type": "string", "minLength": 1, "maxLength": 1000 },
+    "why_this_agent": { "type": "string", "minLength": 1, "maxLength": 1000 },
+    "dependencies": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["task_id", "status", "evidence_ref"],
+        "properties": {
+          "task_id": { "type": "string", "minLength": 1 },
+          "status": { "enum": ["passed", "not_applicable"] },
+          "evidence_ref": { "type": ["string", "null"] }
+        }
+      }
+    },
+    "dependency_packet_hash": {
+      "type": ["string", "null"],
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "authoritative_inputs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "type", "status", "locator"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "type": { "enum": ["verified_fact", "submitted_claim", "artifact", "policy", "resolution", "snapshot"] },
+          "status": { "enum": ["current", "stale", "contradicted", "unverified", "not_applicable"] },
+          "locator": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "contradictions_to_resolve": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "allowed_sources": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "prohibited_actions": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "policy_packets": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "version", "sha256"],
+        "properties": {
+          "name": { "type": "string", "minLength": 1 },
+          "version": { "type": "string", "minLength": 1 },
+          "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+        }
+      }
+    },
+    "budget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["max_sources", "max_minutes", "max_cost", "currency"],
+      "properties": {
+        "max_sources": { "type": "integer", "minimum": 0 },
+        "max_minutes": { "type": "integer", "minimum": 1 },
+        "max_cost": { "type": "number", "minimum": 0 },
+        "currency": { "type": "string", "pattern": "^[A-Z]{3}$" }
+      }
+    },
+    "expected_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "version", "sha256"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "version": { "type": "string", "minLength": 1 },
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      }
+    },
+    "acceptance_tests": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["test_id", "kind", "assertion", "measurement", "pass_condition"],
+        "properties": {
+          "test_id": { "type": "string", "minLength": 1 },
+          "kind": { "enum": ["positive", "falsification"] },
+          "assertion": { "type": "string", "minLength": 1 },
+          "measurement": { "type": "string", "minLength": 1 },
+          "pass_condition": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "evidence_requirements": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["freshness_cutoff", "material_claim_citations", "direct_source_required"],
+      "properties": {
+        "freshness_cutoff": { "type": ["string", "null"], "format": "date-time" },
+        "material_claim_citations": { "const": true },
+        "direct_source_required": { "type": "boolean" }
+      }
+    },
+    "stop_conditions": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "downstream_consumer": { "type": "string", "minLength": 1 },
+    "on_failure": {
+      "enum": ["insufficient_evidence", "needs_human_review", "one_bounded_retry"]
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "identifier_state": { "const": "present" } } },
+      "then": {
+        "properties": {
+          "lead_id": { "type": "string", "minLength": 1 },
+          "run_id": { "type": "string", "minLength": 1 },
+          "identifier_null_reason": { "type": "null" }
+        }
+      },
+      "else": {
+        "properties": {
+          "identifier_null_reason": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    {
+      "properties": {
+        "acceptance_tests": {
+          "allOf": [
+            { "contains": { "properties": { "kind": { "const": "positive" } }, "required": ["kind"] } },
+            { "contains": { "properties": { "kind": { "const": "falsification" } }, "required": ["kind"] } }
+          ]
+        }
+      }
+    }
+  ]
+}
