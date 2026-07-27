@@ -4,6 +4,11 @@ set -eu
 
 # Agent-facing immutable launcher. OpenClaw's exec tool accepts caller-supplied
 # environment values, so do not inherit them into Python or database control.
+# The TZ below is deliberately fixed and is NOT the operator's TZ: this lane
+# writes timestamptz, which is absolute, and forwarding $TZ would reintroduce
+# the caller-controlled environment this scrub exists to remove. Agent-facing
+# timezone presentation is set by agents.defaults.userTimezone in the rendered
+# runtime config, which render_channel_config.py binds to .env TZ.
 exec /usr/bin/env -i \
   HOME=/home/node \
   LANG=C.UTF-8 \

@@ -7,6 +7,7 @@ import io
 import json
 import os
 import shutil
+import stat
 import subprocess
 import sys
 import tarfile
@@ -219,7 +220,22 @@ class RecoveryLifecycleContractTests(unittest.TestCase):
         self.assertLess(stop, dump)
         self.assertLess(dump, state_archive)
         self.assertIn("backup destination already exists; refusing to mix recovery points", script)
-        self.assertIn('mv -T -n "$STAGING" "$DESTINATION"', script)
+        # Publication must never overwrite an existing recovery point. The
+        # no-clobber guarantee comes from mkdir failing on an existing path
+        # (portable) rather than GNU-only `mv -T -n`, which is unavailable on
+        # the BSD userland this script otherwise tolerates.
+        self.assertIn('if [ -e "$DESTINATION" ]; then', script)
+        self.assertIn('if ! mkdir "$DESTINATION"; then', script)
+        self.assertIn("backup destination appeared during publication; refusing to overwrite it", script)
+        # No executed `mv -T`; the only permitted occurrence is the comment
+        # explaining why it was replaced.
+        self.assertFalse(
+            [
+                line
+                for line in script.splitlines()
+                if "mv -T" in line and not line.lstrip().startswith("#")
+            ]
+        )
         self.assertIn("--exclude=./openclaw.json", script)
         self.assertIn("--exclude=./exec-approvals.json", script)
         self.assertIn("--exclude=./exec-approvals.sock", script)
@@ -237,7 +253,10 @@ class RecoveryLifecycleContractTests(unittest.TestCase):
         self.assertNotIn('cp "$PACKAGE_DIR/VERSION" "$STAGING/VERSION"', script)
         checksums = script.index("sha256sum $checksum_files >SHA256SUMS")
         authenticate = script.index("scripts/authenticate_backup.py create", checksums)
-        publish = script.index('mv -T -n "$STAGING" "$DESTINATION"', authenticate)
+        # The recovery point becomes visible at its destination only after its
+        # checksum manifest is written and HMAC-authenticated, so a reader can
+        # never observe a published-but-unauthenticated backup.
+        publish = script.index('if ! mkdir "$DESTINATION"; then', authenticate)
         self.assertLess(checksums, authenticate)
         self.assertLess(authenticate, publish)
         self.assertIn('echo "format_version=3"', script)
@@ -454,7 +473,7 @@ class RecoveryLifecycleContractTests(unittest.TestCase):
                     "path": path.relative_to(package).as_posix(),
                     "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
                     "size": path.stat().st_size,
-                    "mode": format(path.stat().st_mode & 0o7777, "04o"),
+                    "executable": bool(path.stat().st_mode & stat.S_IXUSR),
                 }
 
             files = [entry(verifier_path), entry(declared)]
@@ -510,6 +529,82 @@ class RecoveryLifecycleContractTests(unittest.TestCase):
             )
             self.assertNotEqual(0, dirty.returncode)
             self.assertIn("__pycache__/junk.pyc", dirty.stdout)
+
+    def test_pristine_tolerates_operator_payload_but_not_symlinks_in_it(self) -> None:
+        """`--pristine` must stay usable on a system that is doing its job.
+
+        `inbox/` is the documented document drop point and `quarantine/` receives
+        rejected uploads, so both accumulate operator payload that is deliberately
+        undeclared. If those files failed the check, the RUNBOOK's pre-deployment
+        verification would report a false integrity failure on every running
+        deployment. A symlink is different: the gateway bind-mounts `inbox` and
+        would follow the link out of the intended tree, so it stays a finding.
+        """
+        verifier = (SCRIPTS / "verify_release.py").read_text(encoding="utf-8")
+        self.assertIn("OPERATOR_DATA_ROOTS", verifier)
+        with tempfile.TemporaryDirectory(prefix="g7-operator-data-") as temporary:
+            package = Path(temporary)
+            scripts = package / "scripts"
+            scripts.mkdir()
+            verifier_path = scripts / "verify_release.py"
+            shutil.copy2(SCRIPTS / "verify_release.py", verifier_path)
+            declared = package / "declared.txt"
+            declared.write_text("reviewed\n", encoding="utf-8")
+
+            def entry(path: Path) -> dict[str, object]:
+                return {
+                    "path": path.relative_to(package).as_posix(),
+                    "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+                    "size": path.stat().st_size,
+                    "executable": bool(path.stat().st_mode & stat.S_IXUSR),
+                }
+
+            files = [entry(verifier_path), entry(declared)]
+            (package / "manifest.json").write_text(
+                json.dumps(
+                    {
+                        "manifest_version": 1,
+                        "package_version": "3.0.0",
+                        "excluded_review_directories": ["_internal"],
+                        "file_count": len(files),
+                        "files": files,
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            def run_pristine() -> subprocess.CompletedProcess[str]:
+                return subprocess.run(
+                    [sys.executable, str(verifier_path), "--pristine"],
+                    text=True,
+                    capture_output=True,
+                    timeout=10,
+                )
+
+            self.assertEqual(0, run_pristine().returncode)
+
+            for root_name in ("inbox", "quarantine"):
+                with self.subTest(directory=root_name):
+                    root = package / root_name
+                    root.mkdir()
+                    payload = root / "operator-document.csv"
+                    payload.write_text("metric,value\ncustomers,7\n", encoding="utf-8")
+                    tolerated = run_pristine()
+                    self.assertEqual(
+                        0, tolerated.returncode, tolerated.stdout or tolerated.stderr
+                    )
+
+                    escape = root / "escape.csv"
+                    escape.symlink_to(declared)
+                    rejected = run_pristine()
+                    self.assertNotEqual(0, rejected.returncode)
+                    self.assertIn(
+                        f"symlink in operator data directory: {root_name}/escape.csv",
+                        rejected.stdout,
+                    )
+                    escape.unlink()
+                    payload.unlink()
+                    root.rmdir()
 
     def test_deployment_lock_binds_release_and_migrations(self) -> None:
         recorder = body("record_images.py")

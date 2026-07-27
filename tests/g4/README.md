@@ -6,7 +6,7 @@ deliberately hostile: a test failure is a release blocker, not a warning.
 Run the complete gate from the repository root:
 
 ```sh
-python3 scripts/run_g4.py
+python3 -B scripts/run_g4.py
 ```
 
 The runner always starts a disposable local PostgreSQL cluster and refuses an

@@ -16,6 +16,7 @@ import csv
 from difflib import SequenceMatcher
 import hashlib
 import hmac
+import ipaddress
 from itertools import combinations
 import json
 import os
@@ -660,6 +661,36 @@ def decide_external_research(
     }
 
 
+def _is_internal_host(host: str) -> bool:
+    """True when a host names this deployment's own network rather than the web.
+
+    Source URIs describe external research targets. A host that resolves to the
+    loopback, a private range, a link-local address, or a container-network
+    convenience name is never a legitimate research source, and persisting one
+    into signal_sources would leave an internal target on a watchlist that an
+    operator reasonably reads as a list of public sources. Nothing in this
+    package fetches these URIs, so this is input validation at the boundary
+    rather than a fix for a demonstrated SSRF — but the watchlist is reachable
+    from a prompt-injectable lane, so the value is checked where it enters.
+    """
+    if host in {"localhost", "host.docker.internal", "gateway.docker.internal", "metadata.google.internal"}:
+        return True
+    if host.endswith((".localhost", ".local", ".internal", ".localdomain")):
+        return True
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError:
+        return False
+    return (
+        address.is_loopback
+        or address.is_private
+        or address.is_link_local
+        or address.is_reserved
+        or address.is_multicast
+        or address.is_unspecified
+    )
+
+
 def normalize_uri(value: str | None) -> str | None:
     if not value:
         return None
@@ -668,6 +699,12 @@ def normalize_uri(value: str | None) -> str | None:
     if parts.scheme not in {"http", "https"} or not parts.hostname or parts.username or parts.password:
         raise VcopsError("invalid_uri", "only credential-free http(s) source URIs are accepted")
     host = parts.hostname.lower().rstrip(".")
+    if _is_internal_host(host):
+        raise VcopsError(
+            "invalid_uri",
+            "source URIs must name an external host; loopback, private, link-local, "
+            "and container-internal addresses are not research sources",
+        )
     port = f":{parts.port}" if parts.port else ""
     return urlunsplit((parts.scheme.lower(), f"{host}{port}", parts.path or "/", parts.query, ""))
 
@@ -4278,10 +4315,23 @@ def cmd_memo_save(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def _approval_token_hash(token: str) -> str:
+    """Keyed digest binding an approval token to this deployment's pepper.
+
+    HMAC rather than sha256(pepper + token): a secret-prefix construction over
+    SHA-256 is length-extendable and gives the pepper no keying guarantee, and
+    every other keyed digest in this package (trusted-context verification
+    below, the backup manifest MAC) already uses HMAC. Tokens are 256-bit
+    CSPRNG values, so there was no reachable attack — this makes the primitive
+    match its stated purpose.
+
+    Rotating VCOPS_APPROVAL_PEPPER changes every digest, so approvals still
+    pending at rotation can no longer be matched and must be re-issued. That is
+    inherent to peppering, not to this change; docs/OPERATIONS.md states it.
+    """
     pepper = _read_secret(APPROVAL_PEPPER_FILE, "approval pepper") if FIXED_RUNTIME else os.environ.get("VCOPS_APPROVAL_PEPPER", "")
     if not pepper:
         raise VcopsError("approval_pepper_missing", "approval pepper is required", exit_code=3)
-    return hashlib.sha256((pepper + token).encode()).hexdigest()
+    return hmac.new(pepper.encode(), token.encode(), hashlib.sha256).hexdigest()
 
 
 def new_approval_token() -> str:

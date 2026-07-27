@@ -15,7 +15,7 @@ passed the relevant evals.
    `reviewed` last.
 3. Apply the corresponding edits in the files below. The JSON profile records
    the decision; it does not silently rewrite policy.
-4. Run `python3 scripts/check_customization.py
+4. Run `python3 -B scripts/check_customization.py
    config/customization-profile.json .env`. This binds the reviewed timezone,
    model/provider IDs, search/fetch selection, channel selection, allowed-user
    lists, attachment limit, and destination IDs to the exact deployment

@@ -711,11 +711,16 @@ Design decisions:
   identity, expiry, and hashes are consumed in the same transaction as the
   governed mutation.
 
-Migrations `001` through `016` are immutable forward migrations and are
+Migrations `001` through `017` are immutable forward migrations and are
 checksum registered. Add a new migration; never edit one already deployed.
 See [DATA_MODEL.md](docs/DATA_MODEL.md); for a single-file view of the whole
 schema, [docs/SCHEMA.sql](docs/SCHEMA.sql) is a generated, read-only DDL
-snapshot of the applied migration set (documentation, not a migration).
+snapshot of the applied migration set (documentation, not a migration). It is
+produced by `scripts/generate_schema_reference.py`, which applies every
+migration to a throwaway cluster and dumps the result; do not hand-edit it.
+`--check` verifies it still matches the migrations, and
+`verify_offline.py --with-schema-reference` runs that check as a gate (both
+need PostgreSQL 17 client tools).
 
 ## Controlled evolution
 
@@ -794,15 +799,19 @@ Prerequisites:
 - optional local `initdb`, `pg_ctl`, and `psql` for database/scale gates; and
 - optional Docker Engine/Compose for image and deployment gates.
 
+The deterministic offline suites run on Linux or macOS. The *deployment*
+path (`bootstrap.sh`, `backup.sh`, `restore.sh`, `update.sh`) targets a
+Linux host, as stated in `docs/RUNBOOK.md` §2.
+
 From the Version 3.0 package root:
 
 ```sh
-python3 scripts/verify_release.py --pristine
+python3 -B scripts/verify_release.py --pristine
 python3 -m venv ../openclaw-v3-dev-venv
 . ../openclaw-v3-dev-venv/bin/activate
 python -m pip install --disable-pip-version-check \
   --require-hashes -r requirements-dev.lock
-python scripts/verify_offline.py
+python -B scripts/verify_offline.py
 deactivate
 ```
 
@@ -866,8 +875,8 @@ With the venv active:
 
 ```sh
 ./scripts/check_env.sh .env
-python scripts/check_customization.py config/customization-profile.json .env
-python scripts/render_channel_config.py .env
+python -B scripts/check_customization.py config/customization-profile.json .env
+python -B scripts/render_channel_config.py .env
 docker compose -f docker-compose.yml \
   -p openclaw-lead-research-v3 --env-file .env config --quiet
 ```
@@ -921,14 +930,17 @@ data in prompts.
 
 ### Private Control UI
 
+The Control UI is served by the **gateway**, which is already running after
+bootstrap; no extra container is needed. Forward the gateway's loopback port to
+your workstation and open it there:
+
 ```sh
-docker compose --profile tools --env-file .env run --rm openclaw-cli \
-  dashboard --no-open
+# Use the OPENCLAW_GATEWAY_PORT from .env (18789 is the shipped default).
 ssh -L 18789:127.0.0.1:18789 <operator>@<host>
 ```
 
-Paste the gateway token into the UI authentication setting. Do not put it in a
-URL or expose the UI publicly.
+Then browse to `http://127.0.0.1:18789`. Paste the gateway token into the UI
+authentication setting. Do not put it in a URL or expose the UI publicly.
 
 ### Chat channel
 
@@ -967,7 +979,7 @@ evidence.
 ### Offline source gate
 
 ```sh
-python scripts/verify_offline.py
+python -B scripts/verify_offline.py
 ```
 
 This runs agent/schema, provider/context, resolution, infrastructure,
@@ -979,7 +991,15 @@ release inventory. It needs no live provider credential.
 ### Disposable PostgreSQL gate
 
 ```sh
-python scripts/verify_offline.py --with-g4-database
+python -B scripts/verify_offline.py --with-g4-database
+```
+
+The same PostgreSQL prerequisite covers the schema-reference gate, which
+re-derives `docs/SCHEMA.sql` from the migrations and fails if the published
+reference has drifted:
+
+```sh
+python -B scripts/verify_offline.py --with-schema-reference
 ```
 
 The runner creates a temporary local cluster, refuses an external database
@@ -991,7 +1011,7 @@ and transaction contracts without touching production.
 ### Reference retrieval scale
 
 ```sh
-python scripts/verify_offline.py \
+python -B scripts/verify_offline.py \
   --with-g4-database --with-retrieval-scale
 ```
 
@@ -1005,7 +1025,7 @@ or data distribution.
 ```sh
 docker build -f Dockerfile.openclaw \
   -t openclaw-lead-research:3.0.0 .
-python scripts/verify_offline.py \
+python -B scripts/verify_offline.py \
   --with-g6-image openclaw-lead-research:3.0.0
 ```
 
@@ -1024,9 +1044,9 @@ as those checks.
 After any package change, regenerate the manifest only after tests pass:
 
 ```sh
-python scripts/build_release_manifest.py
-python scripts/build_release_manifest.py --check
-python scripts/verify_release.py --pristine
+python -B scripts/build_release_manifest.py
+python -B scripts/build_release_manifest.py --check
+python -B scripts/verify_release.py --pristine
 ```
 
 ## Project structure
@@ -1063,7 +1083,7 @@ python scripts/verify_release.py --pristine
 │   └── runtime/                      # Generated effective config; not hand-edited
 ├── migrations/
 │   ├── 000_roles.sh                  # Owner/runtime role reconciliation
-│   └── 001_*.sql ... 016_*.sql       # Immutable forward migrations
+│   └── 001_*.sql ... 017_*.sql       # Immutable forward migrations
 ├── scripts/
 │   ├── bootstrap.sh                  # Install/readiness sequence
 │   ├── check_env.py / check_env.sh   # Non-evaluating fail-closed env validation
@@ -1074,6 +1094,7 @@ python scripts/verify_release.py --pristine
 │   ├── validate_skill_system.py       # Exact skill/agent/router/workflow gate
 │   ├── validate_workflows.py         # Workflow/helper static contract gate
 │   ├── run_g4.py                     # Disposable PostgreSQL integration gate
+│   ├── generate_schema_reference.py  # Regenerates/verifies docs/SCHEMA.sql
 │   ├── run_retrieval_scale.py        # Reference-scale retrieval gate
 │   ├── run_g6_image.py               # Exact-image and schema probe
 │   ├── run_g8_deployment.py          # Live deployment evidence gate
@@ -1094,11 +1115,14 @@ python scripts/verify_release.py --pristine
 │   │       ├── *.md                  # Thesis, trust, evidence, approval policies
 │   │       ├── bin/
 │   │       │   ├── vcops.py          # Typed DB/document/preference helper
-│   │       │   ├── vcops             # Agent read-only launcher
+│   │       │   ├── vcrun.py          # Fixed Lobster selector
+│   │       │   ├── vcrun_control.py  # Operator continuation implementation
 │   │       │   ├── vcops-workflow    # Internal workflow launcher
 │   │       │   ├── vcops-operator    # Host-operator administration
-│   │       │   ├── vcrun.py / vcrun # Fixed Lobster selector
-│   │       │   └── vcrun-control     # Operator-only continuation surface
+│   │       │   ├── vcrun-control     # Operator-only continuation surface
+│   │       │   └── agent/            # The only model-executable prefix
+│   │       │       ├── vcops         # Agent read-only launcher
+│   │       │       └── vcrun         # Agent fixed-workflow launcher
 │   │       └── workflows/            # Eighteen reviewed .lobster workflows
 │   ├── <11-specialist-workspaces>/   # Closed role/tool contracts
 │   ├── shared-skills/                # 26 reusable bounded skills

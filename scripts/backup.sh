@@ -287,11 +287,24 @@ if [ "$GATEWAY_WAS_RUNNING" -eq 1 ] && [ "$LEAVE_QUIESCED" -ne 1 ]; then
   QUIESCED=0
 fi
 
-mv -T -n "$STAGING" "$DESTINATION"
-if [ -d "$STAGING" ]; then
+# Publish the staged recovery point without ever overwriting an existing one.
+# `mv -T -n` is GNU-only and this script otherwise tolerates BSD userland, so
+# prefer a portable no-clobber rename: create the destination atomically with
+# mkdir (which fails if it exists), then move the staged contents into it.
+if [ -e "$DESTINATION" ]; then
+  echo "backup destination already exists; refusing to overwrite it: $DESTINATION" >&2
+  exit 1
+fi
+if ! mkdir "$DESTINATION"; then
   echo "backup destination appeared during publication; refusing to overwrite it" >&2
   exit 1
 fi
+# Dotfiles matter here: the archive carries BACKUP_AUTHENTICATION and friends.
+for staged_entry in "$STAGING"/* "$STAGING"/.[!.]* "$STAGING"/..?*; do
+  [ -e "$staged_entry" ] || continue
+  mv "$staged_entry" "$DESTINATION/"
+done
+rmdir "$STAGING"
 STAGING=""
 if [ "$LEAVE_QUIESCED" -eq 1 ]; then
   echo "Backup written atomically to $DESTINATION; state consumers remain stopped."

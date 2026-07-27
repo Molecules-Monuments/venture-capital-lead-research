@@ -1,0 +1,6 @@
+# The release manifest binds every packaged file by SHA-256. Any line-ending
+# translation on checkout would rewrite those bytes and fail the integrity gate
+# on the cloning host only, so disable Git's text/eol heuristics package-wide:
+# every file is delivered byte-for-byte as it was committed, including on hosts
+# configured with core.autocrlf=true.
+* -text

@@ -12,6 +12,7 @@ import sys
 import tempfile
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from check_env import parse_dotenv, validate_channel_selection
 
@@ -276,6 +277,19 @@ def apply_runtime_selection(config: dict[str, Any], selected_channel: str, env: 
     plugins["allow"] = list(dict.fromkeys(allow))
     plugins["load"] = {"paths": list(dict.fromkeys(paths))}
     plugins["entries"] = entries
+
+    # Agents reason in the operator's timezone, not the packaged default. The
+    # reviewed profile already binds organization.timezone to .env TZ (see
+    # check_customization.py), so without this substitution a non-Berlin fund
+    # passes every validator while its agents keep resolving "today" and the
+    # notification_policy.md delivery window against Europe/Berlin.
+    timezone = env.get("TZ", "").strip()
+    if timezone:
+        try:
+            ZoneInfo(timezone)
+        except (ZoneInfoNotFoundError, ValueError) as exc:
+            raise ValueError(f"TZ must be a valid IANA timezone: {exc}") from exc
+        config.setdefault("agents", {}).setdefault("defaults", {})["userTimezone"] = timezone
 
     # The Control UI browser origin carries the HOST-published port, not the
     # fixed in-container 18789, so the allowed origins must follow the

@@ -28,10 +28,11 @@ Package readiness never fabricates deployment evidence. Keep
 `PRIMARY_CHANNEL=none`, cron disabled, and external production traffic blocked
 until the chosen deployment's applicable commissioning items pass.
 Install the complete hash-locked `requirements-dev.lock` into a disposable
-virtual environment, then run `python3 scripts/verify_offline.py` as the single
+virtual environment, then run `python3 -B scripts/verify_offline.py` as the single
 deterministic entry point. The complete package-release proof adds
-`--with-g4-database`, `--with-retrieval-scale`, and `--with-g6-image
-<built-image>` when local PostgreSQL and Docker are available. Live deployment
+`--with-g4-database`, `--with-schema-reference`, `--with-retrieval-scale`, and
+`--with-g6-image <built-image>` when local PostgreSQL 17 and Docker are
+available. Live deployment
 evidence (G8) is collected separately with `--with-deployment` against a
 commissioned environment, as `PRODUCTION_READINESS.md` specifies; offline runs
 never substitute for it.
@@ -58,6 +59,11 @@ Use a dedicated Linux host inside one organizational trust boundary. Require:
   research endpoints, and only the selected channel provider;
 - loopback or private access to the gateway; a hardened TLS reverse proxy that
   exposes only `/api/messages` if Teams is selected; and
+- a POSIX shell plus host `python3` **3.9 or newer** — every lifecycle script
+  (`bootstrap.sh`, `update.sh`, `backup.sh`, `restore.sh`,
+  `rotate_runtime_role.sh`, `migrate.sh`) shells out to it, and
+  `check_customization.py` imports `zoneinfo`, which is 3.9+;
+- `openssl`, used to generate the six deployment secrets; and
 - a non-root deployment operator with exclusive control of the package and
   `.env`.
 
@@ -95,7 +101,7 @@ Validate and render:
 
 ```sh
 ./scripts/check_env.sh .env
-python3 scripts/render_channel_config.py .env
+python3 -B scripts/render_channel_config.py .env
 docker compose -f docker-compose.yml -p openclaw-lead-research-v3 --env-file .env config --quiet
 ```
 
@@ -118,12 +124,17 @@ Before deployment, verify the package's internal inventory against its embedded
 `manifest.json`:
 
 ```sh
-python3 scripts/verify_release.py --pristine
+python3 -B scripts/verify_release.py --pristine
 ```
 
 `--pristine` rejects undeclared caches, editor/OS debris, symlinks, and special
-files as well as changed declared files. After `.env`, the rendered runtime
-config, or `deployment-lock.json` exists, rerun without `--pristine`. This is a
+files as well as changed declared files. It stays correct after installation and
+during normal operation, so prefer it always: `.env`, the rendered runtime config
+under `config/runtime/`, and `deployment-lock.json` are on the verifier's
+allowed-runtime list, and operator payload inside `./inbox` and `./quarantine` is
+tolerated because those are working directories rather than package content. A
+*symlink* in either of those directories is still reported — the gateway would
+follow it out of the intended tree. This is a
 self-consistency check, not an external authenticity root: first verify the
 trusted distribution signature or out-of-band package digest. A mismatch means
 the directory is not internally consistent with its embedded inventory. It is
@@ -159,7 +170,7 @@ required. Retain the complete command transcript; to re-affirm or re-print the
 recorded lock independently you may re-run the same recorder:
 
 ```sh
-python3 scripts/record_images.py
+python3 -B scripts/record_images.py
 ```
 
 Do not proceed if the image build, package-version assertion, database password
@@ -265,8 +276,14 @@ counts. Secrets and approval tokens must never appear in evidence.
   Flow/Lobster state, read-only inbox originals, inbound document snapshots,
   and the named quarantine volume while
   excluding `.env`, generated runtime config, exec approvals, and secrets.
-- On the isolated target, verify the exact package, prepare a valid inert `.env`,
-  and run `./scripts/bootstrap.sh` so the derived CLI image, healthy Postgres,
+- On the isolated target, verify the exact package and prepare a valid inert
+  `.env`. That `.env` **must carry the same `BACKUP_HMAC_KEY` that was in force
+  when the backup was written** — `restore.sh` authenticates the checksum
+  manifest with it and aborts with "backup authenticity verification failed"
+  otherwise. A fresh key on the recovery host makes every existing recovery
+  point unrestorable, so treat the key as part of the recovery point and store
+  it independently of the archives. Then run `./scripts/bootstrap.sh` so the
+  derived CLI image, healthy Postgres,
   initialized volumes, and local `deployment-lock.json` exist. Then restore the
   matching backup from a canonical path outside the package inbox with
   `./scripts/restore.sh <directory> --confirm-destructive-restore`.
@@ -285,7 +302,12 @@ counts. Secrets and approval tokens must never appear in evidence.
 - Rotate the gateway token, database owner/runtime credentials, approval pepper,
   trusted-context HMAC key, backup HMAC key, and selected channel/model/search
   credentials; prove old credentials fail and new credentials work without
-  duplicate consumers.
+  duplicate consumers. The two database credentials rotate together through
+  `./scripts/rotate_runtime_role.sh` (never by editing `.env` alone). The other
+  secrets need a re-render and a force-recreate, not a restart — see
+  `docs/OPERATIONS.md` "Secrets" for the exact sequence. Rotating
+  `VCOPS_APPROVAL_PEPPER` invalidates every approval still `pending`; re-issue
+  them afterwards.
 
 ### 5.5 Channel
 
@@ -321,8 +343,8 @@ Then rerun:
 
 ```sh
 ./scripts/check_env.sh .env
-python3 scripts/check_customization.py config/customization-profile.json .env
-python3 scripts/render_channel_config.py .env
+python3 -B scripts/check_customization.py config/customization-profile.json .env
+python3 -B scripts/render_channel_config.py .env
 docker compose -f docker-compose.yml -p openclaw-lead-research-v3 --env-file .env config --quiet
 docker compose -f docker-compose.yml -p openclaw-lead-research-v3 --env-file .env up -d --wait --force-recreate openclaw-gateway
 ```
@@ -415,7 +437,7 @@ For an accepted pending proposal:
 5. Run the official `skill-creator` `quick_validate.py` against the new skill
    (an external upstream tool, not shipped in this package — obtain it from
    the reviewed skill-creator distribution), then run
-   `python3 scripts/validate_skill_system.py` and the complete locked
+   `python3 -B scripts/validate_skill_system.py` and the complete locked
    virtual-environment gate.
 6. Rebuild the image, run disposable Postgres, retrieval-scale when affected,
    and exact-image gates, then regenerate and verify the release manifest.
@@ -467,7 +489,10 @@ record. Autonomous transcript review remains disabled.
   `cron.enabled: true`. (2) Because that file is a hash-pinned reviewed
   artifact, record the edit in `config/customization-profile.json` — update its
   `review.reviewed_artifacts` SHA-256 for `config/openclaw.json` and the change
-  record — or the next lifecycle validation fails closed. (3) Re-run
+  record — or the next lifecycle validation fails closed. `config/openclaw.json`
+  is *also* declared in `manifest.json`, so regenerate that too
+  (`python3 -B scripts/build_release_manifest.py`) or
+  `verify_release.py` reports a permanent `hash mismatch` for it. (3) Re-run
   `./scripts/bootstrap.sh` so the edit actually reaches the gateway: the
   gateway reads the rendered volume copy at
   `/home/node/.openclaw-config/openclaw.json`, never the host file, so a bare

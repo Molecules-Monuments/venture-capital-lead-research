@@ -24,12 +24,12 @@ Every gate below was executed after those changes:
 
 | Surface | Result | Command |
 | --- | ---: | --- |
-| Offline verification (all suites, ruff, shell syntax, fixed workflows, skill system, manifest currency, pristine) | **PASS — 190 tests, 24/24 checks** | `python3 scripts/verify_offline.py` |
-| Disposable Postgres hard gate | **PASS — 80/80** across seven suites, migrations 001–016 applied twice | `python3 scripts/run_g4.py` |
-| Exact-image gate against the image rebuilt from this tree | **PASS — 8/8** (provenance, workshop guard, all five channel schemas, unknown-field fail-closed) | `python3 scripts/run_g6_image.py --image openclaw-lead-research:3.0.0` |
-| Real deployment gate (bootstrap → negative-auth proof → live fixed workflows → teardown) | **PASS** | `python3 scripts/run_g8_deployment.py` |
-| Reference retrieval scale (100k companies / 1m facts) | PASS, all frozen thresholds met | `python3 scripts/run_retrieval_scale.py` |
-| Pristine release inventory | PASS — 328/328 | `python3 scripts/verify_release.py --pristine` |
+| Offline verification (all suites, ruff, shell syntax, fixed workflows, skill system, manifest currency, pristine) | **PASS — 190 tests, 24/24 checks** | `python3 -B scripts/verify_offline.py` |
+| Disposable Postgres hard gate | **PASS — 80/80** across seven suites, migrations 001–017 applied twice | `python3 -B scripts/run_g4.py` |
+| Exact-image gate against the image rebuilt from this tree | **PASS — 8/8** (provenance, workshop guard, all five channel schemas, unknown-field fail-closed) | `python3 -B scripts/run_g6_image.py --image openclaw-lead-research:3.0.0` |
+| Real deployment gate (bootstrap → negative-auth proof → live fixed workflows → teardown) | **PASS** | `python3 -B scripts/run_g8_deployment.py` |
+| Reference retrieval scale (100k companies / 1m facts) | PASS, all frozen thresholds met | `python3 -B scripts/run_retrieval_scale.py` |
+| Pristine release inventory | PASS — `verified_files` == `declared_files`, 0 errors | `python3 -B scripts/verify_release.py --pristine` |
 
 The DB-layer boundaries are proven at the SQL level by G4 tests that call the
 database directly as the runtime role: a cross-lead erasure attempt with a
@@ -51,22 +51,22 @@ not package passes.
 
 | Surface | Result | Reproducible command |
 | --- | ---: | --- |
-| Agent schemas/contracts | 40/40 | `python3 -m unittest discover -s tests/contracts -p 'test*.py' -v` |
-| Version 3 providers/context/orchestration/customization/skill system | 45/45 | `python3 -m unittest discover -s tests/v3 -p 'test*.py' -v` |
-| Exact skill/agent/router/workflow inventory | 26 skills, 12 agents, **18 workflows**, 0 findings | `python3 scripts/validate_skill_system.py` |
-| Retrieval policy contracts | 7/7 | `python3 -m unittest discover -s tests/retrieval -p 'test*.py' -v` |
-| Infrastructure contracts | 19/19 | `python3 -m unittest discover -s tests/infrastructure -p 'test*.py' -v` |
-| G6 image/channel contract (offline) | 4/4 | `python3 -m unittest discover -s tests/g6 -p 'test*.py' -v` |
-| Fixed workflow/runner boundary | 32/32 | `python3 -m unittest discover -s tests/g5 -p 'test*.py' -v` |
-| Recovery/release lifecycle | 24/24 | `python3 -m unittest discover -s tests/g7 -p 'test*.py' -v` |
-| Scoring/helper semantics | 6/6 | `VCOPS_HELPER=workspaces/vc-chief/vc/bin/vcops.py python3 -m unittest discover -s tests/g4 -p 'test_semantics.py' -v` |
-| Document security | 13/13 | `VCOPS_HELPER=workspaces/vc-chief/vc/bin/vcops.py python3 -m unittest discover -s tests/g4 -p 'test_document_security.py' -v` |
-| Data/helper/Postgres hard gate | **80/80** | `python3 scripts/run_g4.py` |
-| Real deployment gate | PASS | `python3 scripts/run_g8_deployment.py` (or `verify_offline.py --with-deployment`) |
+| Agent schemas/contracts | 40/40 | `python3 -B -m unittest discover -s tests/contracts -p 'test*.py' -v` |
+| Version 3 providers/context/orchestration/customization/skill system | 45/45 | `python3 -B -m unittest discover -s tests/v3 -p 'test*.py' -v` |
+| Exact skill/agent/router/workflow inventory | 26 skills, 12 agents, **18 workflows**, 0 findings | `python3 -B scripts/validate_skill_system.py` |
+| Retrieval policy contracts | 7/7 | `python3 -B -m unittest discover -s tests/retrieval -p 'test*.py' -v` |
+| Infrastructure contracts | 19/19 | `python3 -B -m unittest discover -s tests/infrastructure -p 'test*.py' -v` |
+| G6 image/channel contract (offline) | 4/4 | `python3 -B -m unittest discover -s tests/g6 -p 'test*.py' -v` |
+| Fixed workflow/runner boundary | 32/32 | `python3 -B -m unittest discover -s tests/g5 -p 'test*.py' -v` |
+| Recovery/release lifecycle | 24/24 | `python3 -B -m unittest discover -s tests/g7 -p 'test*.py' -v` |
+| Scoring/helper semantics | 6/6 | `VCOPS_HELPER=workspaces/vc-chief/vc/bin/vcops.py python3 -B -m unittest discover -s tests/g4 -p 'test_semantics.py' -v` |
+| Document security | 13/13 | `VCOPS_HELPER=workspaces/vc-chief/vc/bin/vcops.py python3 -B -m unittest discover -s tests/g4 -p 'test_document_security.py' -v` |
+| Data/helper/Postgres hard gate | **80/80** | `python3 -B scripts/run_g4.py` |
+| Real deployment gate | PASS | `python3 -B scripts/run_g8_deployment.py` (or `verify_offline.py --with-deployment`) |
 
 The aggregate deterministic offline suites pass 190 tests with no failures or
 skips (24/24 offline checks). The G4 runner created a disposable PostgreSQL 17
-cluster, applied and registered migrations **001–016** twice, and — in addition
+cluster, applied and registered migrations **001–017** twice, and — in addition
 to the prior trusted-context/preference/idempotency/approval/document coverage —
 now executes the **real `.lobster` workflow files end-to-end** against the live
 database (`test_workflow_execution.py`, including `evaluate-lead`'s approved and

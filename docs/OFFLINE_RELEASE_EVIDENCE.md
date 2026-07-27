@@ -32,11 +32,13 @@ or recovery drill is represented as live-tested.
 | G7 | PASS | 11/11 aggregate inventory, syntax, manifest, security, inert-render, workflow, infrastructure, and recovery checks |
 | G8 | NOT RUN | Exact host/runtime, credentials, model/provider, selected live channel, persistence, and clean-target restore |
 
-The source QA JSON is retained outside this deployable directory under
-`Version_2/qa/`. `manifest.json` binds the reviewed files and modes in this
-directory for self-consistency. It is not an external authenticity root; first
-verify the package through the trusted distribution channel's signature or
-checksum.
+The source QA JSON is retained outside this deployable directory in the
+derivation archive (`_internal/`, excluded from the published package).
+`manifest.json` binds the reviewed files in this directory by SHA-256, size,
+and executable bit for self-consistency; other permission bits are deliberately
+not part of the contract because Git does not carry them. It is not an external
+authenticity root; first verify the package through the trusted distribution
+channel's signature or checksum.
 
 ## Final adversarial closure
 

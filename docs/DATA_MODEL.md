@@ -161,7 +161,7 @@ An actual contradiction requires incompatible assertions about the same entity a
 
 ## Evaluation and memo lineage
 
-`evaluations` binds a score to one compiled-truth snapshot, evidence hash, rubric version, and workflow run. The fixed denominator is always 100; no weight redistribution is permitted. Scores are database-bounded and recommendation intervals are exact:
+`evaluations` binds a score to one compiled-truth snapshot, evidence hash, rubric version, and workflow run. The fixed denominator is always 100; no weight redistribution is permitted. Scores are database-bounded and the score-to-band intervals are:
 
 | Total score | Recommendation |
 |---:|---|
@@ -169,6 +169,14 @@ An actual contradiction requires incompatible assertions about the same entity a
 | `[50, 66)` | `watch` |
 | `[66, 82)` | `research_deeper` |
 | `[82, 100]` | `high_priority` |
+
+Two bands sit outside that mapping and are valid at **any** score, because they
+record that the score is not decision-usable rather than what it was:
+`insufficient_evidence` and `needs_human_review`. There is also one deliberate
+override — a `[82, 100]` evaluation may be stored as `research_deeper` when
+`scoring_details ->> 'override' = 'high_priority_prerequisites_missing'`.
+`evaluations_score_band_check` (migration `007`) is the authority; an
+integration reading this table must handle all six band values, not four.
 
 `evaluation_criteria` stores each criterion's 0–5 score, fixed point weight, weighted points, evidence IDs, and rationale. A missing criterion is constrained to zero score and zero weighted points. Application validation must also prove criterion weights sum to 100 and stored weighted points sum to `total_score` before an evaluation becomes final.
 
@@ -284,6 +292,25 @@ Preference writes/forgets require a direct-message capability. Explicit
 supported values activate with one distinct event; inferred values require
 three distinct events after the latest forget marker. Preference state cannot
 act as evidence, permission, identity, scoring input, or approval.
+
+## Entity resolution, aliases, and the source watchlist
+
+Seven tables carry concepts described elsewhere in this document and in the
+README but not previously named here. They complete the 42-table inventory:
+
+| Table | Role |
+|---|---|
+| `company_aliases` | Alternate names for one company (trading names, former names, transliterations). Feeds trigram-indexed fuzzy matching. |
+| `company_domains` | Registrable domains bound to one company. The primary exact-match key during resolution, and the basis for the content-addressed web-independence rule. |
+| `entity_resolution_runs` | One resolution attempt: its input, threshold configuration, and outcome summary. |
+| `entity_resolution_decisions` | Per-candidate scoring within a run, so a match can be re-read and audited rather than re-derived. |
+| `entity_resolution_consumptions` | Binds a resolution decision to the workflow run that consumed it, so a downstream write can be traced to the exact match that justified it. |
+| `memo_citations` | The claim-to-evidence edges of one memo. Append-only, and lineage-guarded so a memo cannot cite outside its frozen evidence snapshot. |
+| `signal_sources` | The operator-governed source watchlist driving `source-watch`/`source-scan`, including cadence, trust level, confidentiality, and last-scan state. |
+
+`memo_citations`, like the other history tables, is append-only. `signal_sources`
+is confidentiality-gated: model lanes are capped at the `internal` ceiling and
+cannot re-enable, reclassify, or re-own an entry an operator has disabled.
 
 ## Audit and retention
 

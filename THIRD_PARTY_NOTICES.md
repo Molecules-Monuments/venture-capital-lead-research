@@ -36,7 +36,14 @@ original project material covered by this repository's 0BSD license.
 
 The runtime can be configured to call OpenAI, Ollama, a reviewed custom model
 endpoint, DuckDuckGo search, Firecrawl, Tavily, Slack, Microsoft Teams, Discord,
-or Telegram. These integrations are optional and are not sublicensed by this
+or Telegram. `config/connectors.example.json` additionally ships pre-wired
+entries for the **Crunchbase**, **PitchBook**, and **Dealroom** research
+connectors, each with a credential slot in `.env.example` and a pass-through in
+`docker-compose.yml`; they are disabled until an operator enables them. These
+three are commercial data vendors whose licences typically restrict
+redistribution, derived datasets, and retention of the records they return —
+review the contract before enabling one, because the terms bind what this
+system may persist in `facts` and `evidence_artifacts`. These integrations are optional and are not sublicensed by this
 repository. Their software, hosted APIs, content, names, quotas, privacy terms,
 acceptable-use rules, and commercial terms remain governed by the applicable
 provider. Operators must review those terms and the treatment of prompts,

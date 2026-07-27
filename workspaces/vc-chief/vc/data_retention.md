@@ -44,3 +44,19 @@ tests pass (see the banner above):
   are retracted and the lead archived, never raw-DELETEd — preserving the minimum
   lawful audit record (`audit_events` kind `data.erasure`). Subject-erasure and
   legal-hold-expiry requests run through this path.
+
+  **What the operation does and does not remove.** Since migration 017 the
+  retraction tombstone is written with NULL value columns and
+  `value_kind='unknown'`, so the operation no longer duplicates the subject's
+  values into a second row. The **superseded original rows remain**: `facts` is
+  append-only by trigger and no role may UPDATE or DELETE it, so the pre-erasure
+  values stay in the table until an owner-run out-of-band procedure removes
+  them. The function touches `facts`, `leads`, and `audit_events` only. These
+  tables are **not** covered and are operator-run steps:
+  `compiled_truth.fact_history`, `memos` (including `content_uri` and the
+  rendered memo body), `memo_citations`, `lead_artifacts`,
+  `evidence_artifacts`, and `document_extractions`. Treat
+  `vcops data-erase-lead` as the audited entry point to an erasure procedure,
+  not as a complete right-to-erasure executor; a deployment with a statutory
+  erasure obligation must document and rehearse the out-of-band steps before
+  it relies on this path.

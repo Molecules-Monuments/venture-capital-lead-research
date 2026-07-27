@@ -18,7 +18,7 @@ volumes (`OPENCLAW_RUNTIME_CONFIG_VOLUME` and `VC_QUARANTINE_VOLUME`).
 2. Copy `.env.example` to `.env`, populate the required values, and set mode
    `0600`. Generate a dedicated 64-hex-character `BACKUP_HMAC_KEY`; never reuse
    it, store it in a recovery point, or discard a key while its backups remain.
-3. Run `scripts/check_env.sh`, then `python3 scripts/check_customization.py
+3. Run `scripts/check_env.sh`, then `python3 -B scripts/check_customization.py
    config/customization-profile.json .env`; the publication example must fail
    closed and every reviewed runtime value must match the deployment
    environment. Unknown
@@ -52,11 +52,11 @@ Compose applies explicit CPU, memory, PID, tmpfs, and local json-file rotation
 bounds. Treat their `.env` values as capacity gates: load-test before raising
 them and investigate OOM/restart evidence rather than disabling the bounds.
 
-Bootstrap and every update take the package-wide lifecycle lock and run `scripts/rotate_runtime_role.sh`. The script takes its database-rotation lock, copies `.env` once into a mode-`0600` private snapshot, stops all declared database-secret consumers, and force-recreates Postgres so its environment-sourced secrets are current. It temporarily sets the runtime role to `NOLOGIN`, evicts existing owner/runtime sessions, changes both credentials through `psql`'s protected `\password` path, removes role memberships in both directions, resets role settings, and reasserts `NOSUPERUSER`, `NOCREATEDB`, `NOCREATEROLE`, `NOINHERIT`, `NOREPLICATION`, and `NOBYPASSRLS` before restoring login.
+Bootstrap and every update take the package-wide lifecycle lock and run `scripts/rotate_runtime_role.sh`. The script takes its database-rotation lock, copies `.env` once into a mode-`0600` private snapshot, stops all declared database-secret consumers, and force-recreates Postgres so its file-backed Compose secrets are re-read. It temporarily sets the runtime role to `NOLOGIN`, evicts existing owner/runtime sessions, changes both credentials through `psql`'s protected `\password` path, removes role memberships in both directions, resets role settings, and reasserts `NOSUPERUSER`, `NOCREATEDB`, `NOCREATEROLE`, `NOINHERIT`, `NOREPLICATION`, and `NOBYPASSRLS` before restoring login.
 
 The reconciler proves both new credentials over TCP and proves that an invalid password is rejected, then force-recreates the gateway and stopped CLI container. Final `vcops db-check` probes run from both consumer images. Any failure after rotation starts stops the gateway and CLI. Changing either database password without this complete reconciliation is not a valid rotation. Do not run long-lived Compose one-offs or independent backend clients during this maintenance operation; runtime sessions are deliberately terminated. If a host crash leaves `/tmp/openclaw-lead-research-v3-rotation.lock`, confirm that no rotation process is active before removing the stale lock and retrying.
 
-Both database passwords must be independent 24-128 character base64url-safe values (`A-Z`, `a-z`, `0-9`, `_`, `-`); this keeps Compose, `psql`, passfiles, and recovery handling unambiguous. This package requires Docker Compose, not `docker stack deploy`: its environment-backed secret sources are Compose-only. `docker compose -f docker-compose.yml -p openclaw-lead-research-v3 --env-file .env config --quiet` is a mandatory compatibility preflight and the lifecycle commands require support for `up --wait`, `--force-recreate`, `--no-deps`, `--no-start`, `run --rm`, and GNU `mv -T -n` on the Linux host.
+Both database passwords must be independent 24-128 character base64url-safe values (`A-Z`, `a-z`, `0-9`, `_`, `-`); this keeps Compose, `psql`, passfiles, and recovery handling unambiguous. This package requires Docker Compose, not `docker stack deploy`: its file-backed secret sources are Compose-only. `docker compose -f docker-compose.yml -p openclaw-lead-research-v3 --env-file .env config --quiet` is a mandatory compatibility preflight and the lifecycle commands require support for `up --wait`, `--force-recreate`, `--no-deps`, `--no-start`, `run --rm`, and GNU `mv -T -n` on the Linux host.
 
 Backup, restore, update, bootstrap, and direct role rotation share `/tmp/openclaw-lead-research-v3-lifecycle.lock`. Nested update/bootstrap operations pass a private owner token that is checked against the mode-`0700` lock directory; setting a boolean environment flag cannot bypass the lock. If a host crash leaves the directory, confirm no lifecycle process is active before removing it. Every script pins both the absolute Compose file and project name, so invoking it from a different current directory cannot select another stack.
 
@@ -106,8 +106,24 @@ For an image-only rollback, restore the previously reviewed image reference and 
 
 Keep `.env` outside version control and restrict it to the deployment operator.
 Rotate gateway, model/search, trusted-context, provider, and channel secrets
-after suspected exposure. A trusted-context rotation invalidates outstanding
-capabilities; restart the gateway and prove a new document/preference operation.
+after suspected exposure.
+
+Editing `.env` is not enough, and `docker compose restart` re-reads nothing:
+`OPENCLAW_GATEWAY_TOKEN` is baked into the service environment at container
+creation, and the four files under `config/runtime/secrets/` are only rewritten
+by a lifecycle render. The complete sequence for the non-database secrets is:
+
+```sh
+./scripts/check_env.sh .env
+python3 -B scripts/render_channel_config.py .env
+docker compose -f docker-compose.yml -p openclaw-lead-research-v3 \
+  --env-file .env up -d --force-recreate
+```
+
+A trusted-context rotation invalidates outstanding capabilities; after the
+force-recreate, prove a new document/preference operation. Note that rotating
+`VCOPS_APPROVAL_PEPPER` also invalidates every `status='pending'` approval —
+issue those again after rotation.
 Rotate both database values together through `scripts/rotate_runtime_role.sh`.
 The Teams profile withholds Graph permissions, `sharePointSiteId`, delegated
 auth, and SSO. All profiles disable config writes, chat exec approvals,

@@ -3,9 +3,9 @@
 --
 -- This file is NOT a migration and is applied by nothing: migrate.sh only reads
 -- migrations/NNN_*.sql, and this file lives under docs/. It is a schema-only
--- snapshot of the database after migrations/000_roles.sh (roles) and the sixteen
--- forward migrations 001-016 are applied in order, provided as a single-file view
--- so the whole schema can be read and audited in one place.
+-- snapshot of the database after migrations/000_roles.sh (roles) and the
+-- seventeen forward migrations 001-017 are applied in order, provided as a
+-- single-file view so the whole schema can be read and audited in one place.
 --
 -- The authoritative, reviewed source of the schema is the migrations/ directory.
 -- This snapshot is generated from it and can lag if the migrations change; it is
@@ -16,18 +16,22 @@
 -- openclaw_runtime (see migrations/000_roles.sh and docs/DATA_MODEL.md); the
 -- GRANT/REVOKE statements below show that runtime privilege model.
 --
--- Regenerate (from the package dir, with local PostgreSQL client tools):
---   the run_g4.py disposable-Postgres harness applies the full migration set to a
---   throwaway cluster; pg_dump --schema-only --no-owner that database into here.
+-- GENERATED FILE — do not hand-edit. Regenerate from the package directory with
+-- PostgreSQL 17 client tools on PATH:
+--   python3 -B scripts/generate_schema_reference.py
+-- Verify without rewriting:
+--   python3 -B scripts/generate_schema_reference.py --check
 --
-
 --
 -- PostgreSQL database dump
 --
 
+
+
 SET statement_timeout = 0;
 SET lock_timeout = 0;
 SET idle_in_transaction_session_timeout = 0;
+SET transaction_timeout = 0;
 SET client_encoding = 'UTF8';
 SET standard_conforming_strings = on;
 SELECT pg_catalog.set_config('search_path', '', false);
@@ -42,11 +46,13 @@ SET row_security = off;
 
 CREATE EXTENSION IF NOT EXISTS pg_trgm WITH SCHEMA public;
 
+
 --
 -- Name: EXTENSION pg_trgm; Type: COMMENT; Schema: -; Owner: -
 --
 
 COMMENT ON EXTENSION pg_trgm IS 'text similarity measurement and index searching based on trigrams';
+
 
 SET default_tablespace = '';
 
@@ -113,6 +119,7 @@ CREATE TABLE public.notification_outbox (
     CONSTRAINT notification_outbox_urgent_category_check CHECK (((urgent_category IS NULL) OR (urgent_category = ANY (ARRAY['security_incident'::text, 'data_exposure'::text, 'production_blocker'::text, 'partner_review_blocker'::text, 'approval_expiring'::text]))))
 );
 
+
 --
 -- Name: cancel_notification(bigint, text); Type: FUNCTION; Schema: public; Owner: -
 --
@@ -146,6 +153,7 @@ BEGIN
   RETURN NEXT changed;
 END;
 $$;
+
 
 --
 -- Name: claim_notification(text, integer); Type: FUNCTION; Schema: public; Owner: -
@@ -231,6 +239,7 @@ BEGIN
 END;
 $$;
 
+
 --
 -- Name: approvals; Type: TABLE; Schema: public; Owner: -
 --
@@ -282,6 +291,7 @@ CREATE TABLE public.approvals (
     CONSTRAINT approvals_target_system_check CHECK ((btrim(target_system) <> ''::text)),
     CONSTRAINT approvals_token_hash_check CHECK ((token_hash ~ '^[0-9a-f]{64}$'::text))
 );
+
 
 --
 -- Name: consume_approval(text, text, text, text, text, text, text); Type: FUNCTION; Schema: public; Owner: -
@@ -336,6 +346,7 @@ BEGIN
 END;
 $$;
 
+
 --
 -- Name: consume_approval_and_erase_lead(bigint, text, text, text, text, text, text, text); Type: FUNCTION; Schema: public; Owner: -
 --
@@ -384,6 +395,15 @@ BEGIN
   -- excluded is 'retracted' itself (already a tombstone), so contradicted,
   -- stale, and unknown facts are retracted too. Append-only preserved; nothing
   -- is deleted.
+  --
+  -- The tombstone carries NO value payload. value_kind is forced to 'unknown'
+  -- (the one kind facts_check3 permits with all five value columns NULL), and
+  -- original_value and claim_hash are dropped as well: original_value is the
+  -- raw pre-normalization string, and claim_hash is a digest OF the claim, so
+  -- a low-entropy claim could otherwise be recovered from the tombstone by
+  -- brute force. The structural columns (fact_type, definition, period, unit)
+  -- are kept because they carry the audit record of WHAT was retracted, which
+  -- is the lawful minimum this operation exists to preserve.
   WITH current_facts AS (
     SELECT f.* FROM facts f
     WHERE f.lead_id = p_lead_id
@@ -399,11 +419,15 @@ BEGIN
     )
     SELECT
       company_id, lead_id, NULL, fact_type, definition, definition_version,
-      value_kind, original_value, value_text, value_numeric, value_boolean, value_date,
-      value_json, unit, currency_code, period_start, period_end, period_granularity,
+      'unknown', NULL, NULL, NULL, NULL, NULL,
+      NULL, unit, currency_code, period_start, period_end, period_granularity,
       cohort, measurement_basis, 'retracted', confidence, observed_at, source_date,
       valid_from, valid_to, id, version + 1, p_actor_id,
-      jsonb_build_object('erased', true, 'governed_transaction_id', p_governed_transaction_id), claim_hash
+      jsonb_build_object(
+        'erased', true,
+        'governed_transaction_id', p_governed_transaction_id,
+        'erased_value_kind', value_kind
+      ), NULL
     FROM current_facts
     RETURNING 1
   )
@@ -424,6 +448,7 @@ BEGIN
   RETURN jsonb_build_object('lead_id', p_lead_id, 'retracted_facts', retracted, 'lead_status', 'archived');
 END;
 $$;
+
 
 --
 -- Name: decide_approval(text, text, text, text, text, text); Type: FUNCTION; Schema: public; Owner: -
@@ -482,6 +507,7 @@ BEGIN
 END;
 $$;
 
+
 --
 -- Name: proposals; Type: TABLE; Schema: public; Owner: -
 --
@@ -510,6 +536,7 @@ CREATE TABLE public.proposals (
     CONSTRAINT proposals_summary_check CHECK ((btrim(summary) <> ''::text)),
     CONSTRAINT proposals_title_check CHECK ((btrim(title) <> ''::text))
 );
+
 
 --
 -- Name: decide_proposal(bigint, text, text, text, text); Type: FUNCTION; Schema: public; Owner: -
@@ -560,6 +587,7 @@ BEGIN
   RETURN NEXT changed;
 END;
 $$;
+
 
 --
 -- Name: finish_notification_attempt(bigint, text, text, text, text, text, text, text, integer); Type: FUNCTION; Schema: public; Owner: -
@@ -652,6 +680,7 @@ BEGIN
 END;
 $$;
 
+
 --
 -- Name: guard_approval_transition(); Type: FUNCTION; Schema: public; Owner: -
 --
@@ -705,6 +734,7 @@ BEGIN
 END;
 $$;
 
+
 --
 -- Name: guard_compiled_truth_fact(); Type: FUNCTION; Schema: public; Owner: -
 --
@@ -740,6 +770,7 @@ BEGIN
 END;
 $$;
 
+
 --
 -- Name: guard_compiled_truth_lineage(); Type: FUNCTION; Schema: public; Owner: -
 --
@@ -765,6 +796,7 @@ BEGIN
   RETURN NEW;
 END;
 $$;
+
 
 --
 -- Name: guard_document_workflow_request(); Type: FUNCTION; Schema: public; Owner: -
@@ -811,6 +843,7 @@ BEGIN
 END;
 $$;
 
+
 --
 -- Name: guard_document_workflow_versions(); Type: FUNCTION; Schema: public; Owner: -
 --
@@ -851,6 +884,7 @@ BEGIN
 END;
 $$;
 
+
 --
 -- Name: guard_evaluation_lineage(); Type: FUNCTION; Schema: public; Owner: -
 --
@@ -886,6 +920,7 @@ BEGIN
 END;
 $$;
 
+
 --
 -- Name: guard_fact_lineage(); Type: FUNCTION; Schema: public; Owner: -
 --
@@ -914,6 +949,7 @@ BEGIN
   RETURN NEW;
 END;
 $$;
+
 
 --
 -- Name: guard_initial_notification(); Type: FUNCTION; Schema: public; Owner: -
@@ -945,6 +981,7 @@ BEGIN
 END;
 $$;
 
+
 --
 -- Name: guard_initial_workflow_run(); Type: FUNCTION; Schema: public; Owner: -
 --
@@ -965,6 +1002,7 @@ BEGIN
   RETURN NEW;
 END;
 $$;
+
 
 --
 -- Name: guard_memo_citation_lineage(); Type: FUNCTION; Schema: public; Owner: -
@@ -989,6 +1027,7 @@ BEGIN
   RETURN NEW;
 END;
 $$;
+
 
 --
 -- Name: guard_memo_lineage(); Type: FUNCTION; Schema: public; Owner: -
@@ -1024,6 +1063,7 @@ BEGIN
 END;
 $$;
 
+
 --
 -- Name: guard_orchestration_audit_lineage(); Type: FUNCTION; Schema: public; Owner: -
 --
@@ -1043,6 +1083,7 @@ BEGIN
   RETURN NEW;
 END;
 $$;
+
 
 --
 -- Name: guard_proposal_decision(); Type: FUNCTION; Schema: public; Owner: -
@@ -1084,6 +1125,7 @@ BEGIN
 END;
 $$;
 
+
 --
 -- Name: guard_workflow_lineage(); Type: FUNCTION; Schema: public; Owner: -
 --
@@ -1107,6 +1149,7 @@ BEGIN
 END;
 $$;
 
+
 --
 -- Name: guard_workflow_run_identity(); Type: FUNCTION; Schema: public; Owner: -
 --
@@ -1126,6 +1169,7 @@ BEGIN
   RETURN NEW;
 END;
 $$;
+
 
 --
 -- Name: guard_workflow_run_transition(); Type: FUNCTION; Schema: public; Owner: -
@@ -1187,6 +1231,7 @@ BEGIN
 END;
 $$;
 
+
 --
 -- Name: prevent_audit_mutation(); Type: FUNCTION; Schema: public; Owner: -
 --
@@ -1198,6 +1243,7 @@ BEGIN
   RAISE EXCEPTION 'audit_events is append-only' USING ERRCODE = '55000';
 END;
 $$;
+
 
 --
 -- Name: prevent_domain_history_mutation(); Type: FUNCTION; Schema: public; Owner: -
@@ -1212,6 +1258,7 @@ BEGIN
 END;
 $$;
 
+
 --
 -- Name: prevent_migration_record_mutation(); Type: FUNCTION; Schema: public; Owner: -
 --
@@ -1224,6 +1271,7 @@ BEGIN
     USING ERRCODE = '55000';
 END;
 $$;
+
 
 --
 -- Name: facts; Type: TABLE; Schema: public; Owner: -
@@ -1279,6 +1327,7 @@ CREATE TABLE public.facts (
     CONSTRAINT facts_value_kind_check CHECK ((value_kind = ANY (ARRAY['text'::text, 'numeric'::text, 'boolean'::text, 'date'::text, 'json'::text, 'unknown'::text]))),
     CONSTRAINT facts_version_check CHECK ((version > 0))
 );
+
 
 --
 -- Name: promote_submitted_claim(bigint, text); Type: FUNCTION; Schema: public; Owner: -
@@ -1404,6 +1453,7 @@ BEGIN
 END;
 $$;
 
+
 --
 -- Name: register_schema_migration(text, text, text); Type: FUNCTION; Schema: public; Owner: -
 --
@@ -1439,6 +1489,7 @@ BEGIN
   VALUES (p_version, p_name, p_checksum_sha256);
 END;
 $_$;
+
 
 --
 -- Name: registrable_host(text); Type: FUNCTION; Schema: public; Owner: -
@@ -1491,6 +1542,7 @@ BEGIN
 END;
 $$;
 
+
 --
 -- Name: release_held_notification(bigint, text); Type: FUNCTION; Schema: public; Owner: -
 --
@@ -1525,6 +1577,7 @@ BEGIN
   RETURN NEXT changed;
 END;
 $$;
+
 
 --
 -- Name: workflow_runs; Type: TABLE; Schema: public; Owner: -
@@ -1573,6 +1626,7 @@ CREATE TABLE public.workflow_runs (
     CONSTRAINT workflow_runs_version_nonempty CHECK (((btrim(workflow_version) <> ''::text) AND (btrim(policy_version) <> ''::text))),
     CONSTRAINT workflow_runs_workflow_id_check CHECK ((btrim(workflow_id) <> ''::text))
 );
+
 
 --
 -- Name: request_workflow_cancel(text, bigint, text, text); Type: FUNCTION; Schema: public; Owner: -
@@ -1629,6 +1683,7 @@ BEGIN
 END;
 $$;
 
+
 --
 -- Name: set_updated_at(); Type: FUNCTION; Schema: public; Owner: -
 --
@@ -1641,6 +1696,7 @@ BEGIN
   RETURN NEW;
 END;
 $$;
+
 
 --
 -- Name: signal_source_is_due(text, timestamp with time zone); Type: FUNCTION; Schema: public; Owner: -
@@ -1665,6 +1721,7 @@ BEGIN
 END;
 $$;
 
+
 --
 -- Name: touch_versioned_row(); Type: FUNCTION; Schema: public; Owner: -
 --
@@ -1678,6 +1735,7 @@ BEGIN
   RETURN NEW;
 END;
 $$;
+
 
 --
 -- Name: transition_workflow_run(text, bigint, text, bigint, text, jsonb, text, text); Type: FUNCTION; Schema: public; Owner: -
@@ -1724,6 +1782,7 @@ BEGIN
 END;
 $$;
 
+
 --
 -- Name: approvals_id_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
@@ -1736,6 +1795,7 @@ ALTER TABLE public.approvals ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
     NO MAXVALUE
     CACHE 1
 );
+
 
 --
 -- Name: audit_events; Type: TABLE; Schema: public; Owner: -
@@ -1764,6 +1824,7 @@ CREATE TABLE public.audit_events (
     CONSTRAINT audit_events_event_type_check CHECK ((btrim(event_type) <> ''::text))
 );
 
+
 --
 -- Name: audit_events_id_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
@@ -1776,6 +1837,7 @@ ALTER TABLE public.audit_events ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY
     NO MAXVALUE
     CACHE 1
 );
+
 
 --
 -- Name: channel_principals; Type: TABLE; Schema: public; Owner: -
@@ -1793,6 +1855,7 @@ CREATE TABLE public.channel_principals (
     CONSTRAINT channel_principals_sender_id_check CHECK ((btrim(sender_id) <> ''::text))
 );
 
+
 --
 -- Name: channel_principals_id_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
@@ -1805,6 +1868,7 @@ ALTER TABLE public.channel_principals ALTER COLUMN id ADD GENERATED ALWAYS AS ID
     NO MAXVALUE
     CACHE 1
 );
+
 
 --
 -- Name: companies; Type: TABLE; Schema: public; Owner: -
@@ -1833,6 +1897,7 @@ CREATE TABLE public.companies (
     CONSTRAINT companies_status_check CHECK ((status = ANY (ARRAY['active'::text, 'inactive'::text, 'acquired'::text, 'closed'::text, 'merged'::text, 'unknown'::text])))
 );
 
+
 --
 -- Name: companies_id_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
@@ -1845,6 +1910,7 @@ ALTER TABLE public.companies ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
     NO MAXVALUE
     CACHE 1
 );
+
 
 --
 -- Name: company_aliases; Type: TABLE; Schema: public; Owner: -
@@ -1875,6 +1941,7 @@ CREATE TABLE public.company_aliases (
     CONSTRAINT company_aliases_status_check CHECK ((status = ANY (ARRAY['active'::text, 'deprecated'::text, 'disputed'::text])))
 );
 
+
 --
 -- Name: company_aliases_id_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
@@ -1887,6 +1954,7 @@ ALTER TABLE public.company_aliases ALTER COLUMN id ADD GENERATED ALWAYS AS IDENT
     NO MAXVALUE
     CACHE 1
 );
+
 
 --
 -- Name: company_domains; Type: TABLE; Schema: public; Owner: -
@@ -1917,6 +1985,7 @@ CREATE TABLE public.company_domains (
     CONSTRAINT company_domains_status_check CHECK ((status = ANY (ARRAY['verified'::text, 'claimed'::text, 'deprecated'::text, 'disputed'::text])))
 );
 
+
 --
 -- Name: company_domains_id_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
@@ -1929,6 +1998,7 @@ ALTER TABLE public.company_domains ALTER COLUMN id ADD GENERATED ALWAYS AS IDENT
     NO MAXVALUE
     CACHE 1
 );
+
 
 --
 -- Name: company_external_ids; Type: TABLE; Schema: public; Owner: -
@@ -1959,6 +2029,7 @@ CREATE TABLE public.company_external_ids (
     CONSTRAINT company_external_ids_status_check CHECK ((status = ANY (ARRAY['verified'::text, 'claimed'::text, 'deprecated'::text, 'disputed'::text])))
 );
 
+
 --
 -- Name: company_external_ids_id_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
@@ -1971,6 +2042,7 @@ ALTER TABLE public.company_external_ids ALTER COLUMN id ADD GENERATED ALWAYS AS 
     NO MAXVALUE
     CACHE 1
 );
+
 
 --
 -- Name: compiled_truth; Type: TABLE; Schema: public; Owner: -
@@ -2019,6 +2091,7 @@ CREATE TABLE public.compiled_truth (
     CONSTRAINT compiled_truth_trajectory_history_check CHECK ((jsonb_typeof(trajectory_history) = 'array'::text))
 );
 
+
 --
 -- Name: compiled_truth_facts; Type: TABLE; Schema: public; Owner: -
 --
@@ -2031,6 +2104,7 @@ CREATE TABLE public.compiled_truth_facts (
     created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
     CONSTRAINT compiled_truth_facts_support_role_check CHECK ((support_role = ANY (ARRAY['current'::text, 'historical'::text, 'contradicted'::text, 'stale'::text, 'missing_context'::text])))
 );
+
 
 --
 -- Name: compiled_truth_id_seq; Type: SEQUENCE; Schema: public; Owner: -
@@ -2045,6 +2119,7 @@ ALTER TABLE public.compiled_truth ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTI
     CACHE 1
 );
 
+
 --
 -- Name: contradiction_facts; Type: TABLE; Schema: public; Owner: -
 --
@@ -2056,6 +2131,7 @@ CREATE TABLE public.contradiction_facts (
     created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
     CONSTRAINT contradiction_facts_assertion_role_check CHECK ((assertion_role = ANY (ARRAY['left'::text, 'right'::text, 'supporting'::text, 'resolution'::text])))
 );
+
 
 --
 -- Name: contradictions; Type: TABLE; Schema: public; Owner: -
@@ -2096,6 +2172,7 @@ CREATE TABLE public.contradictions (
     CONSTRAINT contradictions_status_check CHECK ((status = ANY (ARRAY['open'::text, 'under_review'::text, 'resolved'::text, 'accepted_risk'::text, 'dismissed'::text])))
 );
 
+
 --
 -- Name: contradictions_id_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
@@ -2108,6 +2185,7 @@ ALTER TABLE public.contradictions ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTI
     NO MAXVALUE
     CACHE 1
 );
+
 
 --
 -- Name: document_extractions; Type: TABLE; Schema: public; Owner: -
@@ -2156,6 +2234,7 @@ CREATE TABLE public.document_extractions (
     CONSTRAINT document_extractions_status_check CHECK ((status = ANY (ARRAY['queued'::text, 'running'::text, 'succeeded'::text, 'failed'::text, 'quarantined'::text, 'unsupported'::text])))
 );
 
+
 --
 -- Name: document_extractions_id_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
@@ -2168,6 +2247,7 @@ ALTER TABLE public.document_extractions ALTER COLUMN id ADD GENERATED ALWAYS AS 
     NO MAXVALUE
     CACHE 1
 );
+
 
 --
 -- Name: document_facts; Type: TABLE; Schema: public; Owner: -
@@ -2189,6 +2269,7 @@ CREATE TABLE public.document_facts (
     CONSTRAINT document_facts_paragraph_number_check CHECK (((paragraph_number IS NULL) OR (paragraph_number > 0)))
 );
 
+
 --
 -- Name: document_facts_id_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
@@ -2201,6 +2282,7 @@ ALTER TABLE public.document_facts ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTI
     NO MAXVALUE
     CACHE 1
 );
+
 
 --
 -- Name: entity_resolution_consumptions; Type: TABLE; Schema: public; Owner: -
@@ -2217,6 +2299,7 @@ CREATE TABLE public.entity_resolution_consumptions (
     CONSTRAINT entity_resolution_consumptions_outcome_check CHECK ((outcome = ANY (ARRAY['linked_existing'::text, 'created_new'::text])))
 );
 
+
 --
 -- Name: entity_resolution_consumptions_id_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
@@ -2229,6 +2312,7 @@ ALTER TABLE public.entity_resolution_consumptions ALTER COLUMN id ADD GENERATED 
     NO MAXVALUE
     CACHE 1
 );
+
 
 --
 -- Name: entity_resolution_decisions; Type: TABLE; Schema: public; Owner: -
@@ -2254,6 +2338,7 @@ CREATE TABLE public.entity_resolution_decisions (
     CONSTRAINT entity_resolution_decisions_reasons_check CHECK ((jsonb_typeof(reasons) = 'array'::text))
 );
 
+
 --
 -- Name: entity_resolution_runs; Type: TABLE; Schema: public; Owner: -
 --
@@ -2278,6 +2363,7 @@ CREATE TABLE public.entity_resolution_runs (
     CONSTRAINT entity_resolution_runs_requester_id_check CHECK ((btrim(requester_id) <> ''::text))
 );
 
+
 --
 -- Name: evaluation_criteria; Type: TABLE; Schema: public; Owner: -
 --
@@ -2300,6 +2386,7 @@ CREATE TABLE public.evaluation_criteria (
     CONSTRAINT evaluation_criteria_weight_points_check CHECK (((weight_points >= (0)::numeric) AND (weight_points <= (100)::numeric))),
     CONSTRAINT evaluation_criteria_weighted_points_check CHECK (((weighted_points >= (0)::numeric) AND (weighted_points <= (100)::numeric)))
 );
+
 
 --
 -- Name: evaluations; Type: TABLE; Schema: public; Owner: -
@@ -2344,6 +2431,7 @@ CREATE TABLE public.evaluations (
     CONSTRAINT evaluations_total_score_check CHECK (((total_score >= (0)::numeric) AND (total_score <= (100)::numeric)))
 );
 
+
 --
 -- Name: evaluations_id_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
@@ -2356,6 +2444,7 @@ ALTER TABLE public.evaluations ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY 
     NO MAXVALUE
     CACHE 1
 );
+
 
 --
 -- Name: evidence_artifacts; Type: TABLE; Schema: public; Owner: -
@@ -2389,6 +2478,7 @@ CREATE TABLE public.evidence_artifacts (
     CONSTRAINT evidence_artifacts_trust_boundary_check CHECK ((trust_boundary = ANY (ARRAY['internal_admin'::text, 'allowlisted_operator'::text, 'remote_channel'::text, 'public_web'::text, 'paid_connector'::text, 'untrusted_upload'::text, 'generated_internal'::text, 'unknown'::text])))
 );
 
+
 --
 -- Name: evidence_artifacts_id_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
@@ -2401,6 +2491,7 @@ ALTER TABLE public.evidence_artifacts ALTER COLUMN id ADD GENERATED ALWAYS AS ID
     NO MAXVALUE
     CACHE 1
 );
+
 
 --
 -- Name: fact_promotion_policy; Type: TABLE; Schema: public; Owner: -
@@ -2422,6 +2513,7 @@ CREATE TABLE public.fact_promotion_policy (
     CONSTRAINT fact_promotion_policy_updated_by_check CHECK ((btrim(updated_by) <> ''::text))
 );
 
+
 --
 -- Name: fact_sources; Type: TABLE; Schema: public; Owner: -
 --
@@ -2442,6 +2534,7 @@ CREATE TABLE public.fact_sources (
     CONSTRAINT fact_sources_quoted_text_hash_check CHECK (((quoted_text_hash IS NULL) OR (quoted_text_hash ~ '^[0-9a-f]{64}$'::text)))
 );
 
+
 --
 -- Name: fact_sources_id_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
@@ -2455,6 +2548,7 @@ ALTER TABLE public.fact_sources ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY
     CACHE 1
 );
 
+
 --
 -- Name: facts_id_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
@@ -2467,6 +2561,7 @@ ALTER TABLE public.facts ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
     NO MAXVALUE
     CACHE 1
 );
+
 
 --
 -- Name: lead_artifacts; Type: TABLE; Schema: public; Owner: -
@@ -2488,6 +2583,7 @@ CREATE TABLE public.lead_artifacts (
     CONSTRAINT lead_artifacts_provenance_check CHECK ((jsonb_typeof(provenance) = 'object'::text))
 );
 
+
 --
 -- Name: lead_artifacts_id_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
@@ -2500,6 +2596,7 @@ ALTER TABLE public.lead_artifacts ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTI
     NO MAXVALUE
     CACHE 1
 );
+
 
 --
 -- Name: leads; Type: TABLE; Schema: public; Owner: -
@@ -2551,6 +2648,7 @@ CREATE TABLE public.leads (
     CONSTRAINT leads_submitted_claims_check CHECK ((jsonb_typeof(submitted_claims) = 'object'::text))
 );
 
+
 --
 -- Name: leads_id_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
@@ -2563,6 +2661,7 @@ ALTER TABLE public.leads ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
     NO MAXVALUE
     CACHE 1
 );
+
 
 --
 -- Name: memo_citations; Type: TABLE; Schema: public; Owner: -
@@ -2578,6 +2677,7 @@ CREATE TABLE public.memo_citations (
     CONSTRAINT memo_citations_citation_label_check CHECK ((btrim(citation_label) <> ''::text)),
     CONSTRAINT memo_citations_source_locator_check CHECK ((btrim(source_locator) <> ''::text))
 );
+
 
 --
 -- Name: memos; Type: TABLE; Schema: public; Owner: -
@@ -2611,6 +2711,7 @@ CREATE TABLE public.memos (
     CONSTRAINT memos_title_check CHECK ((btrim(title) <> ''::text))
 );
 
+
 --
 -- Name: memos_id_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
@@ -2623,6 +2724,7 @@ ALTER TABLE public.memos ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
     NO MAXVALUE
     CACHE 1
 );
+
 
 --
 -- Name: notification_attempts; Type: TABLE; Schema: public; Owner: -
@@ -2652,6 +2754,7 @@ CREATE TABLE public.notification_attempts (
     CONSTRAINT notification_attempts_status_check CHECK ((status = ANY (ARRAY['started'::text, 'succeeded'::text, 'retryable_failure'::text, 'permanent_failure'::text, 'abandoned'::text])))
 );
 
+
 --
 -- Name: notification_attempts_id_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
@@ -2665,6 +2768,7 @@ ALTER TABLE public.notification_attempts ALTER COLUMN id ADD GENERATED ALWAYS AS
     CACHE 1
 );
 
+
 --
 -- Name: notification_outbox_id_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
@@ -2677,6 +2781,7 @@ ALTER TABLE public.notification_outbox ALTER COLUMN id ADD GENERATED ALWAYS AS I
     NO MAXVALUE
     CACHE 1
 );
+
 
 --
 -- Name: orchestration_audit; Type: TABLE; Schema: public; Owner: -
@@ -2702,6 +2807,7 @@ CREATE TABLE public.orchestration_audit (
     CONSTRAINT orchestration_audit_specialist_agent_check CHECK (((specialist_agent IS NULL) OR (btrim(specialist_agent) <> ''::text)))
 );
 
+
 --
 -- Name: orchestration_audit_id_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
@@ -2714,6 +2820,7 @@ ALTER TABLE public.orchestration_audit ALTER COLUMN id ADD GENERATED ALWAYS AS I
     NO MAXVALUE
     CACHE 1
 );
+
 
 --
 -- Name: preference_forget_markers; Type: TABLE; Schema: public; Owner: -
@@ -2729,6 +2836,7 @@ CREATE TABLE public.preference_forget_markers (
     CONSTRAINT preference_forget_markers_preference_key_check CHECK ((preference_key = ANY (ARRAY['memo_length'::text, 'communication_tone'::text, 'research_depth'::text, 'citation_density'::text, 'output_structure'::text])))
 );
 
+
 --
 -- Name: preference_forget_markers_id_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
@@ -2741,6 +2849,7 @@ ALTER TABLE public.preference_forget_markers ALTER COLUMN id ADD GENERATED ALWAY
     NO MAXVALUE
     CACHE 1
 );
+
 
 --
 -- Name: preference_observations; Type: TABLE; Schema: public; Owner: -
@@ -2760,6 +2869,7 @@ CREATE TABLE public.preference_observations (
     CONSTRAINT preference_observations_preference_value_check CHECK ((btrim(preference_value) <> ''::text))
 );
 
+
 --
 -- Name: preference_observations_id_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
@@ -2772,6 +2882,7 @@ ALTER TABLE public.preference_observations ALTER COLUMN id ADD GENERATED ALWAYS 
     NO MAXVALUE
     CACHE 1
 );
+
 
 --
 -- Name: proposals_id_seq; Type: SEQUENCE; Schema: public; Owner: -
@@ -2786,6 +2897,7 @@ ALTER TABLE public.proposals ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
     CACHE 1
 );
 
+
 --
 -- Name: schema_migrations; Type: TABLE; Schema: public; Owner: -
 --
@@ -2797,6 +2909,7 @@ CREATE TABLE public.schema_migrations (
     applied_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
     CONSTRAINT schema_migrations_checksum_sha256_check CHECK ((checksum_sha256 ~ '^[0-9a-f]{64}$'::text))
 );
+
 
 --
 -- Name: signal_sources; Type: TABLE; Schema: public; Owner: -
@@ -2833,6 +2946,7 @@ CREATE TABLE public.signal_sources (
     CONSTRAINT signal_sources_source_name_check CHECK ((btrim(source_name) <> ''::text))
 );
 
+
 --
 -- Name: signal_sources_id_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
@@ -2845,6 +2959,7 @@ ALTER TABLE public.signal_sources ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTI
     NO MAXVALUE
     CACHE 1
 );
+
 
 --
 -- Name: sources; Type: TABLE; Schema: public; Owner: -
@@ -2877,6 +2992,7 @@ CREATE TABLE public.sources (
     CONSTRAINT sources_trust_level_check CHECK ((trust_level = ANY (ARRAY['internal_admin'::text, 'allowlisted_operator'::text, 'remote_channel'::text, 'public_web'::text, 'paid_connector'::text, 'untrusted_upload'::text, 'generated_internal'::text, 'unknown'::text])))
 );
 
+
 --
 -- Name: sources_id_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
@@ -2889,6 +3005,7 @@ ALTER TABLE public.sources ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
     NO MAXVALUE
     CACHE 1
 );
+
 
 --
 -- Name: trajectory_events; Type: TABLE; Schema: public; Owner: -
@@ -2926,6 +3043,7 @@ CREATE TABLE public.trajectory_events (
     CONSTRAINT trajectory_events_status_check CHECK ((status = ANY (ARRAY['current'::text, 'superseded'::text, 'invalid'::text])))
 );
 
+
 --
 -- Name: trajectory_events_id_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
@@ -2938,6 +3056,7 @@ ALTER TABLE public.trajectory_events ALTER COLUMN id ADD GENERATED ALWAYS AS IDE
     NO MAXVALUE
     CACHE 1
 );
+
 
 --
 -- Name: trajectory_points; Type: TABLE; Schema: public; Owner: -
@@ -2952,6 +3071,7 @@ CREATE TABLE public.trajectory_points (
     created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
     CONSTRAINT trajectory_points_point_order_check CHECK ((point_order > 0))
 );
+
 
 --
 -- Name: trusted_context_uses; Type: TABLE; Schema: public; Owner: -
@@ -2974,6 +3094,7 @@ CREATE TABLE public.trusted_context_uses (
     CONSTRAINT trusted_context_uses_scope_check CHECK ((btrim(scope) <> ''::text))
 );
 
+
 --
 -- Name: trusted_context_uses_id_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
@@ -2986,6 +3107,7 @@ ALTER TABLE public.trusted_context_uses ALTER COLUMN id ADD GENERATED ALWAYS AS 
     NO MAXVALUE
     CACHE 1
 );
+
 
 --
 -- Name: user_preference_audit; Type: TABLE; Schema: public; Owner: -
@@ -3004,6 +3126,7 @@ CREATE TABLE public.user_preference_audit (
     CONSTRAINT user_preference_audit_source_kind_check CHECK ((source_kind = ANY (ARRAY['explicit'::text, 'inferred'::text])))
 );
 
+
 --
 -- Name: user_preference_audit_id_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
@@ -3016,6 +3139,7 @@ ALTER TABLE public.user_preference_audit ALTER COLUMN id ADD GENERATED ALWAYS AS
     NO MAXVALUE
     CACHE 1
 );
+
 
 --
 -- Name: user_preferences; Type: TABLE; Schema: public; Owner: -
@@ -3036,6 +3160,7 @@ CREATE TABLE public.user_preferences (
     CONSTRAINT user_preferences_source_kind_check CHECK ((source_kind = ANY (ARRAY['explicit'::text, 'inferred'::text]))),
     CONSTRAINT user_preferences_status_check CHECK ((status = ANY (ARRAY['active'::text, 'forgotten'::text])))
 );
+
 
 --
 -- Name: workflow_requests; Type: TABLE; Schema: public; Owner: -
@@ -3059,6 +3184,7 @@ CREATE TABLE public.workflow_requests (
     CONSTRAINT workflow_requests_workflow_id_check CHECK ((btrim(workflow_id) <> ''::text))
 );
 
+
 --
 -- Name: workflow_requests_id_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
@@ -3071,6 +3197,7 @@ ALTER TABLE public.workflow_requests ALTER COLUMN id ADD GENERATED ALWAYS AS IDE
     NO MAXVALUE
     CACHE 1
 );
+
 
 --
 -- Name: workflow_runs_id_seq; Type: SEQUENCE; Schema: public; Owner: -
@@ -3085,12 +3212,14 @@ ALTER TABLE public.workflow_runs ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTIT
     CACHE 1
 );
 
+
 --
 -- Name: approvals approvals_idempotency_key_key; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.approvals
     ADD CONSTRAINT approvals_idempotency_key_key UNIQUE (idempotency_key);
+
 
 --
 -- Name: approvals approvals_pkey; Type: CONSTRAINT; Schema: public; Owner: -
@@ -3099,12 +3228,14 @@ ALTER TABLE ONLY public.approvals
 ALTER TABLE ONLY public.approvals
     ADD CONSTRAINT approvals_pkey PRIMARY KEY (id);
 
+
 --
 -- Name: approvals approvals_request_id_key; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.approvals
     ADD CONSTRAINT approvals_request_id_key UNIQUE (request_id);
+
 
 --
 -- Name: approvals approvals_token_hash_key; Type: CONSTRAINT; Schema: public; Owner: -
@@ -3113,12 +3244,14 @@ ALTER TABLE ONLY public.approvals
 ALTER TABLE ONLY public.approvals
     ADD CONSTRAINT approvals_token_hash_key UNIQUE (token_hash);
 
+
 --
 -- Name: audit_events audit_events_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.audit_events
     ADD CONSTRAINT audit_events_pkey PRIMARY KEY (id);
+
 
 --
 -- Name: channel_principals channel_principals_pkey; Type: CONSTRAINT; Schema: public; Owner: -
@@ -3127,12 +3260,14 @@ ALTER TABLE ONLY public.audit_events
 ALTER TABLE ONLY public.channel_principals
     ADD CONSTRAINT channel_principals_pkey PRIMARY KEY (id);
 
+
 --
 -- Name: channel_principals channel_principals_provider_account_id_sender_id_key; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.channel_principals
     ADD CONSTRAINT channel_principals_provider_account_id_sender_id_key UNIQUE (provider, account_id, sender_id);
+
 
 --
 -- Name: companies companies_pkey; Type: CONSTRAINT; Schema: public; Owner: -
@@ -3141,12 +3276,14 @@ ALTER TABLE ONLY public.channel_principals
 ALTER TABLE ONLY public.companies
     ADD CONSTRAINT companies_pkey PRIMARY KEY (id);
 
+
 --
 -- Name: company_aliases company_aliases_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.company_aliases
     ADD CONSTRAINT company_aliases_pkey PRIMARY KEY (id);
+
 
 --
 -- Name: company_domains company_domains_pkey; Type: CONSTRAINT; Schema: public; Owner: -
@@ -3155,12 +3292,14 @@ ALTER TABLE ONLY public.company_aliases
 ALTER TABLE ONLY public.company_domains
     ADD CONSTRAINT company_domains_pkey PRIMARY KEY (id);
 
+
 --
 -- Name: company_external_ids company_external_ids_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.company_external_ids
     ADD CONSTRAINT company_external_ids_pkey PRIMARY KEY (id);
+
 
 --
 -- Name: compiled_truth_facts compiled_truth_facts_pkey; Type: CONSTRAINT; Schema: public; Owner: -
@@ -3169,12 +3308,14 @@ ALTER TABLE ONLY public.company_external_ids
 ALTER TABLE ONLY public.compiled_truth_facts
     ADD CONSTRAINT compiled_truth_facts_pkey PRIMARY KEY (compiled_truth_id, fact_id, support_role);
 
+
 --
 -- Name: compiled_truth compiled_truth_lead_id_evidence_packet_hash_key; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.compiled_truth
     ADD CONSTRAINT compiled_truth_lead_id_evidence_packet_hash_key UNIQUE (lead_id, evidence_packet_hash);
+
 
 --
 -- Name: compiled_truth compiled_truth_lead_id_snapshot_version_key; Type: CONSTRAINT; Schema: public; Owner: -
@@ -3183,12 +3324,14 @@ ALTER TABLE ONLY public.compiled_truth
 ALTER TABLE ONLY public.compiled_truth
     ADD CONSTRAINT compiled_truth_lead_id_snapshot_version_key UNIQUE (lead_id, snapshot_version);
 
+
 --
 -- Name: compiled_truth compiled_truth_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.compiled_truth
     ADD CONSTRAINT compiled_truth_pkey PRIMARY KEY (id);
+
 
 --
 -- Name: contradiction_facts contradiction_facts_pkey; Type: CONSTRAINT; Schema: public; Owner: -
@@ -3197,12 +3340,14 @@ ALTER TABLE ONLY public.compiled_truth
 ALTER TABLE ONLY public.contradiction_facts
     ADD CONSTRAINT contradiction_facts_pkey PRIMARY KEY (contradiction_id, fact_id, assertion_role);
 
+
 --
 -- Name: contradictions contradictions_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.contradictions
     ADD CONSTRAINT contradictions_pkey PRIMARY KEY (id);
+
 
 --
 -- Name: document_extractions document_extractions_artifact_id_extractor_name_extractor_v_key; Type: CONSTRAINT; Schema: public; Owner: -
@@ -3211,12 +3356,14 @@ ALTER TABLE ONLY public.contradictions
 ALTER TABLE ONLY public.document_extractions
     ADD CONSTRAINT document_extractions_artifact_id_extractor_name_extractor_v_key UNIQUE (artifact_id, extractor_name, extractor_version, idempotency_key);
 
+
 --
 -- Name: document_extractions document_extractions_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.document_extractions
     ADD CONSTRAINT document_extractions_pkey PRIMARY KEY (id);
+
 
 --
 -- Name: document_facts document_facts_extraction_id_fact_id_page_number_sheet_name_key; Type: CONSTRAINT; Schema: public; Owner: -
@@ -3225,12 +3372,14 @@ ALTER TABLE ONLY public.document_extractions
 ALTER TABLE ONLY public.document_facts
     ADD CONSTRAINT document_facts_extraction_id_fact_id_page_number_sheet_name_key UNIQUE NULLS NOT DISTINCT (extraction_id, fact_id, page_number, sheet_name, cell_range, paragraph_number);
 
+
 --
 -- Name: document_facts document_facts_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.document_facts
     ADD CONSTRAINT document_facts_pkey PRIMARY KEY (id);
+
 
 --
 -- Name: entity_resolution_consumptions entity_resolution_consumptions_pkey; Type: CONSTRAINT; Schema: public; Owner: -
@@ -3239,12 +3388,14 @@ ALTER TABLE ONLY public.document_facts
 ALTER TABLE ONLY public.entity_resolution_consumptions
     ADD CONSTRAINT entity_resolution_consumptions_pkey PRIMARY KEY (id);
 
+
 --
 -- Name: entity_resolution_consumptions entity_resolution_consumptions_resolution_decision_id_key; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.entity_resolution_consumptions
     ADD CONSTRAINT entity_resolution_consumptions_resolution_decision_id_key UNIQUE (resolution_decision_id);
+
 
 --
 -- Name: entity_resolution_decisions entity_resolution_decisions_pkey; Type: CONSTRAINT; Schema: public; Owner: -
@@ -3253,12 +3404,14 @@ ALTER TABLE ONLY public.entity_resolution_consumptions
 ALTER TABLE ONLY public.entity_resolution_decisions
     ADD CONSTRAINT entity_resolution_decisions_pkey PRIMARY KEY (id);
 
+
 --
 -- Name: entity_resolution_decisions entity_resolution_decisions_resolution_run_id_key; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.entity_resolution_decisions
     ADD CONSTRAINT entity_resolution_decisions_resolution_run_id_key UNIQUE (resolution_run_id);
+
 
 --
 -- Name: entity_resolution_runs entity_resolution_runs_pkey; Type: CONSTRAINT; Schema: public; Owner: -
@@ -3267,12 +3420,14 @@ ALTER TABLE ONLY public.entity_resolution_decisions
 ALTER TABLE ONLY public.entity_resolution_runs
     ADD CONSTRAINT entity_resolution_runs_pkey PRIMARY KEY (id);
 
+
 --
 -- Name: evaluation_criteria evaluation_criteria_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.evaluation_criteria
     ADD CONSTRAINT evaluation_criteria_pkey PRIMARY KEY (evaluation_id, criterion_key);
+
 
 --
 -- Name: evaluations evaluations_lead_id_evaluation_version_key; Type: CONSTRAINT; Schema: public; Owner: -
@@ -3281,12 +3436,14 @@ ALTER TABLE ONLY public.evaluation_criteria
 ALTER TABLE ONLY public.evaluations
     ADD CONSTRAINT evaluations_lead_id_evaluation_version_key UNIQUE (lead_id, evaluation_version);
 
+
 --
 -- Name: evaluations evaluations_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.evaluations
     ADD CONSTRAINT evaluations_pkey PRIMARY KEY (id);
+
 
 --
 -- Name: evidence_artifacts evidence_artifacts_pkey; Type: CONSTRAINT; Schema: public; Owner: -
@@ -3295,12 +3452,14 @@ ALTER TABLE ONLY public.evaluations
 ALTER TABLE ONLY public.evidence_artifacts
     ADD CONSTRAINT evidence_artifacts_pkey PRIMARY KEY (id);
 
+
 --
 -- Name: evidence_artifacts evidence_artifacts_sha256_key; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.evidence_artifacts
     ADD CONSTRAINT evidence_artifacts_sha256_key UNIQUE (sha256);
+
 
 --
 -- Name: fact_promotion_policy fact_promotion_policy_pkey; Type: CONSTRAINT; Schema: public; Owner: -
@@ -3309,12 +3468,14 @@ ALTER TABLE ONLY public.evidence_artifacts
 ALTER TABLE ONLY public.fact_promotion_policy
     ADD CONSTRAINT fact_promotion_policy_pkey PRIMARY KEY (id);
 
+
 --
 -- Name: fact_sources fact_sources_fact_id_source_id_artifact_id_extraction_id_ev_key; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.fact_sources
     ADD CONSTRAINT fact_sources_fact_id_source_id_artifact_id_extraction_id_ev_key UNIQUE NULLS NOT DISTINCT (fact_id, source_id, artifact_id, extraction_id, evidence_role);
+
 
 --
 -- Name: fact_sources fact_sources_pkey; Type: CONSTRAINT; Schema: public; Owner: -
@@ -3323,12 +3484,14 @@ ALTER TABLE ONLY public.fact_sources
 ALTER TABLE ONLY public.fact_sources
     ADD CONSTRAINT fact_sources_pkey PRIMARY KEY (id);
 
+
 --
 -- Name: facts facts_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.facts
     ADD CONSTRAINT facts_pkey PRIMARY KEY (id);
+
 
 --
 -- Name: lead_artifacts lead_artifacts_lead_id_artifact_id_key; Type: CONSTRAINT; Schema: public; Owner: -
@@ -3337,12 +3500,14 @@ ALTER TABLE ONLY public.facts
 ALTER TABLE ONLY public.lead_artifacts
     ADD CONSTRAINT lead_artifacts_lead_id_artifact_id_key UNIQUE (lead_id, artifact_id);
 
+
 --
 -- Name: lead_artifacts lead_artifacts_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.lead_artifacts
     ADD CONSTRAINT lead_artifacts_pkey PRIMARY KEY (id);
+
 
 --
 -- Name: leads leads_idempotency_key_key; Type: CONSTRAINT; Schema: public; Owner: -
@@ -3351,12 +3516,14 @@ ALTER TABLE ONLY public.lead_artifacts
 ALTER TABLE ONLY public.leads
     ADD CONSTRAINT leads_idempotency_key_key UNIQUE (idempotency_key);
 
+
 --
 -- Name: leads leads_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.leads
     ADD CONSTRAINT leads_pkey PRIMARY KEY (id);
+
 
 --
 -- Name: memo_citations memo_citations_pkey; Type: CONSTRAINT; Schema: public; Owner: -
@@ -3365,12 +3532,14 @@ ALTER TABLE ONLY public.leads
 ALTER TABLE ONLY public.memo_citations
     ADD CONSTRAINT memo_citations_pkey PRIMARY KEY (memo_id, fact_id, source_id, citation_label);
 
+
 --
 -- Name: memos memos_lead_id_memo_version_key; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.memos
     ADD CONSTRAINT memos_lead_id_memo_version_key UNIQUE (lead_id, memo_version);
+
 
 --
 -- Name: memos memos_pkey; Type: CONSTRAINT; Schema: public; Owner: -
@@ -3379,12 +3548,14 @@ ALTER TABLE ONLY public.memos
 ALTER TABLE ONLY public.memos
     ADD CONSTRAINT memos_pkey PRIMARY KEY (id);
 
+
 --
 -- Name: notification_attempts notification_attempts_outbox_id_attempt_number_key; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.notification_attempts
     ADD CONSTRAINT notification_attempts_outbox_id_attempt_number_key UNIQUE (outbox_id, attempt_number);
+
 
 --
 -- Name: notification_attempts notification_attempts_outbox_id_claim_id_key; Type: CONSTRAINT; Schema: public; Owner: -
@@ -3393,12 +3564,14 @@ ALTER TABLE ONLY public.notification_attempts
 ALTER TABLE ONLY public.notification_attempts
     ADD CONSTRAINT notification_attempts_outbox_id_claim_id_key UNIQUE (outbox_id, claim_id);
 
+
 --
 -- Name: notification_attempts notification_attempts_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.notification_attempts
     ADD CONSTRAINT notification_attempts_pkey PRIMARY KEY (id);
+
 
 --
 -- Name: notification_outbox notification_outbox_idempotency_key_key; Type: CONSTRAINT; Schema: public; Owner: -
@@ -3407,12 +3580,14 @@ ALTER TABLE ONLY public.notification_attempts
 ALTER TABLE ONLY public.notification_outbox
     ADD CONSTRAINT notification_outbox_idempotency_key_key UNIQUE (idempotency_key);
 
+
 --
 -- Name: notification_outbox notification_outbox_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.notification_outbox
     ADD CONSTRAINT notification_outbox_pkey PRIMARY KEY (id);
+
 
 --
 -- Name: notification_outbox notification_outbox_provider_provider_account_id_dedupe_key_key; Type: CONSTRAINT; Schema: public; Owner: -
@@ -3421,12 +3596,14 @@ ALTER TABLE ONLY public.notification_outbox
 ALTER TABLE ONLY public.notification_outbox
     ADD CONSTRAINT notification_outbox_provider_provider_account_id_dedupe_key_key UNIQUE (provider, provider_account_id, dedupe_key);
 
+
 --
 -- Name: orchestration_audit orchestration_audit_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.orchestration_audit
     ADD CONSTRAINT orchestration_audit_pkey PRIMARY KEY (id);
+
 
 --
 -- Name: preference_forget_markers preference_forget_markers_pkey; Type: CONSTRAINT; Schema: public; Owner: -
@@ -3435,12 +3612,14 @@ ALTER TABLE ONLY public.orchestration_audit
 ALTER TABLE ONLY public.preference_forget_markers
     ADD CONSTRAINT preference_forget_markers_pkey PRIMARY KEY (id);
 
+
 --
 -- Name: preference_forget_markers preference_forget_markers_principal_id_preference_key_event_key; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.preference_forget_markers
     ADD CONSTRAINT preference_forget_markers_principal_id_preference_key_event_key UNIQUE (principal_id, preference_key, event_id);
+
 
 --
 -- Name: preference_observations preference_observations_pkey; Type: CONSTRAINT; Schema: public; Owner: -
@@ -3449,12 +3628,14 @@ ALTER TABLE ONLY public.preference_forget_markers
 ALTER TABLE ONLY public.preference_observations
     ADD CONSTRAINT preference_observations_pkey PRIMARY KEY (id);
 
+
 --
 -- Name: preference_observations preference_observations_principal_id_preference_key_prefere_key; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.preference_observations
     ADD CONSTRAINT preference_observations_principal_id_preference_key_prefere_key UNIQUE (principal_id, preference_key, preference_value, event_id);
+
 
 --
 -- Name: proposals proposals_pkey; Type: CONSTRAINT; Schema: public; Owner: -
@@ -3463,12 +3644,14 @@ ALTER TABLE ONLY public.preference_observations
 ALTER TABLE ONLY public.proposals
     ADD CONSTRAINT proposals_pkey PRIMARY KEY (id);
 
+
 --
 -- Name: schema_migrations schema_migrations_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.schema_migrations
     ADD CONSTRAINT schema_migrations_pkey PRIMARY KEY (version);
+
 
 --
 -- Name: signal_sources signal_sources_canonical_uri_key; Type: CONSTRAINT; Schema: public; Owner: -
@@ -3477,12 +3660,14 @@ ALTER TABLE ONLY public.schema_migrations
 ALTER TABLE ONLY public.signal_sources
     ADD CONSTRAINT signal_sources_canonical_uri_key UNIQUE (canonical_uri);
 
+
 --
 -- Name: signal_sources signal_sources_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.signal_sources
     ADD CONSTRAINT signal_sources_pkey PRIMARY KEY (id);
+
 
 --
 -- Name: sources sources_pkey; Type: CONSTRAINT; Schema: public; Owner: -
@@ -3491,12 +3676,14 @@ ALTER TABLE ONLY public.signal_sources
 ALTER TABLE ONLY public.sources
     ADD CONSTRAINT sources_pkey PRIMARY KEY (id);
 
+
 --
 -- Name: trajectory_events trajectory_events_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.trajectory_events
     ADD CONSTRAINT trajectory_events_pkey PRIMARY KEY (id);
+
 
 --
 -- Name: trajectory_points trajectory_points_pkey; Type: CONSTRAINT; Schema: public; Owner: -
@@ -3505,12 +3692,14 @@ ALTER TABLE ONLY public.trajectory_events
 ALTER TABLE ONLY public.trajectory_points
     ADD CONSTRAINT trajectory_points_pkey PRIMARY KEY (trajectory_event_id, point_order);
 
+
 --
 -- Name: trajectory_points trajectory_points_trajectory_event_id_fact_id_key; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.trajectory_points
     ADD CONSTRAINT trajectory_points_trajectory_event_id_fact_id_key UNIQUE (trajectory_event_id, fact_id);
+
 
 --
 -- Name: trusted_context_uses trusted_context_uses_nonce_scope_key; Type: CONSTRAINT; Schema: public; Owner: -
@@ -3519,12 +3708,14 @@ ALTER TABLE ONLY public.trajectory_points
 ALTER TABLE ONLY public.trusted_context_uses
     ADD CONSTRAINT trusted_context_uses_nonce_scope_key UNIQUE (nonce, scope);
 
+
 --
 -- Name: trusted_context_uses trusted_context_uses_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.trusted_context_uses
     ADD CONSTRAINT trusted_context_uses_pkey PRIMARY KEY (id);
+
 
 --
 -- Name: user_preference_audit user_preference_audit_pkey; Type: CONSTRAINT; Schema: public; Owner: -
@@ -3533,12 +3724,14 @@ ALTER TABLE ONLY public.trusted_context_uses
 ALTER TABLE ONLY public.user_preference_audit
     ADD CONSTRAINT user_preference_audit_pkey PRIMARY KEY (id);
 
+
 --
 -- Name: user_preference_audit user_preference_audit_principal_id_preference_key_action_ev_key; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.user_preference_audit
     ADD CONSTRAINT user_preference_audit_principal_id_preference_key_action_ev_key UNIQUE (principal_id, preference_key, action, event_id);
+
 
 --
 -- Name: user_preferences user_preferences_pkey; Type: CONSTRAINT; Schema: public; Owner: -
@@ -3547,12 +3740,14 @@ ALTER TABLE ONLY public.user_preference_audit
 ALTER TABLE ONLY public.user_preferences
     ADD CONSTRAINT user_preferences_pkey PRIMARY KEY (principal_id, preference_key);
 
+
 --
 -- Name: workflow_requests workflow_requests_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.workflow_requests
     ADD CONSTRAINT workflow_requests_pkey PRIMARY KEY (id);
+
 
 --
 -- Name: workflow_requests workflow_requests_workflow_id_idempotency_key_key; Type: CONSTRAINT; Schema: public; Owner: -
@@ -3561,12 +3756,14 @@ ALTER TABLE ONLY public.workflow_requests
 ALTER TABLE ONLY public.workflow_requests
     ADD CONSTRAINT workflow_requests_workflow_id_idempotency_key_key UNIQUE (workflow_id, idempotency_key);
 
+
 --
 -- Name: workflow_runs workflow_runs_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.workflow_runs
     ADD CONSTRAINT workflow_runs_pkey PRIMARY KEY (id);
+
 
 --
 -- Name: workflow_runs workflow_runs_run_id_key; Type: CONSTRAINT; Schema: public; Owner: -
@@ -3575,6 +3772,7 @@ ALTER TABLE ONLY public.workflow_runs
 ALTER TABLE ONLY public.workflow_runs
     ADD CONSTRAINT workflow_runs_run_id_key UNIQUE (run_id);
 
+
 --
 -- Name: workflow_runs workflow_runs_workflow_id_idempotency_key_key; Type: CONSTRAINT; Schema: public; Owner: -
 --
@@ -3582,11 +3780,13 @@ ALTER TABLE ONLY public.workflow_runs
 ALTER TABLE ONLY public.workflow_runs
     ADD CONSTRAINT workflow_runs_workflow_id_idempotency_key_key UNIQUE (workflow_id, idempotency_key);
 
+
 --
 -- Name: approvals_pending_expiry_idx; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX approvals_pending_expiry_idx ON public.approvals USING btree (expires_at) WHERE (status = ANY (ARRAY['pending'::text, 'approved'::text]));
+
 
 --
 -- Name: approvals_workflow_idx; Type: INDEX; Schema: public; Owner: -
@@ -3594,11 +3794,13 @@ CREATE INDEX approvals_pending_expiry_idx ON public.approvals USING btree (expir
 
 CREATE INDEX approvals_workflow_idx ON public.approvals USING btree (workflow_run_id) WHERE (workflow_run_id IS NOT NULL);
 
+
 --
 -- Name: audit_events_entity_idx; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX audit_events_entity_idx ON public.audit_events USING btree (entity_table, entity_id, occurred_at DESC);
+
 
 --
 -- Name: audit_events_transaction_idx; Type: INDEX; Schema: public; Owner: -
@@ -3606,11 +3808,13 @@ CREATE INDEX audit_events_entity_idx ON public.audit_events USING btree (entity_
 
 CREATE INDEX audit_events_transaction_idx ON public.audit_events USING btree (transaction_id) WHERE (transaction_id IS NOT NULL);
 
+
 --
 -- Name: audit_events_workflow_idx; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX audit_events_workflow_idx ON public.audit_events USING btree (workflow_run_id, occurred_at DESC) WHERE (workflow_run_id IS NOT NULL);
+
 
 --
 -- Name: companies_canonical_domain_uidx; Type: INDEX; Schema: public; Owner: -
@@ -3618,11 +3822,13 @@ CREATE INDEX audit_events_workflow_idx ON public.audit_events USING btree (workf
 
 CREATE UNIQUE INDEX companies_canonical_domain_uidx ON public.companies USING btree (canonical_domain) WHERE (canonical_domain IS NOT NULL);
 
+
 --
 -- Name: companies_name_length_idx; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX companies_name_length_idx ON public.companies USING btree (length(lower(name)));
+
 
 --
 -- Name: companies_name_lower_idx; Type: INDEX; Schema: public; Owner: -
@@ -3630,11 +3836,13 @@ CREATE INDEX companies_name_length_idx ON public.companies USING btree (length(l
 
 CREATE INDEX companies_name_lower_idx ON public.companies USING btree (lower(name));
 
+
 --
 -- Name: companies_name_trgm_idx; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX companies_name_trgm_idx ON public.companies USING gin (lower(name) public.gin_trgm_ops);
+
 
 --
 -- Name: company_aliases_active_company_uidx; Type: INDEX; Schema: public; Owner: -
@@ -3642,11 +3850,13 @@ CREATE INDEX companies_name_trgm_idx ON public.companies USING gin (lower(name) 
 
 CREATE UNIQUE INDEX company_aliases_active_company_uidx ON public.company_aliases USING btree (company_id, normalized_alias, alias_kind) WHERE ((status = 'active'::text) AND (valid_to IS NULL));
 
+
 --
 -- Name: company_aliases_exact_idx; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX company_aliases_exact_idx ON public.company_aliases USING btree (normalized_alias, confidentiality) WHERE ((status = 'active'::text) AND (valid_to IS NULL));
+
 
 --
 -- Name: company_aliases_fuzzy_bucket_idx; Type: INDEX; Schema: public; Owner: -
@@ -3654,11 +3864,13 @@ CREATE INDEX company_aliases_exact_idx ON public.company_aliases USING btree (no
 
 CREATE INDEX company_aliases_fuzzy_bucket_idx ON public.company_aliases USING btree (lower("left"(normalized_alias, 1)), length(normalized_alias)) WHERE ((status = 'active'::text) AND (valid_to IS NULL));
 
+
 --
 -- Name: company_aliases_length_idx; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX company_aliases_length_idx ON public.company_aliases USING btree (length(normalized_alias)) WHERE ((status = 'active'::text) AND (valid_to IS NULL));
+
 
 --
 -- Name: company_aliases_normalized_trgm_idx; Type: INDEX; Schema: public; Owner: -
@@ -3666,11 +3878,13 @@ CREATE INDEX company_aliases_length_idx ON public.company_aliases USING btree (l
 
 CREATE INDEX company_aliases_normalized_trgm_idx ON public.company_aliases USING gin (normalized_alias public.gin_trgm_ops) WHERE ((status = 'active'::text) AND (valid_to IS NULL));
 
+
 --
 -- Name: company_domains_active_hostname_uidx; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE UNIQUE INDEX company_domains_active_hostname_uidx ON public.company_domains USING btree (hostname) WHERE ((status = ANY (ARRAY['verified'::text, 'claimed'::text])) AND (valid_to IS NULL));
+
 
 --
 -- Name: company_domains_company_idx; Type: INDEX; Schema: public; Owner: -
@@ -3678,11 +3892,13 @@ CREATE UNIQUE INDEX company_domains_active_hostname_uidx ON public.company_domai
 
 CREATE INDEX company_domains_company_idx ON public.company_domains USING btree (company_id, status, valid_to);
 
+
 --
 -- Name: company_external_ids_active_uidx; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE UNIQUE INDEX company_external_ids_active_uidx ON public.company_external_ids USING btree (provider, provider_account_id, external_id) WHERE ((status = ANY (ARRAY['verified'::text, 'claimed'::text])) AND (valid_to IS NULL));
+
 
 --
 -- Name: company_external_ids_company_idx; Type: INDEX; Schema: public; Owner: -
@@ -3690,11 +3906,13 @@ CREATE UNIQUE INDEX company_external_ids_active_uidx ON public.company_external_
 
 CREATE INDEX company_external_ids_company_idx ON public.company_external_ids USING btree (company_id, status, valid_to);
 
+
 --
 -- Name: compiled_truth_company_idx; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX compiled_truth_company_idx ON public.compiled_truth USING btree (company_id, compiled_at DESC);
+
 
 --
 -- Name: compiled_truth_facts_fact_idx; Type: INDEX; Schema: public; Owner: -
@@ -3702,11 +3920,13 @@ CREATE INDEX compiled_truth_company_idx ON public.compiled_truth USING btree (co
 
 CREATE INDEX compiled_truth_facts_fact_idx ON public.compiled_truth_facts USING btree (fact_id);
 
+
 --
 -- Name: compiled_truth_one_current_uidx; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE UNIQUE INDEX compiled_truth_one_current_uidx ON public.compiled_truth USING btree (lead_id) WHERE (status = 'current'::text);
+
 
 --
 -- Name: contradiction_facts_fact_idx; Type: INDEX; Schema: public; Owner: -
@@ -3714,11 +3934,13 @@ CREATE UNIQUE INDEX compiled_truth_one_current_uidx ON public.compiled_truth USI
 
 CREATE INDEX contradiction_facts_fact_idx ON public.contradiction_facts USING btree (fact_id);
 
+
 --
 -- Name: contradictions_open_idx; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX contradictions_open_idx ON public.contradictions USING btree (lead_id, severity) WHERE (status = ANY (ARRAY['open'::text, 'under_review'::text]));
+
 
 --
 -- Name: document_extractions_status_idx; Type: INDEX; Schema: public; Owner: -
@@ -3726,11 +3948,13 @@ CREATE INDEX contradictions_open_idx ON public.contradictions USING btree (lead_
 
 CREATE INDEX document_extractions_status_idx ON public.document_extractions USING btree (status, created_at);
 
+
 --
 -- Name: document_extractions_workflow_request_uidx; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE UNIQUE INDEX document_extractions_workflow_request_uidx ON public.document_extractions USING btree (workflow_request_id) WHERE (workflow_request_id IS NOT NULL);
+
 
 --
 -- Name: document_facts_fact_idx; Type: INDEX; Schema: public; Owner: -
@@ -3738,11 +3962,13 @@ CREATE UNIQUE INDEX document_extractions_workflow_request_uidx ON public.documen
 
 CREATE INDEX document_facts_fact_idx ON public.document_facts USING btree (fact_id);
 
+
 --
 -- Name: entity_resolution_consumptions_company_idx; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX entity_resolution_consumptions_company_idx ON public.entity_resolution_consumptions USING btree (company_id, consumed_at DESC);
+
 
 --
 -- Name: entity_resolution_decisions_company_idx; Type: INDEX; Schema: public; Owner: -
@@ -3750,11 +3976,13 @@ CREATE INDEX entity_resolution_consumptions_company_idx ON public.entity_resolut
 
 CREATE INDEX entity_resolution_decisions_company_idx ON public.entity_resolution_decisions USING btree (matched_company_id, created_at DESC) WHERE (matched_company_id IS NOT NULL);
 
+
 --
 -- Name: entity_resolution_decisions_outcome_idx; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX entity_resolution_decisions_outcome_idx ON public.entity_resolution_decisions USING btree (outcome, created_at DESC);
+
 
 --
 -- Name: entity_resolution_runs_query_hash_idx; Type: INDEX; Schema: public; Owner: -
@@ -3762,11 +3990,13 @@ CREATE INDEX entity_resolution_decisions_outcome_idx ON public.entity_resolution
 
 CREATE INDEX entity_resolution_runs_query_hash_idx ON public.entity_resolution_runs USING btree (query_hash, created_at DESC);
 
+
 --
 -- Name: entity_resolution_runs_request_uidx; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE UNIQUE INDEX entity_resolution_runs_request_uidx ON public.entity_resolution_runs USING btree (requester_id, purpose, idempotency_key);
+
 
 --
 -- Name: entity_resolution_runs_workflow_request_uidx; Type: INDEX; Schema: public; Owner: -
@@ -3774,11 +4004,13 @@ CREATE UNIQUE INDEX entity_resolution_runs_request_uidx ON public.entity_resolut
 
 CREATE UNIQUE INDEX entity_resolution_runs_workflow_request_uidx ON public.entity_resolution_runs USING btree (workflow_request_id) WHERE (workflow_request_id IS NOT NULL);
 
+
 --
 -- Name: evaluations_band_idx; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX evaluations_band_idx ON public.evaluations USING btree (recommendation_band, evaluated_at DESC) WHERE (status = 'final'::text);
+
 
 --
 -- Name: evaluations_one_final_uidx; Type: INDEX; Schema: public; Owner: -
@@ -3786,11 +4018,13 @@ CREATE INDEX evaluations_band_idx ON public.evaluations USING btree (recommendat
 
 CREATE UNIQUE INDEX evaluations_one_final_uidx ON public.evaluations USING btree (lead_id) WHERE (status = 'final'::text);
 
+
 --
 -- Name: evaluations_request_uidx; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE UNIQUE INDEX evaluations_request_uidx ON public.evaluations USING btree (lead_id, request_hash) WHERE (request_hash IS NOT NULL);
+
 
 --
 -- Name: evidence_artifacts_retention_idx; Type: INDEX; Schema: public; Owner: -
@@ -3798,11 +4032,13 @@ CREATE UNIQUE INDEX evaluations_request_uidx ON public.evaluations USING btree (
 
 CREATE INDEX evidence_artifacts_retention_idx ON public.evidence_artifacts USING btree (retention_class, created_at);
 
+
 --
 -- Name: evidence_artifacts_type_idx; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX evidence_artifacts_type_idx ON public.evidence_artifacts USING btree (artifact_type, collected_at DESC);
+
 
 --
 -- Name: fact_sources_artifact_idx; Type: INDEX; Schema: public; Owner: -
@@ -3810,11 +4046,13 @@ CREATE INDEX evidence_artifacts_type_idx ON public.evidence_artifacts USING btre
 
 CREATE INDEX fact_sources_artifact_idx ON public.fact_sources USING btree (artifact_id) WHERE (artifact_id IS NOT NULL);
 
+
 --
 -- Name: fact_sources_source_idx; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX fact_sources_source_idx ON public.fact_sources USING btree (source_id, fact_id);
+
 
 --
 -- Name: facts_claim_hash_idx; Type: INDEX; Schema: public; Owner: -
@@ -3822,11 +4060,13 @@ CREATE INDEX fact_sources_source_idx ON public.fact_sources USING btree (source_
 
 CREATE INDEX facts_claim_hash_idx ON public.facts USING btree (company_id, claim_hash) WHERE (claim_hash IS NOT NULL);
 
+
 --
 -- Name: facts_definition_time_idx; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX facts_definition_time_idx ON public.facts USING btree (company_id, fact_type, definition, period_start, period_end, observed_at DESC);
+
 
 --
 -- Name: facts_lead_status_idx; Type: INDEX; Schema: public; Owner: -
@@ -3834,11 +4074,13 @@ CREATE INDEX facts_definition_time_idx ON public.facts USING btree (company_id, 
 
 CREATE INDEX facts_lead_status_idx ON public.facts USING btree (lead_id, fact_status);
 
+
 --
 -- Name: facts_supersedes_idx; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX facts_supersedes_idx ON public.facts USING btree (supersedes_fact_id) WHERE (supersedes_fact_id IS NOT NULL);
+
 
 --
 -- Name: lead_artifacts_artifact_idx; Type: INDEX; Schema: public; Owner: -
@@ -3846,11 +4088,13 @@ CREATE INDEX facts_supersedes_idx ON public.facts USING btree (supersedes_fact_i
 
 CREATE INDEX lead_artifacts_artifact_idx ON public.lead_artifacts USING btree (artifact_id, lead_id);
 
+
 --
 -- Name: lead_artifacts_source_idx; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX lead_artifacts_source_idx ON public.lead_artifacts USING btree (source_id) WHERE (source_id IS NOT NULL);
+
 
 --
 -- Name: leads_company_status_idx; Type: INDEX; Schema: public; Owner: -
@@ -3858,11 +4102,13 @@ CREATE INDEX lead_artifacts_source_idx ON public.lead_artifacts USING btree (sou
 
 CREATE INDEX leads_company_status_idx ON public.leads USING btree (company_id, status);
 
+
 --
 -- Name: leads_created_at_idx; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX leads_created_at_idx ON public.leads USING btree (created_at DESC);
+
 
 --
 -- Name: leads_provider_event_uidx; Type: INDEX; Schema: public; Owner: -
@@ -3870,11 +4116,13 @@ CREATE INDEX leads_created_at_idx ON public.leads USING btree (created_at DESC);
 
 CREATE UNIQUE INDEX leads_provider_event_uidx ON public.leads USING btree (channel_provider, channel_account_id, channel_event_id) WHERE ((channel_provider IS NOT NULL) AND (channel_account_id IS NOT NULL) AND (channel_event_id IS NOT NULL));
 
+
 --
 -- Name: memo_citations_fact_idx; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX memo_citations_fact_idx ON public.memo_citations USING btree (fact_id, source_id);
+
 
 --
 -- Name: memos_content_lineage_uidx; Type: INDEX; Schema: public; Owner: -
@@ -3882,11 +4130,13 @@ CREATE INDEX memo_citations_fact_idx ON public.memo_citations USING btree (fact_
 
 CREATE UNIQUE INDEX memos_content_lineage_uidx ON public.memos USING btree (lead_id, compiled_truth_id, evaluation_id, content_sha256);
 
+
 --
 -- Name: memos_one_approved_uidx; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE UNIQUE INDEX memos_one_approved_uidx ON public.memos USING btree (lead_id) WHERE (status = 'approved'::text);
+
 
 --
 -- Name: notification_attempt_provider_request_idx; Type: INDEX; Schema: public; Owner: -
@@ -3894,11 +4144,13 @@ CREATE UNIQUE INDEX memos_one_approved_uidx ON public.memos USING btree (lead_id
 
 CREATE INDEX notification_attempt_provider_request_idx ON public.notification_attempts USING btree (provider_request_id) WHERE (provider_request_id IS NOT NULL);
 
+
 --
 -- Name: notification_outbox_dispatch_idx; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX notification_outbox_dispatch_idx ON public.notification_outbox USING btree (COALESCE(next_attempt_at, deliver_after), id) WHERE (status = ANY (ARRAY['queued'::text, 'retry'::text]));
+
 
 --
 -- Name: notification_outbox_held_idx; Type: INDEX; Schema: public; Owner: -
@@ -3906,11 +4158,13 @@ CREATE INDEX notification_outbox_dispatch_idx ON public.notification_outbox USIN
 
 CREATE INDEX notification_outbox_held_idx ON public.notification_outbox USING btree (deliver_after, id) WHERE (status = 'held'::text);
 
+
 --
 -- Name: notification_provider_message_uidx; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE UNIQUE INDEX notification_provider_message_uidx ON public.notification_outbox USING btree (provider, provider_account_id, provider_message_id) WHERE (provider_message_id IS NOT NULL);
+
 
 --
 -- Name: orchestration_audit_lead_idx; Type: INDEX; Schema: public; Owner: -
@@ -3918,11 +4172,13 @@ CREATE UNIQUE INDEX notification_provider_message_uidx ON public.notification_ou
 
 CREATE INDEX orchestration_audit_lead_idx ON public.orchestration_audit USING btree (lead_id, created_at DESC);
 
+
 --
 -- Name: orchestration_audit_run_idx; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX orchestration_audit_run_idx ON public.orchestration_audit USING btree (workflow_run_id) WHERE (workflow_run_id IS NOT NULL);
+
 
 --
 -- Name: preference_forget_markers_cutoff_idx; Type: INDEX; Schema: public; Owner: -
@@ -3930,11 +4186,13 @@ CREATE INDEX orchestration_audit_run_idx ON public.orchestration_audit USING btr
 
 CREATE INDEX preference_forget_markers_cutoff_idx ON public.preference_forget_markers USING btree (principal_id, preference_key, created_at DESC);
 
+
 --
 -- Name: preference_observations_activation_idx; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX preference_observations_activation_idx ON public.preference_observations USING btree (principal_id, preference_key, preference_value, observation_kind);
+
 
 --
 -- Name: proposals_kind_idx; Type: INDEX; Schema: public; Owner: -
@@ -3942,11 +4200,13 @@ CREATE INDEX preference_observations_activation_idx ON public.preference_observa
 
 CREATE INDEX proposals_kind_idx ON public.proposals USING btree (proposal_kind, created_at DESC);
 
+
 --
 -- Name: proposals_status_idx; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX proposals_status_idx ON public.proposals USING btree (status, created_at DESC);
+
 
 --
 -- Name: signal_sources_due_idx; Type: INDEX; Schema: public; Owner: -
@@ -3954,11 +4214,13 @@ CREATE INDEX proposals_status_idx ON public.proposals USING btree (status, creat
 
 CREATE INDEX signal_sources_due_idx ON public.signal_sources USING btree (cadence, last_scanned_at) WHERE enabled;
 
+
 --
 -- Name: sources_canonical_uri_idx; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX sources_canonical_uri_idx ON public.sources USING btree (canonical_uri) WHERE (canonical_uri IS NOT NULL);
+
 
 --
 -- Name: sources_provider_stable_uidx; Type: INDEX; Schema: public; Owner: -
@@ -3966,11 +4228,13 @@ CREATE INDEX sources_canonical_uri_idx ON public.sources USING btree (canonical_
 
 CREATE UNIQUE INDEX sources_provider_stable_uidx ON public.sources USING btree (provider, provider_account_id, stable_source_id) NULLS NOT DISTINCT WHERE (stable_source_id IS NOT NULL);
 
+
 --
 -- Name: sources_published_at_idx; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX sources_published_at_idx ON public.sources USING btree (published_at DESC);
+
 
 --
 -- Name: trajectory_events_lead_idx; Type: INDEX; Schema: public; Owner: -
@@ -3978,11 +4242,13 @@ CREATE INDEX sources_published_at_idx ON public.sources USING btree (published_a
 
 CREATE INDEX trajectory_events_lead_idx ON public.trajectory_events USING btree (lead_id, fact_type, calculated_at DESC);
 
+
 --
 -- Name: trajectory_points_fact_idx; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX trajectory_points_fact_idx ON public.trajectory_points USING btree (fact_id);
+
 
 --
 -- Name: trusted_context_uses_principal_idx; Type: INDEX; Schema: public; Owner: -
@@ -3990,11 +4256,13 @@ CREATE INDEX trajectory_points_fact_idx ON public.trajectory_points USING btree 
 
 CREATE INDEX trusted_context_uses_principal_idx ON public.trusted_context_uses USING btree (principal_id, used_at DESC);
 
+
 --
 -- Name: workflow_runs_active_idx; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX workflow_runs_active_idx ON public.workflow_runs USING btree (status, heartbeat_at) WHERE (status = ANY (ARRAY['queued'::text, 'started'::text, 'running'::text, 'waiting'::text, 'blocked'::text]));
+
 
 --
 -- Name: workflow_runs_external_flow_idx; Type: INDEX; Schema: public; Owner: -
@@ -4002,11 +4270,13 @@ CREATE INDEX workflow_runs_active_idx ON public.workflow_runs USING btree (statu
 
 CREATE INDEX workflow_runs_external_flow_idx ON public.workflow_runs USING btree (external_flow_id) WHERE (external_flow_id IS NOT NULL);
 
+
 --
 -- Name: workflow_runs_lead_idx; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX workflow_runs_lead_idx ON public.workflow_runs USING btree (lead_id, created_at DESC);
+
 
 --
 -- Name: approvals approvals_guard_transition; Type: TRIGGER; Schema: public; Owner: -
@@ -4014,11 +4284,13 @@ CREATE INDEX workflow_runs_lead_idx ON public.workflow_runs USING btree (lead_id
 
 CREATE TRIGGER approvals_guard_transition BEFORE INSERT OR UPDATE ON public.approvals FOR EACH ROW EXECUTE FUNCTION public.guard_approval_transition();
 
+
 --
 -- Name: approvals approvals_set_updated_at; Type: TRIGGER; Schema: public; Owner: -
 --
 
 CREATE TRIGGER approvals_set_updated_at BEFORE UPDATE ON public.approvals FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+
 
 --
 -- Name: audit_events audit_events_append_only; Type: TRIGGER; Schema: public; Owner: -
@@ -4026,11 +4298,13 @@ CREATE TRIGGER approvals_set_updated_at BEFORE UPDATE ON public.approvals FOR EA
 
 CREATE TRIGGER audit_events_append_only BEFORE DELETE OR UPDATE OR TRUNCATE ON public.audit_events FOR EACH STATEMENT EXECUTE FUNCTION public.prevent_audit_mutation();
 
+
 --
 -- Name: companies companies_touch_version; Type: TRIGGER; Schema: public; Owner: -
 --
 
 CREATE TRIGGER companies_touch_version BEFORE UPDATE ON public.companies FOR EACH ROW EXECUTE FUNCTION public.touch_versioned_row();
+
 
 --
 -- Name: compiled_truth_facts compiled_truth_facts_append_only; Type: TRIGGER; Schema: public; Owner: -
@@ -4038,11 +4312,13 @@ CREATE TRIGGER companies_touch_version BEFORE UPDATE ON public.companies FOR EAC
 
 CREATE TRIGGER compiled_truth_facts_append_only BEFORE DELETE OR UPDATE ON public.compiled_truth_facts FOR EACH ROW EXECUTE FUNCTION public.prevent_domain_history_mutation();
 
+
 --
 -- Name: compiled_truth_facts compiled_truth_facts_guard; Type: TRIGGER; Schema: public; Owner: -
 --
 
 CREATE TRIGGER compiled_truth_facts_guard BEFORE INSERT OR UPDATE ON public.compiled_truth_facts FOR EACH ROW EXECUTE FUNCTION public.guard_compiled_truth_fact();
+
 
 --
 -- Name: compiled_truth compiled_truth_lineage; Type: TRIGGER; Schema: public; Owner: -
@@ -4050,11 +4326,13 @@ CREATE TRIGGER compiled_truth_facts_guard BEFORE INSERT OR UPDATE ON public.comp
 
 CREATE TRIGGER compiled_truth_lineage BEFORE INSERT OR UPDATE OF lead_id, company_id, workflow_run_id ON public.compiled_truth FOR EACH ROW EXECUTE FUNCTION public.guard_compiled_truth_lineage();
 
+
 --
 -- Name: contradiction_facts contradiction_facts_append_only; Type: TRIGGER; Schema: public; Owner: -
 --
 
 CREATE TRIGGER contradiction_facts_append_only BEFORE DELETE OR UPDATE ON public.contradiction_facts FOR EACH ROW EXECUTE FUNCTION public.prevent_domain_history_mutation();
+
 
 --
 -- Name: contradictions contradictions_set_updated_at; Type: TRIGGER; Schema: public; Owner: -
@@ -4062,11 +4340,13 @@ CREATE TRIGGER contradiction_facts_append_only BEFORE DELETE OR UPDATE ON public
 
 CREATE TRIGGER contradictions_set_updated_at BEFORE UPDATE ON public.contradictions FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
 
+
 --
 -- Name: document_extractions document_extractions_set_updated_at; Type: TRIGGER; Schema: public; Owner: -
 --
 
 CREATE TRIGGER document_extractions_set_updated_at BEFORE UPDATE ON public.document_extractions FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+
 
 --
 -- Name: document_extractions document_extractions_workflow_request_lineage; Type: TRIGGER; Schema: public; Owner: -
@@ -4074,11 +4354,13 @@ CREATE TRIGGER document_extractions_set_updated_at BEFORE UPDATE ON public.docum
 
 CREATE TRIGGER document_extractions_workflow_request_lineage BEFORE INSERT OR UPDATE OF artifact_id, workflow_run_id, idempotency_key, workflow_request_id ON public.document_extractions FOR EACH ROW EXECUTE FUNCTION public.guard_document_workflow_request();
 
+
 --
 -- Name: document_extractions document_extractions_workflow_versions; Type: TRIGGER; Schema: public; Owner: -
 --
 
 CREATE TRIGGER document_extractions_workflow_versions BEFORE INSERT OR UPDATE OF workflow_request_id, workflow_run_id ON public.document_extractions FOR EACH ROW EXECUTE FUNCTION public.guard_document_workflow_versions();
+
 
 --
 -- Name: document_facts document_facts_append_only; Type: TRIGGER; Schema: public; Owner: -
@@ -4086,11 +4368,13 @@ CREATE TRIGGER document_extractions_workflow_versions BEFORE INSERT OR UPDATE OF
 
 CREATE TRIGGER document_facts_append_only BEFORE DELETE OR UPDATE ON public.document_facts FOR EACH ROW EXECUTE FUNCTION public.prevent_domain_history_mutation();
 
+
 --
 -- Name: entity_resolution_consumptions entity_resolution_consumptions_append_only; Type: TRIGGER; Schema: public; Owner: -
 --
 
 CREATE TRIGGER entity_resolution_consumptions_append_only BEFORE DELETE OR UPDATE ON public.entity_resolution_consumptions FOR EACH ROW EXECUTE FUNCTION public.prevent_domain_history_mutation();
+
 
 --
 -- Name: entity_resolution_decisions entity_resolution_decisions_append_only; Type: TRIGGER; Schema: public; Owner: -
@@ -4098,11 +4382,13 @@ CREATE TRIGGER entity_resolution_consumptions_append_only BEFORE DELETE OR UPDAT
 
 CREATE TRIGGER entity_resolution_decisions_append_only BEFORE DELETE OR UPDATE ON public.entity_resolution_decisions FOR EACH ROW EXECUTE FUNCTION public.prevent_domain_history_mutation();
 
+
 --
 -- Name: entity_resolution_runs entity_resolution_runs_append_only; Type: TRIGGER; Schema: public; Owner: -
 --
 
 CREATE TRIGGER entity_resolution_runs_append_only BEFORE DELETE OR UPDATE ON public.entity_resolution_runs FOR EACH ROW EXECUTE FUNCTION public.prevent_domain_history_mutation();
+
 
 --
 -- Name: evaluation_criteria evaluation_criteria_append_only; Type: TRIGGER; Schema: public; Owner: -
@@ -4110,11 +4396,13 @@ CREATE TRIGGER entity_resolution_runs_append_only BEFORE DELETE OR UPDATE ON pub
 
 CREATE TRIGGER evaluation_criteria_append_only BEFORE DELETE OR UPDATE ON public.evaluation_criteria FOR EACH ROW EXECUTE FUNCTION public.prevent_domain_history_mutation();
 
+
 --
 -- Name: evaluations evaluations_lineage; Type: TRIGGER; Schema: public; Owner: -
 --
 
 CREATE TRIGGER evaluations_lineage BEFORE INSERT OR UPDATE OF lead_id, workflow_run_id, compiled_truth_id, status, evidence_packet_hash ON public.evaluations FOR EACH ROW EXECUTE FUNCTION public.guard_evaluation_lineage();
+
 
 --
 -- Name: evidence_artifacts evidence_artifacts_set_updated_at; Type: TRIGGER; Schema: public; Owner: -
@@ -4122,11 +4410,13 @@ CREATE TRIGGER evaluations_lineage BEFORE INSERT OR UPDATE OF lead_id, workflow_
 
 CREATE TRIGGER evidence_artifacts_set_updated_at BEFORE UPDATE ON public.evidence_artifacts FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
 
+
 --
 -- Name: fact_sources fact_sources_append_only; Type: TRIGGER; Schema: public; Owner: -
 --
 
 CREATE TRIGGER fact_sources_append_only BEFORE DELETE OR UPDATE ON public.fact_sources FOR EACH ROW EXECUTE FUNCTION public.prevent_domain_history_mutation();
+
 
 --
 -- Name: facts facts_append_only; Type: TRIGGER; Schema: public; Owner: -
@@ -4134,11 +4424,13 @@ CREATE TRIGGER fact_sources_append_only BEFORE DELETE OR UPDATE ON public.fact_s
 
 CREATE TRIGGER facts_append_only BEFORE DELETE OR UPDATE ON public.facts FOR EACH ROW EXECUTE FUNCTION public.prevent_domain_history_mutation();
 
+
 --
 -- Name: facts facts_lineage; Type: TRIGGER; Schema: public; Owner: -
 --
 
 CREATE TRIGGER facts_lineage BEFORE INSERT ON public.facts FOR EACH ROW EXECUTE FUNCTION public.guard_fact_lineage();
+
 
 --
 -- Name: leads leads_touch_version; Type: TRIGGER; Schema: public; Owner: -
@@ -4146,11 +4438,13 @@ CREATE TRIGGER facts_lineage BEFORE INSERT ON public.facts FOR EACH ROW EXECUTE 
 
 CREATE TRIGGER leads_touch_version BEFORE UPDATE ON public.leads FOR EACH ROW EXECUTE FUNCTION public.touch_versioned_row();
 
+
 --
 -- Name: memo_citations memo_citations_append_only; Type: TRIGGER; Schema: public; Owner: -
 --
 
 CREATE TRIGGER memo_citations_append_only BEFORE DELETE OR UPDATE ON public.memo_citations FOR EACH ROW EXECUTE FUNCTION public.prevent_domain_history_mutation();
+
 
 --
 -- Name: memo_citations memo_citations_lineage; Type: TRIGGER; Schema: public; Owner: -
@@ -4158,11 +4452,13 @@ CREATE TRIGGER memo_citations_append_only BEFORE DELETE OR UPDATE ON public.memo
 
 CREATE TRIGGER memo_citations_lineage BEFORE INSERT ON public.memo_citations FOR EACH ROW EXECUTE FUNCTION public.guard_memo_citation_lineage();
 
+
 --
 -- Name: memos memos_lineage; Type: TRIGGER; Schema: public; Owner: -
 --
 
 CREATE TRIGGER memos_lineage BEFORE INSERT OR UPDATE OF lead_id, workflow_run_id, compiled_truth_id, evaluation_id, frozen_evidence_hash ON public.memos FOR EACH ROW EXECUTE FUNCTION public.guard_memo_lineage();
+
 
 --
 -- Name: memos memos_set_updated_at; Type: TRIGGER; Schema: public; Owner: -
@@ -4170,11 +4466,13 @@ CREATE TRIGGER memos_lineage BEFORE INSERT OR UPDATE OF lead_id, workflow_run_id
 
 CREATE TRIGGER memos_set_updated_at BEFORE UPDATE ON public.memos FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
 
+
 --
 -- Name: notification_outbox notification_outbox_guard_initial; Type: TRIGGER; Schema: public; Owner: -
 --
 
 CREATE TRIGGER notification_outbox_guard_initial BEFORE INSERT ON public.notification_outbox FOR EACH ROW EXECUTE FUNCTION public.guard_initial_notification();
+
 
 --
 -- Name: notification_outbox notification_outbox_set_updated_at; Type: TRIGGER; Schema: public; Owner: -
@@ -4182,11 +4480,13 @@ CREATE TRIGGER notification_outbox_guard_initial BEFORE INSERT ON public.notific
 
 CREATE TRIGGER notification_outbox_set_updated_at BEFORE UPDATE ON public.notification_outbox FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
 
+
 --
 -- Name: orchestration_audit orchestration_audit_append_only; Type: TRIGGER; Schema: public; Owner: -
 --
 
 CREATE TRIGGER orchestration_audit_append_only BEFORE DELETE OR UPDATE ON public.orchestration_audit FOR EACH ROW EXECUTE FUNCTION public.prevent_domain_history_mutation();
+
 
 --
 -- Name: orchestration_audit orchestration_audit_lineage; Type: TRIGGER; Schema: public; Owner: -
@@ -4194,11 +4494,13 @@ CREATE TRIGGER orchestration_audit_append_only BEFORE DELETE OR UPDATE ON public
 
 CREATE TRIGGER orchestration_audit_lineage BEFORE INSERT ON public.orchestration_audit FOR EACH ROW EXECUTE FUNCTION public.guard_orchestration_audit_lineage();
 
+
 --
 -- Name: preference_forget_markers preference_forget_markers_append_only; Type: TRIGGER; Schema: public; Owner: -
 --
 
 CREATE TRIGGER preference_forget_markers_append_only BEFORE DELETE OR UPDATE ON public.preference_forget_markers FOR EACH ROW EXECUTE FUNCTION public.prevent_domain_history_mutation();
+
 
 --
 -- Name: preference_observations preference_observations_append_only; Type: TRIGGER; Schema: public; Owner: -
@@ -4206,11 +4508,13 @@ CREATE TRIGGER preference_forget_markers_append_only BEFORE DELETE OR UPDATE ON 
 
 CREATE TRIGGER preference_observations_append_only BEFORE DELETE OR UPDATE ON public.preference_observations FOR EACH ROW EXECUTE FUNCTION public.prevent_domain_history_mutation();
 
+
 --
 -- Name: proposals proposals_guard_decision; Type: TRIGGER; Schema: public; Owner: -
 --
 
 CREATE TRIGGER proposals_guard_decision BEFORE INSERT OR UPDATE ON public.proposals FOR EACH ROW EXECUTE FUNCTION public.guard_proposal_decision();
+
 
 --
 -- Name: proposals proposals_set_updated_at; Type: TRIGGER; Schema: public; Owner: -
@@ -4218,11 +4522,13 @@ CREATE TRIGGER proposals_guard_decision BEFORE INSERT OR UPDATE ON public.propos
 
 CREATE TRIGGER proposals_set_updated_at BEFORE UPDATE ON public.proposals FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
 
+
 --
 -- Name: schema_migrations schema_migrations_append_only; Type: TRIGGER; Schema: public; Owner: -
 --
 
 CREATE TRIGGER schema_migrations_append_only BEFORE DELETE OR UPDATE OR TRUNCATE ON public.schema_migrations FOR EACH STATEMENT EXECUTE FUNCTION public.prevent_migration_record_mutation();
+
 
 --
 -- Name: signal_sources signal_sources_touch_version; Type: TRIGGER; Schema: public; Owner: -
@@ -4230,11 +4536,13 @@ CREATE TRIGGER schema_migrations_append_only BEFORE DELETE OR UPDATE OR TRUNCATE
 
 CREATE TRIGGER signal_sources_touch_version BEFORE UPDATE ON public.signal_sources FOR EACH ROW EXECUTE FUNCTION public.touch_versioned_row();
 
+
 --
 -- Name: sources sources_set_updated_at; Type: TRIGGER; Schema: public; Owner: -
 --
 
 CREATE TRIGGER sources_set_updated_at BEFORE UPDATE ON public.sources FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+
 
 --
 -- Name: trajectory_points trajectory_points_append_only; Type: TRIGGER; Schema: public; Owner: -
@@ -4242,11 +4550,13 @@ CREATE TRIGGER sources_set_updated_at BEFORE UPDATE ON public.sources FOR EACH R
 
 CREATE TRIGGER trajectory_points_append_only BEFORE DELETE OR UPDATE ON public.trajectory_points FOR EACH ROW EXECUTE FUNCTION public.prevent_domain_history_mutation();
 
+
 --
 -- Name: trusted_context_uses trusted_context_uses_append_only; Type: TRIGGER; Schema: public; Owner: -
 --
 
 CREATE TRIGGER trusted_context_uses_append_only BEFORE DELETE OR UPDATE ON public.trusted_context_uses FOR EACH ROW EXECUTE FUNCTION public.prevent_domain_history_mutation();
+
 
 --
 -- Name: user_preference_audit user_preference_audit_append_only; Type: TRIGGER; Schema: public; Owner: -
@@ -4254,11 +4564,13 @@ CREATE TRIGGER trusted_context_uses_append_only BEFORE DELETE OR UPDATE ON publi
 
 CREATE TRIGGER user_preference_audit_append_only BEFORE DELETE OR UPDATE ON public.user_preference_audit FOR EACH ROW EXECUTE FUNCTION public.prevent_domain_history_mutation();
 
+
 --
 -- Name: workflow_requests workflow_requests_append_only; Type: TRIGGER; Schema: public; Owner: -
 --
 
 CREATE TRIGGER workflow_requests_append_only BEFORE DELETE OR UPDATE ON public.workflow_requests FOR EACH ROW EXECUTE FUNCTION public.prevent_domain_history_mutation();
+
 
 --
 -- Name: workflow_runs workflow_runs_guard_initial; Type: TRIGGER; Schema: public; Owner: -
@@ -4266,11 +4578,13 @@ CREATE TRIGGER workflow_requests_append_only BEFORE DELETE OR UPDATE ON public.w
 
 CREATE TRIGGER workflow_runs_guard_initial BEFORE INSERT ON public.workflow_runs FOR EACH ROW EXECUTE FUNCTION public.guard_initial_workflow_run();
 
+
 --
 -- Name: workflow_runs workflow_runs_guard_transition; Type: TRIGGER; Schema: public; Owner: -
 --
 
 CREATE TRIGGER workflow_runs_guard_transition BEFORE UPDATE ON public.workflow_runs FOR EACH ROW EXECUTE FUNCTION public.guard_workflow_run_transition();
+
 
 --
 -- Name: workflow_runs workflow_runs_identity_immutable; Type: TRIGGER; Schema: public; Owner: -
@@ -4278,11 +4592,13 @@ CREATE TRIGGER workflow_runs_guard_transition BEFORE UPDATE ON public.workflow_r
 
 CREATE TRIGGER workflow_runs_identity_immutable BEFORE UPDATE OF workflow_id, workflow_version, policy_version, idempotency_key, input_hash ON public.workflow_runs FOR EACH ROW EXECUTE FUNCTION public.guard_workflow_run_identity();
 
+
 --
 -- Name: workflow_runs workflow_runs_lineage; Type: TRIGGER; Schema: public; Owner: -
 --
 
 CREATE TRIGGER workflow_runs_lineage BEFORE INSERT OR UPDATE OF lead_id, company_id ON public.workflow_runs FOR EACH ROW EXECUTE FUNCTION public.guard_workflow_lineage();
+
 
 --
 -- Name: approvals approvals_company_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
@@ -4291,12 +4607,14 @@ CREATE TRIGGER workflow_runs_lineage BEFORE INSERT OR UPDATE OF lead_id, company
 ALTER TABLE ONLY public.approvals
     ADD CONSTRAINT approvals_company_id_fkey FOREIGN KEY (company_id) REFERENCES public.companies(id) ON DELETE RESTRICT;
 
+
 --
 -- Name: approvals approvals_lead_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.approvals
     ADD CONSTRAINT approvals_lead_id_fkey FOREIGN KEY (lead_id) REFERENCES public.leads(id) ON DELETE RESTRICT;
+
 
 --
 -- Name: approvals approvals_workflow_run_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
@@ -4305,12 +4623,14 @@ ALTER TABLE ONLY public.approvals
 ALTER TABLE ONLY public.approvals
     ADD CONSTRAINT approvals_workflow_run_id_fkey FOREIGN KEY (workflow_run_id) REFERENCES public.workflow_runs(id) ON DELETE RESTRICT;
 
+
 --
 -- Name: audit_events audit_events_workflow_run_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.audit_events
     ADD CONSTRAINT audit_events_workflow_run_id_fkey FOREIGN KEY (workflow_run_id) REFERENCES public.workflow_runs(id) ON DELETE RESTRICT;
+
 
 --
 -- Name: company_aliases company_aliases_company_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
@@ -4319,12 +4639,14 @@ ALTER TABLE ONLY public.audit_events
 ALTER TABLE ONLY public.company_aliases
     ADD CONSTRAINT company_aliases_company_id_fkey FOREIGN KEY (company_id) REFERENCES public.companies(id) ON DELETE RESTRICT;
 
+
 --
 -- Name: company_aliases company_aliases_source_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.company_aliases
     ADD CONSTRAINT company_aliases_source_id_fkey FOREIGN KEY (source_id) REFERENCES public.sources(id) ON DELETE RESTRICT;
+
 
 --
 -- Name: company_domains company_domains_company_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
@@ -4333,12 +4655,14 @@ ALTER TABLE ONLY public.company_aliases
 ALTER TABLE ONLY public.company_domains
     ADD CONSTRAINT company_domains_company_id_fkey FOREIGN KEY (company_id) REFERENCES public.companies(id) ON DELETE RESTRICT;
 
+
 --
 -- Name: company_domains company_domains_source_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.company_domains
     ADD CONSTRAINT company_domains_source_id_fkey FOREIGN KEY (source_id) REFERENCES public.sources(id) ON DELETE RESTRICT;
+
 
 --
 -- Name: company_external_ids company_external_ids_company_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
@@ -4347,12 +4671,14 @@ ALTER TABLE ONLY public.company_domains
 ALTER TABLE ONLY public.company_external_ids
     ADD CONSTRAINT company_external_ids_company_id_fkey FOREIGN KEY (company_id) REFERENCES public.companies(id) ON DELETE RESTRICT;
 
+
 --
 -- Name: company_external_ids company_external_ids_source_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.company_external_ids
     ADD CONSTRAINT company_external_ids_source_id_fkey FOREIGN KEY (source_id) REFERENCES public.sources(id) ON DELETE RESTRICT;
+
 
 --
 -- Name: compiled_truth compiled_truth_company_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
@@ -4361,12 +4687,14 @@ ALTER TABLE ONLY public.company_external_ids
 ALTER TABLE ONLY public.compiled_truth
     ADD CONSTRAINT compiled_truth_company_id_fkey FOREIGN KEY (company_id) REFERENCES public.companies(id) ON DELETE RESTRICT;
 
+
 --
 -- Name: compiled_truth_facts compiled_truth_facts_compiled_truth_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.compiled_truth_facts
     ADD CONSTRAINT compiled_truth_facts_compiled_truth_id_fkey FOREIGN KEY (compiled_truth_id) REFERENCES public.compiled_truth(id) ON DELETE RESTRICT;
+
 
 --
 -- Name: compiled_truth_facts compiled_truth_facts_fact_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
@@ -4375,12 +4703,14 @@ ALTER TABLE ONLY public.compiled_truth_facts
 ALTER TABLE ONLY public.compiled_truth_facts
     ADD CONSTRAINT compiled_truth_facts_fact_id_fkey FOREIGN KEY (fact_id) REFERENCES public.facts(id) ON DELETE RESTRICT;
 
+
 --
 -- Name: compiled_truth compiled_truth_lead_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.compiled_truth
     ADD CONSTRAINT compiled_truth_lead_id_fkey FOREIGN KEY (lead_id) REFERENCES public.leads(id) ON DELETE RESTRICT;
+
 
 --
 -- Name: compiled_truth compiled_truth_prior_snapshot_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
@@ -4389,12 +4719,14 @@ ALTER TABLE ONLY public.compiled_truth
 ALTER TABLE ONLY public.compiled_truth
     ADD CONSTRAINT compiled_truth_prior_snapshot_id_fkey FOREIGN KEY (prior_snapshot_id) REFERENCES public.compiled_truth(id) ON DELETE RESTRICT;
 
+
 --
 -- Name: compiled_truth compiled_truth_workflow_run_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.compiled_truth
     ADD CONSTRAINT compiled_truth_workflow_run_id_fkey FOREIGN KEY (workflow_run_id) REFERENCES public.workflow_runs(id) ON DELETE RESTRICT;
+
 
 --
 -- Name: contradiction_facts contradiction_facts_contradiction_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
@@ -4403,12 +4735,14 @@ ALTER TABLE ONLY public.compiled_truth
 ALTER TABLE ONLY public.contradiction_facts
     ADD CONSTRAINT contradiction_facts_contradiction_id_fkey FOREIGN KEY (contradiction_id) REFERENCES public.contradictions(id) ON DELETE RESTRICT;
 
+
 --
 -- Name: contradiction_facts contradiction_facts_fact_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.contradiction_facts
     ADD CONSTRAINT contradiction_facts_fact_id_fkey FOREIGN KEY (fact_id) REFERENCES public.facts(id) ON DELETE RESTRICT;
+
 
 --
 -- Name: contradictions contradictions_company_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
@@ -4417,12 +4751,14 @@ ALTER TABLE ONLY public.contradiction_facts
 ALTER TABLE ONLY public.contradictions
     ADD CONSTRAINT contradictions_company_id_fkey FOREIGN KEY (company_id) REFERENCES public.companies(id) ON DELETE RESTRICT;
 
+
 --
 -- Name: contradictions contradictions_lead_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.contradictions
     ADD CONSTRAINT contradictions_lead_id_fkey FOREIGN KEY (lead_id) REFERENCES public.leads(id) ON DELETE RESTRICT;
+
 
 --
 -- Name: contradictions contradictions_workflow_run_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
@@ -4431,12 +4767,14 @@ ALTER TABLE ONLY public.contradictions
 ALTER TABLE ONLY public.contradictions
     ADD CONSTRAINT contradictions_workflow_run_id_fkey FOREIGN KEY (workflow_run_id) REFERENCES public.workflow_runs(id) ON DELETE RESTRICT;
 
+
 --
 -- Name: document_extractions document_extractions_artifact_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.document_extractions
     ADD CONSTRAINT document_extractions_artifact_id_fkey FOREIGN KEY (artifact_id) REFERENCES public.evidence_artifacts(id) ON DELETE RESTRICT;
+
 
 --
 -- Name: document_extractions document_extractions_workflow_request_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
@@ -4445,12 +4783,14 @@ ALTER TABLE ONLY public.document_extractions
 ALTER TABLE ONLY public.document_extractions
     ADD CONSTRAINT document_extractions_workflow_request_id_fkey FOREIGN KEY (workflow_request_id) REFERENCES public.workflow_requests(id) ON DELETE RESTRICT;
 
+
 --
 -- Name: document_extractions document_extractions_workflow_run_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.document_extractions
     ADD CONSTRAINT document_extractions_workflow_run_id_fkey FOREIGN KEY (workflow_run_id) REFERENCES public.workflow_runs(id) ON DELETE RESTRICT;
+
 
 --
 -- Name: document_facts document_facts_extraction_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
@@ -4459,12 +4799,14 @@ ALTER TABLE ONLY public.document_extractions
 ALTER TABLE ONLY public.document_facts
     ADD CONSTRAINT document_facts_extraction_id_fkey FOREIGN KEY (extraction_id) REFERENCES public.document_extractions(id) ON DELETE RESTRICT;
 
+
 --
 -- Name: document_facts document_facts_fact_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.document_facts
     ADD CONSTRAINT document_facts_fact_id_fkey FOREIGN KEY (fact_id) REFERENCES public.facts(id) ON DELETE RESTRICT;
+
 
 --
 -- Name: entity_resolution_consumptions entity_resolution_consumptions_company_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
@@ -4473,12 +4815,14 @@ ALTER TABLE ONLY public.document_facts
 ALTER TABLE ONLY public.entity_resolution_consumptions
     ADD CONSTRAINT entity_resolution_consumptions_company_id_fkey FOREIGN KEY (company_id) REFERENCES public.companies(id) ON DELETE RESTRICT;
 
+
 --
 -- Name: entity_resolution_consumptions entity_resolution_consumptions_resolution_decision_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.entity_resolution_consumptions
     ADD CONSTRAINT entity_resolution_consumptions_resolution_decision_id_fkey FOREIGN KEY (resolution_decision_id) REFERENCES public.entity_resolution_decisions(id) ON DELETE RESTRICT;
+
 
 --
 -- Name: entity_resolution_decisions entity_resolution_decisions_matched_company_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
@@ -4487,12 +4831,14 @@ ALTER TABLE ONLY public.entity_resolution_consumptions
 ALTER TABLE ONLY public.entity_resolution_decisions
     ADD CONSTRAINT entity_resolution_decisions_matched_company_id_fkey FOREIGN KEY (matched_company_id) REFERENCES public.companies(id) ON DELETE RESTRICT;
 
+
 --
 -- Name: entity_resolution_decisions entity_resolution_decisions_resolution_run_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.entity_resolution_decisions
     ADD CONSTRAINT entity_resolution_decisions_resolution_run_id_fkey FOREIGN KEY (resolution_run_id) REFERENCES public.entity_resolution_runs(id) ON DELETE RESTRICT;
+
 
 --
 -- Name: entity_resolution_runs entity_resolution_runs_workflow_request_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
@@ -4501,12 +4847,14 @@ ALTER TABLE ONLY public.entity_resolution_decisions
 ALTER TABLE ONLY public.entity_resolution_runs
     ADD CONSTRAINT entity_resolution_runs_workflow_request_id_fkey FOREIGN KEY (workflow_request_id) REFERENCES public.workflow_requests(id) ON DELETE RESTRICT;
 
+
 --
 -- Name: evaluation_criteria evaluation_criteria_evaluation_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.evaluation_criteria
     ADD CONSTRAINT evaluation_criteria_evaluation_id_fkey FOREIGN KEY (evaluation_id) REFERENCES public.evaluations(id) ON DELETE RESTRICT;
+
 
 --
 -- Name: evaluations evaluations_compiled_truth_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
@@ -4515,12 +4863,14 @@ ALTER TABLE ONLY public.evaluation_criteria
 ALTER TABLE ONLY public.evaluations
     ADD CONSTRAINT evaluations_compiled_truth_id_fkey FOREIGN KEY (compiled_truth_id) REFERENCES public.compiled_truth(id) ON DELETE RESTRICT;
 
+
 --
 -- Name: evaluations evaluations_lead_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.evaluations
     ADD CONSTRAINT evaluations_lead_id_fkey FOREIGN KEY (lead_id) REFERENCES public.leads(id) ON DELETE RESTRICT;
+
 
 --
 -- Name: evaluations evaluations_workflow_run_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
@@ -4529,12 +4879,14 @@ ALTER TABLE ONLY public.evaluations
 ALTER TABLE ONLY public.evaluations
     ADD CONSTRAINT evaluations_workflow_run_id_fkey FOREIGN KEY (workflow_run_id) REFERENCES public.workflow_runs(id) ON DELETE RESTRICT;
 
+
 --
 -- Name: fact_sources fact_sources_artifact_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.fact_sources
     ADD CONSTRAINT fact_sources_artifact_id_fkey FOREIGN KEY (artifact_id) REFERENCES public.evidence_artifacts(id) ON DELETE RESTRICT;
+
 
 --
 -- Name: fact_sources fact_sources_extraction_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
@@ -4543,12 +4895,14 @@ ALTER TABLE ONLY public.fact_sources
 ALTER TABLE ONLY public.fact_sources
     ADD CONSTRAINT fact_sources_extraction_id_fkey FOREIGN KEY (extraction_id) REFERENCES public.document_extractions(id) ON DELETE RESTRICT;
 
+
 --
 -- Name: fact_sources fact_sources_fact_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.fact_sources
     ADD CONSTRAINT fact_sources_fact_id_fkey FOREIGN KEY (fact_id) REFERENCES public.facts(id) ON DELETE RESTRICT;
+
 
 --
 -- Name: fact_sources fact_sources_source_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
@@ -4557,12 +4911,14 @@ ALTER TABLE ONLY public.fact_sources
 ALTER TABLE ONLY public.fact_sources
     ADD CONSTRAINT fact_sources_source_id_fkey FOREIGN KEY (source_id) REFERENCES public.sources(id) ON DELETE RESTRICT;
 
+
 --
 -- Name: facts facts_company_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.facts
     ADD CONSTRAINT facts_company_id_fkey FOREIGN KEY (company_id) REFERENCES public.companies(id) ON DELETE RESTRICT;
+
 
 --
 -- Name: facts facts_lead_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
@@ -4571,12 +4927,14 @@ ALTER TABLE ONLY public.facts
 ALTER TABLE ONLY public.facts
     ADD CONSTRAINT facts_lead_id_fkey FOREIGN KEY (lead_id) REFERENCES public.leads(id) ON DELETE RESTRICT;
 
+
 --
 -- Name: facts facts_supersedes_fact_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.facts
     ADD CONSTRAINT facts_supersedes_fact_id_fkey FOREIGN KEY (supersedes_fact_id) REFERENCES public.facts(id) ON DELETE RESTRICT;
+
 
 --
 -- Name: facts facts_workflow_run_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
@@ -4585,12 +4943,14 @@ ALTER TABLE ONLY public.facts
 ALTER TABLE ONLY public.facts
     ADD CONSTRAINT facts_workflow_run_id_fkey FOREIGN KEY (workflow_run_id) REFERENCES public.workflow_runs(id) ON DELETE RESTRICT;
 
+
 --
 -- Name: lead_artifacts lead_artifacts_artifact_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.lead_artifacts
     ADD CONSTRAINT lead_artifacts_artifact_id_fkey FOREIGN KEY (artifact_id) REFERENCES public.evidence_artifacts(id) ON DELETE RESTRICT;
+
 
 --
 -- Name: lead_artifacts lead_artifacts_lead_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
@@ -4599,12 +4959,14 @@ ALTER TABLE ONLY public.lead_artifacts
 ALTER TABLE ONLY public.lead_artifacts
     ADD CONSTRAINT lead_artifacts_lead_id_fkey FOREIGN KEY (lead_id) REFERENCES public.leads(id) ON DELETE RESTRICT;
 
+
 --
 -- Name: lead_artifacts lead_artifacts_source_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.lead_artifacts
     ADD CONSTRAINT lead_artifacts_source_id_fkey FOREIGN KEY (source_id) REFERENCES public.sources(id) ON DELETE RESTRICT;
+
 
 --
 -- Name: leads leads_company_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
@@ -4613,12 +4975,14 @@ ALTER TABLE ONLY public.lead_artifacts
 ALTER TABLE ONLY public.leads
     ADD CONSTRAINT leads_company_id_fkey FOREIGN KEY (company_id) REFERENCES public.companies(id) ON DELETE RESTRICT;
 
+
 --
 -- Name: memo_citations memo_citations_fact_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.memo_citations
     ADD CONSTRAINT memo_citations_fact_id_fkey FOREIGN KEY (fact_id) REFERENCES public.facts(id) ON DELETE RESTRICT;
+
 
 --
 -- Name: memo_citations memo_citations_memo_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
@@ -4627,12 +4991,14 @@ ALTER TABLE ONLY public.memo_citations
 ALTER TABLE ONLY public.memo_citations
     ADD CONSTRAINT memo_citations_memo_id_fkey FOREIGN KEY (memo_id) REFERENCES public.memos(id) ON DELETE RESTRICT;
 
+
 --
 -- Name: memo_citations memo_citations_source_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.memo_citations
     ADD CONSTRAINT memo_citations_source_id_fkey FOREIGN KEY (source_id) REFERENCES public.sources(id) ON DELETE RESTRICT;
+
 
 --
 -- Name: memos memos_compiled_truth_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
@@ -4641,12 +5007,14 @@ ALTER TABLE ONLY public.memo_citations
 ALTER TABLE ONLY public.memos
     ADD CONSTRAINT memos_compiled_truth_id_fkey FOREIGN KEY (compiled_truth_id) REFERENCES public.compiled_truth(id) ON DELETE RESTRICT;
 
+
 --
 -- Name: memos memos_evaluation_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.memos
     ADD CONSTRAINT memos_evaluation_id_fkey FOREIGN KEY (evaluation_id) REFERENCES public.evaluations(id) ON DELETE RESTRICT;
+
 
 --
 -- Name: memos memos_lead_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
@@ -4655,12 +5023,14 @@ ALTER TABLE ONLY public.memos
 ALTER TABLE ONLY public.memos
     ADD CONSTRAINT memos_lead_id_fkey FOREIGN KEY (lead_id) REFERENCES public.leads(id) ON DELETE RESTRICT;
 
+
 --
 -- Name: memos memos_workflow_run_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.memos
     ADD CONSTRAINT memos_workflow_run_id_fkey FOREIGN KEY (workflow_run_id) REFERENCES public.workflow_runs(id) ON DELETE RESTRICT;
+
 
 --
 -- Name: notification_attempts notification_attempts_outbox_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
@@ -4669,12 +5039,14 @@ ALTER TABLE ONLY public.memos
 ALTER TABLE ONLY public.notification_attempts
     ADD CONSTRAINT notification_attempts_outbox_id_fkey FOREIGN KEY (outbox_id) REFERENCES public.notification_outbox(id) ON DELETE RESTRICT;
 
+
 --
 -- Name: notification_outbox notification_outbox_approval_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.notification_outbox
     ADD CONSTRAINT notification_outbox_approval_id_fkey FOREIGN KEY (approval_id) REFERENCES public.approvals(id) ON DELETE RESTRICT;
+
 
 --
 -- Name: notification_outbox notification_outbox_company_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
@@ -4683,12 +5055,14 @@ ALTER TABLE ONLY public.notification_outbox
 ALTER TABLE ONLY public.notification_outbox
     ADD CONSTRAINT notification_outbox_company_id_fkey FOREIGN KEY (company_id) REFERENCES public.companies(id) ON DELETE RESTRICT;
 
+
 --
 -- Name: notification_outbox notification_outbox_lead_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.notification_outbox
     ADD CONSTRAINT notification_outbox_lead_id_fkey FOREIGN KEY (lead_id) REFERENCES public.leads(id) ON DELETE RESTRICT;
+
 
 --
 -- Name: notification_outbox notification_outbox_workflow_run_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
@@ -4697,12 +5071,14 @@ ALTER TABLE ONLY public.notification_outbox
 ALTER TABLE ONLY public.notification_outbox
     ADD CONSTRAINT notification_outbox_workflow_run_id_fkey FOREIGN KEY (workflow_run_id) REFERENCES public.workflow_runs(id) ON DELETE RESTRICT;
 
+
 --
 -- Name: orchestration_audit orchestration_audit_lead_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.orchestration_audit
     ADD CONSTRAINT orchestration_audit_lead_id_fkey FOREIGN KEY (lead_id) REFERENCES public.leads(id) ON DELETE RESTRICT;
+
 
 --
 -- Name: orchestration_audit orchestration_audit_workflow_run_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
@@ -4711,12 +5087,14 @@ ALTER TABLE ONLY public.orchestration_audit
 ALTER TABLE ONLY public.orchestration_audit
     ADD CONSTRAINT orchestration_audit_workflow_run_id_fkey FOREIGN KEY (workflow_run_id) REFERENCES public.workflow_runs(id) ON DELETE RESTRICT;
 
+
 --
 -- Name: preference_forget_markers preference_forget_markers_principal_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.preference_forget_markers
     ADD CONSTRAINT preference_forget_markers_principal_id_fkey FOREIGN KEY (principal_id) REFERENCES public.channel_principals(id) ON DELETE RESTRICT;
+
 
 --
 -- Name: preference_observations preference_observations_principal_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
@@ -4725,12 +5103,14 @@ ALTER TABLE ONLY public.preference_forget_markers
 ALTER TABLE ONLY public.preference_observations
     ADD CONSTRAINT preference_observations_principal_id_fkey FOREIGN KEY (principal_id) REFERENCES public.channel_principals(id) ON DELETE RESTRICT;
 
+
 --
 -- Name: proposals proposals_lead_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.proposals
     ADD CONSTRAINT proposals_lead_id_fkey FOREIGN KEY (lead_id) REFERENCES public.leads(id) ON DELETE RESTRICT;
+
 
 --
 -- Name: proposals proposals_supersedes_proposal_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
@@ -4739,12 +5119,14 @@ ALTER TABLE ONLY public.proposals
 ALTER TABLE ONLY public.proposals
     ADD CONSTRAINT proposals_supersedes_proposal_id_fkey FOREIGN KEY (supersedes_proposal_id) REFERENCES public.proposals(id) ON DELETE RESTRICT;
 
+
 --
 -- Name: trajectory_events trajectory_events_company_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.trajectory_events
     ADD CONSTRAINT trajectory_events_company_id_fkey FOREIGN KEY (company_id) REFERENCES public.companies(id) ON DELETE RESTRICT;
+
 
 --
 -- Name: trajectory_events trajectory_events_lead_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
@@ -4753,12 +5135,14 @@ ALTER TABLE ONLY public.trajectory_events
 ALTER TABLE ONLY public.trajectory_events
     ADD CONSTRAINT trajectory_events_lead_id_fkey FOREIGN KEY (lead_id) REFERENCES public.leads(id) ON DELETE RESTRICT;
 
+
 --
 -- Name: trajectory_events trajectory_events_workflow_run_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.trajectory_events
     ADD CONSTRAINT trajectory_events_workflow_run_id_fkey FOREIGN KEY (workflow_run_id) REFERENCES public.workflow_runs(id) ON DELETE RESTRICT;
+
 
 --
 -- Name: trajectory_points trajectory_points_fact_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
@@ -4767,12 +5151,14 @@ ALTER TABLE ONLY public.trajectory_events
 ALTER TABLE ONLY public.trajectory_points
     ADD CONSTRAINT trajectory_points_fact_id_fkey FOREIGN KEY (fact_id) REFERENCES public.facts(id) ON DELETE RESTRICT;
 
+
 --
 -- Name: trajectory_points trajectory_points_trajectory_event_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.trajectory_points
     ADD CONSTRAINT trajectory_points_trajectory_event_id_fkey FOREIGN KEY (trajectory_event_id) REFERENCES public.trajectory_events(id) ON DELETE RESTRICT;
+
 
 --
 -- Name: trusted_context_uses trusted_context_uses_principal_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
@@ -4781,12 +5167,14 @@ ALTER TABLE ONLY public.trajectory_points
 ALTER TABLE ONLY public.trusted_context_uses
     ADD CONSTRAINT trusted_context_uses_principal_id_fkey FOREIGN KEY (principal_id) REFERENCES public.channel_principals(id) ON DELETE RESTRICT;
 
+
 --
 -- Name: user_preference_audit user_preference_audit_principal_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.user_preference_audit
     ADD CONSTRAINT user_preference_audit_principal_id_fkey FOREIGN KEY (principal_id) REFERENCES public.channel_principals(id) ON DELETE RESTRICT;
+
 
 --
 -- Name: user_preferences user_preferences_principal_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
@@ -4795,12 +5183,14 @@ ALTER TABLE ONLY public.user_preference_audit
 ALTER TABLE ONLY public.user_preferences
     ADD CONSTRAINT user_preferences_principal_id_fkey FOREIGN KEY (principal_id) REFERENCES public.channel_principals(id) ON DELETE RESTRICT;
 
+
 --
 -- Name: workflow_runs workflow_runs_company_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.workflow_runs
     ADD CONSTRAINT workflow_runs_company_id_fkey FOREIGN KEY (company_id) REFERENCES public.companies(id) ON DELETE RESTRICT;
+
 
 --
 -- Name: workflow_runs workflow_runs_lead_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
@@ -4809,6 +5199,7 @@ ALTER TABLE ONLY public.workflow_runs
 ALTER TABLE ONLY public.workflow_runs
     ADD CONSTRAINT workflow_runs_lead_id_fkey FOREIGN KEY (lead_id) REFERENCES public.leads(id) ON DELETE RESTRICT;
 
+
 --
 -- Name: workflow_runs workflow_runs_parent_run_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
@@ -4816,11 +5207,13 @@ ALTER TABLE ONLY public.workflow_runs
 ALTER TABLE ONLY public.workflow_runs
     ADD CONSTRAINT workflow_runs_parent_run_id_fkey FOREIGN KEY (parent_run_id) REFERENCES public.workflow_runs(id) ON DELETE RESTRICT;
 
+
 --
 -- Name: SCHEMA public; Type: ACL; Schema: -; Owner: -
 --
 
 GRANT USAGE ON SCHEMA public TO openclaw_runtime;
+
 
 --
 -- Name: FUNCTION gtrgm_in(cstring); Type: ACL; Schema: public; Owner: -
@@ -4828,17 +5221,20 @@ GRANT USAGE ON SCHEMA public TO openclaw_runtime;
 
 REVOKE ALL ON FUNCTION public.gtrgm_in(cstring) FROM PUBLIC;
 
+
 --
 -- Name: FUNCTION gtrgm_out(public.gtrgm); Type: ACL; Schema: public; Owner: -
 --
 
 REVOKE ALL ON FUNCTION public.gtrgm_out(public.gtrgm) FROM PUBLIC;
 
+
 --
 -- Name: TABLE notification_outbox; Type: ACL; Schema: public; Owner: -
 --
 
 GRANT SELECT,INSERT ON TABLE public.notification_outbox TO openclaw_runtime;
+
 
 --
 -- Name: FUNCTION cancel_notification(p_outbox_id bigint, p_actor_id text); Type: ACL; Schema: public; Owner: -
@@ -4847,6 +5243,7 @@ GRANT SELECT,INSERT ON TABLE public.notification_outbox TO openclaw_runtime;
 REVOKE ALL ON FUNCTION public.cancel_notification(p_outbox_id bigint, p_actor_id text) FROM PUBLIC;
 GRANT ALL ON FUNCTION public.cancel_notification(p_outbox_id bigint, p_actor_id text) TO openclaw_runtime;
 
+
 --
 -- Name: FUNCTION claim_notification(p_worker_id text, p_lease_seconds integer); Type: ACL; Schema: public; Owner: -
 --
@@ -4854,11 +5251,13 @@ GRANT ALL ON FUNCTION public.cancel_notification(p_outbox_id bigint, p_actor_id 
 REVOKE ALL ON FUNCTION public.claim_notification(p_worker_id text, p_lease_seconds integer) FROM PUBLIC;
 GRANT ALL ON FUNCTION public.claim_notification(p_worker_id text, p_lease_seconds integer) TO openclaw_runtime;
 
+
 --
 -- Name: TABLE approvals; Type: ACL; Schema: public; Owner: -
 --
 
 GRANT SELECT,INSERT ON TABLE public.approvals TO openclaw_runtime;
+
 
 --
 -- Name: FUNCTION consume_approval(p_token_hash text, p_scope_hash text, p_action_type text, p_target_system text, p_payload_hash text, p_governed_transaction_id text, p_actor_id text); Type: ACL; Schema: public; Owner: -
@@ -4867,12 +5266,14 @@ GRANT SELECT,INSERT ON TABLE public.approvals TO openclaw_runtime;
 REVOKE ALL ON FUNCTION public.consume_approval(p_token_hash text, p_scope_hash text, p_action_type text, p_target_system text, p_payload_hash text, p_governed_transaction_id text, p_actor_id text) FROM PUBLIC;
 GRANT ALL ON FUNCTION public.consume_approval(p_token_hash text, p_scope_hash text, p_action_type text, p_target_system text, p_payload_hash text, p_governed_transaction_id text, p_actor_id text) TO openclaw_runtime;
 
+
 --
 -- Name: FUNCTION consume_approval_and_erase_lead(p_lead_id bigint, p_token_hash text, p_scope_hash text, p_action_type text, p_target_system text, p_payload_hash text, p_governed_transaction_id text, p_actor_id text); Type: ACL; Schema: public; Owner: -
 --
 
 REVOKE ALL ON FUNCTION public.consume_approval_and_erase_lead(p_lead_id bigint, p_token_hash text, p_scope_hash text, p_action_type text, p_target_system text, p_payload_hash text, p_governed_transaction_id text, p_actor_id text) FROM PUBLIC;
 GRANT ALL ON FUNCTION public.consume_approval_and_erase_lead(p_lead_id bigint, p_token_hash text, p_scope_hash text, p_action_type text, p_target_system text, p_payload_hash text, p_governed_transaction_id text, p_actor_id text) TO openclaw_runtime;
+
 
 --
 -- Name: FUNCTION decide_approval(p_request_id text, p_decision text, p_approver_id text, p_approval_channel_id text, p_note text, p_actor_id text); Type: ACL; Schema: public; Owner: -
@@ -4881,11 +5282,13 @@ GRANT ALL ON FUNCTION public.consume_approval_and_erase_lead(p_lead_id bigint, p
 REVOKE ALL ON FUNCTION public.decide_approval(p_request_id text, p_decision text, p_approver_id text, p_approval_channel_id text, p_note text, p_actor_id text) FROM PUBLIC;
 GRANT ALL ON FUNCTION public.decide_approval(p_request_id text, p_decision text, p_approver_id text, p_approval_channel_id text, p_note text, p_actor_id text) TO openclaw_runtime;
 
+
 --
 -- Name: TABLE proposals; Type: ACL; Schema: public; Owner: -
 --
 
 GRANT SELECT,INSERT,UPDATE ON TABLE public.proposals TO openclaw_runtime;
+
 
 --
 -- Name: FUNCTION decide_proposal(p_proposal_id bigint, p_decision text, p_reviewed_by text, p_review_note text, p_actor_id text); Type: ACL; Schema: public; Owner: -
@@ -4894,6 +5297,7 @@ GRANT SELECT,INSERT,UPDATE ON TABLE public.proposals TO openclaw_runtime;
 REVOKE ALL ON FUNCTION public.decide_proposal(p_proposal_id bigint, p_decision text, p_reviewed_by text, p_review_note text, p_actor_id text) FROM PUBLIC;
 GRANT ALL ON FUNCTION public.decide_proposal(p_proposal_id bigint, p_decision text, p_reviewed_by text, p_review_note text, p_actor_id text) TO openclaw_runtime;
 
+
 --
 -- Name: FUNCTION finish_notification_attempt(p_outbox_id bigint, p_claim_id text, p_outcome text, p_provider_request_id text, p_provider_response_code text, p_provider_message_id text, p_error_class text, p_error_message text, p_retry_after_seconds integer); Type: ACL; Schema: public; Owner: -
 --
@@ -4901,11 +5305,13 @@ GRANT ALL ON FUNCTION public.decide_proposal(p_proposal_id bigint, p_decision te
 REVOKE ALL ON FUNCTION public.finish_notification_attempt(p_outbox_id bigint, p_claim_id text, p_outcome text, p_provider_request_id text, p_provider_response_code text, p_provider_message_id text, p_error_class text, p_error_message text, p_retry_after_seconds integer) FROM PUBLIC;
 GRANT ALL ON FUNCTION public.finish_notification_attempt(p_outbox_id bigint, p_claim_id text, p_outcome text, p_provider_request_id text, p_provider_response_code text, p_provider_message_id text, p_error_class text, p_error_message text, p_retry_after_seconds integer) TO openclaw_runtime;
 
+
 --
 -- Name: FUNCTION gin_extract_query_trgm(text, internal, smallint, internal, internal, internal, internal); Type: ACL; Schema: public; Owner: -
 --
 
 REVOKE ALL ON FUNCTION public.gin_extract_query_trgm(text, internal, smallint, internal, internal, internal, internal) FROM PUBLIC;
+
 
 --
 -- Name: FUNCTION gin_extract_value_trgm(text, internal); Type: ACL; Schema: public; Owner: -
@@ -4913,11 +5319,13 @@ REVOKE ALL ON FUNCTION public.gin_extract_query_trgm(text, internal, smallint, i
 
 REVOKE ALL ON FUNCTION public.gin_extract_value_trgm(text, internal) FROM PUBLIC;
 
+
 --
 -- Name: FUNCTION gin_trgm_consistent(internal, smallint, text, integer, internal, internal, internal, internal); Type: ACL; Schema: public; Owner: -
 --
 
 REVOKE ALL ON FUNCTION public.gin_trgm_consistent(internal, smallint, text, integer, internal, internal, internal, internal) FROM PUBLIC;
+
 
 --
 -- Name: FUNCTION gin_trgm_triconsistent(internal, smallint, text, integer, internal, internal, internal); Type: ACL; Schema: public; Owner: -
@@ -4925,11 +5333,13 @@ REVOKE ALL ON FUNCTION public.gin_trgm_consistent(internal, smallint, text, inte
 
 REVOKE ALL ON FUNCTION public.gin_trgm_triconsistent(internal, smallint, text, integer, internal, internal, internal) FROM PUBLIC;
 
+
 --
 -- Name: FUNCTION gtrgm_compress(internal); Type: ACL; Schema: public; Owner: -
 --
 
 REVOKE ALL ON FUNCTION public.gtrgm_compress(internal) FROM PUBLIC;
+
 
 --
 -- Name: FUNCTION gtrgm_consistent(internal, text, smallint, oid, internal); Type: ACL; Schema: public; Owner: -
@@ -4937,11 +5347,13 @@ REVOKE ALL ON FUNCTION public.gtrgm_compress(internal) FROM PUBLIC;
 
 REVOKE ALL ON FUNCTION public.gtrgm_consistent(internal, text, smallint, oid, internal) FROM PUBLIC;
 
+
 --
 -- Name: FUNCTION gtrgm_decompress(internal); Type: ACL; Schema: public; Owner: -
 --
 
 REVOKE ALL ON FUNCTION public.gtrgm_decompress(internal) FROM PUBLIC;
+
 
 --
 -- Name: FUNCTION gtrgm_distance(internal, text, smallint, oid, internal); Type: ACL; Schema: public; Owner: -
@@ -4949,11 +5361,13 @@ REVOKE ALL ON FUNCTION public.gtrgm_decompress(internal) FROM PUBLIC;
 
 REVOKE ALL ON FUNCTION public.gtrgm_distance(internal, text, smallint, oid, internal) FROM PUBLIC;
 
+
 --
 -- Name: FUNCTION gtrgm_options(internal); Type: ACL; Schema: public; Owner: -
 --
 
 REVOKE ALL ON FUNCTION public.gtrgm_options(internal) FROM PUBLIC;
+
 
 --
 -- Name: FUNCTION gtrgm_penalty(internal, internal, internal); Type: ACL; Schema: public; Owner: -
@@ -4961,11 +5375,13 @@ REVOKE ALL ON FUNCTION public.gtrgm_options(internal) FROM PUBLIC;
 
 REVOKE ALL ON FUNCTION public.gtrgm_penalty(internal, internal, internal) FROM PUBLIC;
 
+
 --
 -- Name: FUNCTION gtrgm_picksplit(internal, internal); Type: ACL; Schema: public; Owner: -
 --
 
 REVOKE ALL ON FUNCTION public.gtrgm_picksplit(internal, internal) FROM PUBLIC;
+
 
 --
 -- Name: FUNCTION gtrgm_same(public.gtrgm, public.gtrgm, internal); Type: ACL; Schema: public; Owner: -
@@ -4973,11 +5389,13 @@ REVOKE ALL ON FUNCTION public.gtrgm_picksplit(internal, internal) FROM PUBLIC;
 
 REVOKE ALL ON FUNCTION public.gtrgm_same(public.gtrgm, public.gtrgm, internal) FROM PUBLIC;
 
+
 --
 -- Name: FUNCTION gtrgm_union(internal, internal); Type: ACL; Schema: public; Owner: -
 --
 
 REVOKE ALL ON FUNCTION public.gtrgm_union(internal, internal) FROM PUBLIC;
+
 
 --
 -- Name: FUNCTION guard_approval_transition(); Type: ACL; Schema: public; Owner: -
@@ -4985,11 +5403,13 @@ REVOKE ALL ON FUNCTION public.gtrgm_union(internal, internal) FROM PUBLIC;
 
 REVOKE ALL ON FUNCTION public.guard_approval_transition() FROM PUBLIC;
 
+
 --
 -- Name: FUNCTION guard_compiled_truth_fact(); Type: ACL; Schema: public; Owner: -
 --
 
 REVOKE ALL ON FUNCTION public.guard_compiled_truth_fact() FROM PUBLIC;
+
 
 --
 -- Name: FUNCTION guard_compiled_truth_lineage(); Type: ACL; Schema: public; Owner: -
@@ -4997,11 +5417,13 @@ REVOKE ALL ON FUNCTION public.guard_compiled_truth_fact() FROM PUBLIC;
 
 REVOKE ALL ON FUNCTION public.guard_compiled_truth_lineage() FROM PUBLIC;
 
+
 --
 -- Name: FUNCTION guard_document_workflow_request(); Type: ACL; Schema: public; Owner: -
 --
 
 REVOKE ALL ON FUNCTION public.guard_document_workflow_request() FROM PUBLIC;
+
 
 --
 -- Name: FUNCTION guard_document_workflow_versions(); Type: ACL; Schema: public; Owner: -
@@ -5009,11 +5431,13 @@ REVOKE ALL ON FUNCTION public.guard_document_workflow_request() FROM PUBLIC;
 
 REVOKE ALL ON FUNCTION public.guard_document_workflow_versions() FROM PUBLIC;
 
+
 --
 -- Name: FUNCTION guard_evaluation_lineage(); Type: ACL; Schema: public; Owner: -
 --
 
 REVOKE ALL ON FUNCTION public.guard_evaluation_lineage() FROM PUBLIC;
+
 
 --
 -- Name: FUNCTION guard_fact_lineage(); Type: ACL; Schema: public; Owner: -
@@ -5021,11 +5445,13 @@ REVOKE ALL ON FUNCTION public.guard_evaluation_lineage() FROM PUBLIC;
 
 REVOKE ALL ON FUNCTION public.guard_fact_lineage() FROM PUBLIC;
 
+
 --
 -- Name: FUNCTION guard_initial_notification(); Type: ACL; Schema: public; Owner: -
 --
 
 REVOKE ALL ON FUNCTION public.guard_initial_notification() FROM PUBLIC;
+
 
 --
 -- Name: FUNCTION guard_initial_workflow_run(); Type: ACL; Schema: public; Owner: -
@@ -5033,11 +5459,13 @@ REVOKE ALL ON FUNCTION public.guard_initial_notification() FROM PUBLIC;
 
 REVOKE ALL ON FUNCTION public.guard_initial_workflow_run() FROM PUBLIC;
 
+
 --
 -- Name: FUNCTION guard_memo_citation_lineage(); Type: ACL; Schema: public; Owner: -
 --
 
 REVOKE ALL ON FUNCTION public.guard_memo_citation_lineage() FROM PUBLIC;
+
 
 --
 -- Name: FUNCTION guard_memo_lineage(); Type: ACL; Schema: public; Owner: -
@@ -5045,11 +5473,13 @@ REVOKE ALL ON FUNCTION public.guard_memo_citation_lineage() FROM PUBLIC;
 
 REVOKE ALL ON FUNCTION public.guard_memo_lineage() FROM PUBLIC;
 
+
 --
 -- Name: FUNCTION guard_orchestration_audit_lineage(); Type: ACL; Schema: public; Owner: -
 --
 
 REVOKE ALL ON FUNCTION public.guard_orchestration_audit_lineage() FROM PUBLIC;
+
 
 --
 -- Name: FUNCTION guard_proposal_decision(); Type: ACL; Schema: public; Owner: -
@@ -5057,11 +5487,13 @@ REVOKE ALL ON FUNCTION public.guard_orchestration_audit_lineage() FROM PUBLIC;
 
 REVOKE ALL ON FUNCTION public.guard_proposal_decision() FROM PUBLIC;
 
+
 --
 -- Name: FUNCTION guard_workflow_lineage(); Type: ACL; Schema: public; Owner: -
 --
 
 REVOKE ALL ON FUNCTION public.guard_workflow_lineage() FROM PUBLIC;
+
 
 --
 -- Name: FUNCTION guard_workflow_run_identity(); Type: ACL; Schema: public; Owner: -
@@ -5069,11 +5501,13 @@ REVOKE ALL ON FUNCTION public.guard_workflow_lineage() FROM PUBLIC;
 
 REVOKE ALL ON FUNCTION public.guard_workflow_run_identity() FROM PUBLIC;
 
+
 --
 -- Name: FUNCTION guard_workflow_run_transition(); Type: ACL; Schema: public; Owner: -
 --
 
 REVOKE ALL ON FUNCTION public.guard_workflow_run_transition() FROM PUBLIC;
+
 
 --
 -- Name: FUNCTION prevent_audit_mutation(); Type: ACL; Schema: public; Owner: -
@@ -5081,11 +5515,13 @@ REVOKE ALL ON FUNCTION public.guard_workflow_run_transition() FROM PUBLIC;
 
 REVOKE ALL ON FUNCTION public.prevent_audit_mutation() FROM PUBLIC;
 
+
 --
 -- Name: FUNCTION prevent_domain_history_mutation(); Type: ACL; Schema: public; Owner: -
 --
 
 REVOKE ALL ON FUNCTION public.prevent_domain_history_mutation() FROM PUBLIC;
+
 
 --
 -- Name: FUNCTION prevent_migration_record_mutation(); Type: ACL; Schema: public; Owner: -
@@ -5093,11 +5529,13 @@ REVOKE ALL ON FUNCTION public.prevent_domain_history_mutation() FROM PUBLIC;
 
 REVOKE ALL ON FUNCTION public.prevent_migration_record_mutation() FROM PUBLIC;
 
+
 --
 -- Name: TABLE facts; Type: ACL; Schema: public; Owner: -
 --
 
 GRANT SELECT,INSERT ON TABLE public.facts TO openclaw_runtime;
+
 
 --
 -- Name: FUNCTION promote_submitted_claim(p_fact_id bigint, p_actor text); Type: ACL; Schema: public; Owner: -
@@ -5106,11 +5544,13 @@ GRANT SELECT,INSERT ON TABLE public.facts TO openclaw_runtime;
 REVOKE ALL ON FUNCTION public.promote_submitted_claim(p_fact_id bigint, p_actor text) FROM PUBLIC;
 GRANT ALL ON FUNCTION public.promote_submitted_claim(p_fact_id bigint, p_actor text) TO openclaw_runtime;
 
+
 --
 -- Name: FUNCTION register_schema_migration(p_version text, p_name text, p_checksum_sha256 text); Type: ACL; Schema: public; Owner: -
 --
 
 REVOKE ALL ON FUNCTION public.register_schema_migration(p_version text, p_name text, p_checksum_sha256 text) FROM PUBLIC;
+
 
 --
 -- Name: FUNCTION registrable_host(p_host text); Type: ACL; Schema: public; Owner: -
@@ -5119,6 +5559,7 @@ REVOKE ALL ON FUNCTION public.register_schema_migration(p_version text, p_name t
 REVOKE ALL ON FUNCTION public.registrable_host(p_host text) FROM PUBLIC;
 GRANT ALL ON FUNCTION public.registrable_host(p_host text) TO openclaw_runtime;
 
+
 --
 -- Name: FUNCTION release_held_notification(p_outbox_id bigint, p_actor_id text); Type: ACL; Schema: public; Owner: -
 --
@@ -5126,11 +5567,13 @@ GRANT ALL ON FUNCTION public.registrable_host(p_host text) TO openclaw_runtime;
 REVOKE ALL ON FUNCTION public.release_held_notification(p_outbox_id bigint, p_actor_id text) FROM PUBLIC;
 GRANT ALL ON FUNCTION public.release_held_notification(p_outbox_id bigint, p_actor_id text) TO openclaw_runtime;
 
+
 --
 -- Name: TABLE workflow_runs; Type: ACL; Schema: public; Owner: -
 --
 
 GRANT SELECT,INSERT ON TABLE public.workflow_runs TO openclaw_runtime;
+
 
 --
 -- Name: FUNCTION request_workflow_cancel(p_run_id text, p_expected_record_version bigint, p_actor_id text, p_reason text); Type: ACL; Schema: public; Owner: -
@@ -5139,11 +5582,13 @@ GRANT SELECT,INSERT ON TABLE public.workflow_runs TO openclaw_runtime;
 REVOKE ALL ON FUNCTION public.request_workflow_cancel(p_run_id text, p_expected_record_version bigint, p_actor_id text, p_reason text) FROM PUBLIC;
 GRANT ALL ON FUNCTION public.request_workflow_cancel(p_run_id text, p_expected_record_version bigint, p_actor_id text, p_reason text) TO openclaw_runtime;
 
+
 --
 -- Name: FUNCTION set_limit(real); Type: ACL; Schema: public; Owner: -
 --
 
 REVOKE ALL ON FUNCTION public.set_limit(real) FROM PUBLIC;
+
 
 --
 -- Name: FUNCTION set_updated_at(); Type: ACL; Schema: public; Owner: -
@@ -5151,17 +5596,20 @@ REVOKE ALL ON FUNCTION public.set_limit(real) FROM PUBLIC;
 
 REVOKE ALL ON FUNCTION public.set_updated_at() FROM PUBLIC;
 
+
 --
 -- Name: FUNCTION show_limit(); Type: ACL; Schema: public; Owner: -
 --
 
 REVOKE ALL ON FUNCTION public.show_limit() FROM PUBLIC;
 
+
 --
 -- Name: FUNCTION show_trgm(text); Type: ACL; Schema: public; Owner: -
 --
 
 REVOKE ALL ON FUNCTION public.show_trgm(text) FROM PUBLIC;
+
 
 --
 -- Name: FUNCTION signal_source_is_due(p_cadence text, p_last_scanned_at timestamp with time zone); Type: ACL; Schema: public; Owner: -
@@ -5170,6 +5618,7 @@ REVOKE ALL ON FUNCTION public.show_trgm(text) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.signal_source_is_due(p_cadence text, p_last_scanned_at timestamp with time zone) FROM PUBLIC;
 GRANT ALL ON FUNCTION public.signal_source_is_due(p_cadence text, p_last_scanned_at timestamp with time zone) TO openclaw_runtime;
 
+
 --
 -- Name: FUNCTION similarity(text, text); Type: ACL; Schema: public; Owner: -
 --
@@ -5177,11 +5626,13 @@ GRANT ALL ON FUNCTION public.signal_source_is_due(p_cadence text, p_last_scanned
 REVOKE ALL ON FUNCTION public.similarity(text, text) FROM PUBLIC;
 GRANT ALL ON FUNCTION public.similarity(text, text) TO openclaw_runtime;
 
+
 --
 -- Name: FUNCTION similarity_dist(text, text); Type: ACL; Schema: public; Owner: -
 --
 
 REVOKE ALL ON FUNCTION public.similarity_dist(text, text) FROM PUBLIC;
+
 
 --
 -- Name: FUNCTION similarity_op(text, text); Type: ACL; Schema: public; Owner: -
@@ -5190,11 +5641,13 @@ REVOKE ALL ON FUNCTION public.similarity_dist(text, text) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.similarity_op(text, text) FROM PUBLIC;
 GRANT ALL ON FUNCTION public.similarity_op(text, text) TO openclaw_runtime;
 
+
 --
 -- Name: FUNCTION strict_word_similarity(text, text); Type: ACL; Schema: public; Owner: -
 --
 
 REVOKE ALL ON FUNCTION public.strict_word_similarity(text, text) FROM PUBLIC;
+
 
 --
 -- Name: FUNCTION strict_word_similarity_commutator_op(text, text); Type: ACL; Schema: public; Owner: -
@@ -5202,11 +5655,13 @@ REVOKE ALL ON FUNCTION public.strict_word_similarity(text, text) FROM PUBLIC;
 
 REVOKE ALL ON FUNCTION public.strict_word_similarity_commutator_op(text, text) FROM PUBLIC;
 
+
 --
 -- Name: FUNCTION strict_word_similarity_dist_commutator_op(text, text); Type: ACL; Schema: public; Owner: -
 --
 
 REVOKE ALL ON FUNCTION public.strict_word_similarity_dist_commutator_op(text, text) FROM PUBLIC;
+
 
 --
 -- Name: FUNCTION strict_word_similarity_dist_op(text, text); Type: ACL; Schema: public; Owner: -
@@ -5214,17 +5669,20 @@ REVOKE ALL ON FUNCTION public.strict_word_similarity_dist_commutator_op(text, te
 
 REVOKE ALL ON FUNCTION public.strict_word_similarity_dist_op(text, text) FROM PUBLIC;
 
+
 --
 -- Name: FUNCTION strict_word_similarity_op(text, text); Type: ACL; Schema: public; Owner: -
 --
 
 REVOKE ALL ON FUNCTION public.strict_word_similarity_op(text, text) FROM PUBLIC;
 
+
 --
 -- Name: FUNCTION touch_versioned_row(); Type: ACL; Schema: public; Owner: -
 --
 
 REVOKE ALL ON FUNCTION public.touch_versioned_row() FROM PUBLIC;
+
 
 --
 -- Name: FUNCTION transition_workflow_run(p_run_id text, p_expected_record_version bigint, p_new_status text, p_flow_revision bigint, p_actor_id text, p_result jsonb, p_error_class text, p_error_message text); Type: ACL; Schema: public; Owner: -
@@ -5233,11 +5691,13 @@ REVOKE ALL ON FUNCTION public.touch_versioned_row() FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.transition_workflow_run(p_run_id text, p_expected_record_version bigint, p_new_status text, p_flow_revision bigint, p_actor_id text, p_result jsonb, p_error_class text, p_error_message text) FROM PUBLIC;
 GRANT ALL ON FUNCTION public.transition_workflow_run(p_run_id text, p_expected_record_version bigint, p_new_status text, p_flow_revision bigint, p_actor_id text, p_result jsonb, p_error_class text, p_error_message text) TO openclaw_runtime;
 
+
 --
 -- Name: FUNCTION word_similarity(text, text); Type: ACL; Schema: public; Owner: -
 --
 
 REVOKE ALL ON FUNCTION public.word_similarity(text, text) FROM PUBLIC;
+
 
 --
 -- Name: FUNCTION word_similarity_commutator_op(text, text); Type: ACL; Schema: public; Owner: -
@@ -5245,11 +5705,13 @@ REVOKE ALL ON FUNCTION public.word_similarity(text, text) FROM PUBLIC;
 
 REVOKE ALL ON FUNCTION public.word_similarity_commutator_op(text, text) FROM PUBLIC;
 
+
 --
 -- Name: FUNCTION word_similarity_dist_commutator_op(text, text); Type: ACL; Schema: public; Owner: -
 --
 
 REVOKE ALL ON FUNCTION public.word_similarity_dist_commutator_op(text, text) FROM PUBLIC;
+
 
 --
 -- Name: FUNCTION word_similarity_dist_op(text, text); Type: ACL; Schema: public; Owner: -
@@ -5257,11 +5719,13 @@ REVOKE ALL ON FUNCTION public.word_similarity_dist_commutator_op(text, text) FRO
 
 REVOKE ALL ON FUNCTION public.word_similarity_dist_op(text, text) FROM PUBLIC;
 
+
 --
 -- Name: FUNCTION word_similarity_op(text, text); Type: ACL; Schema: public; Owner: -
 --
 
 REVOKE ALL ON FUNCTION public.word_similarity_op(text, text) FROM PUBLIC;
+
 
 --
 -- Name: SEQUENCE approvals_id_seq; Type: ACL; Schema: public; Owner: -
@@ -5269,11 +5733,13 @@ REVOKE ALL ON FUNCTION public.word_similarity_op(text, text) FROM PUBLIC;
 
 GRANT SELECT,USAGE ON SEQUENCE public.approvals_id_seq TO openclaw_runtime;
 
+
 --
 -- Name: TABLE audit_events; Type: ACL; Schema: public; Owner: -
 --
 
 GRANT SELECT,INSERT ON TABLE public.audit_events TO openclaw_runtime;
+
 
 --
 -- Name: SEQUENCE audit_events_id_seq; Type: ACL; Schema: public; Owner: -
@@ -5281,11 +5747,13 @@ GRANT SELECT,INSERT ON TABLE public.audit_events TO openclaw_runtime;
 
 GRANT SELECT,USAGE ON SEQUENCE public.audit_events_id_seq TO openclaw_runtime;
 
+
 --
 -- Name: TABLE channel_principals; Type: ACL; Schema: public; Owner: -
 --
 
 GRANT SELECT,INSERT,UPDATE ON TABLE public.channel_principals TO openclaw_runtime;
+
 
 --
 -- Name: SEQUENCE channel_principals_id_seq; Type: ACL; Schema: public; Owner: -
@@ -5293,11 +5761,13 @@ GRANT SELECT,INSERT,UPDATE ON TABLE public.channel_principals TO openclaw_runtim
 
 GRANT SELECT,USAGE ON SEQUENCE public.channel_principals_id_seq TO openclaw_runtime;
 
+
 --
 -- Name: TABLE companies; Type: ACL; Schema: public; Owner: -
 --
 
 GRANT SELECT,INSERT,UPDATE ON TABLE public.companies TO openclaw_runtime;
+
 
 --
 -- Name: SEQUENCE companies_id_seq; Type: ACL; Schema: public; Owner: -
@@ -5305,11 +5775,13 @@ GRANT SELECT,INSERT,UPDATE ON TABLE public.companies TO openclaw_runtime;
 
 GRANT SELECT,USAGE ON SEQUENCE public.companies_id_seq TO openclaw_runtime;
 
+
 --
 -- Name: TABLE company_aliases; Type: ACL; Schema: public; Owner: -
 --
 
 GRANT SELECT,INSERT ON TABLE public.company_aliases TO openclaw_runtime;
+
 
 --
 -- Name: SEQUENCE company_aliases_id_seq; Type: ACL; Schema: public; Owner: -
@@ -5317,11 +5789,13 @@ GRANT SELECT,INSERT ON TABLE public.company_aliases TO openclaw_runtime;
 
 GRANT SELECT,USAGE ON SEQUENCE public.company_aliases_id_seq TO openclaw_runtime;
 
+
 --
 -- Name: TABLE company_domains; Type: ACL; Schema: public; Owner: -
 --
 
 GRANT SELECT,INSERT ON TABLE public.company_domains TO openclaw_runtime;
+
 
 --
 -- Name: SEQUENCE company_domains_id_seq; Type: ACL; Schema: public; Owner: -
@@ -5329,11 +5803,13 @@ GRANT SELECT,INSERT ON TABLE public.company_domains TO openclaw_runtime;
 
 GRANT SELECT,USAGE ON SEQUENCE public.company_domains_id_seq TO openclaw_runtime;
 
+
 --
 -- Name: TABLE company_external_ids; Type: ACL; Schema: public; Owner: -
 --
 
 GRANT SELECT,INSERT ON TABLE public.company_external_ids TO openclaw_runtime;
+
 
 --
 -- Name: SEQUENCE company_external_ids_id_seq; Type: ACL; Schema: public; Owner: -
@@ -5341,11 +5817,13 @@ GRANT SELECT,INSERT ON TABLE public.company_external_ids TO openclaw_runtime;
 
 GRANT SELECT,USAGE ON SEQUENCE public.company_external_ids_id_seq TO openclaw_runtime;
 
+
 --
 -- Name: TABLE compiled_truth; Type: ACL; Schema: public; Owner: -
 --
 
 GRANT SELECT,INSERT,UPDATE ON TABLE public.compiled_truth TO openclaw_runtime;
+
 
 --
 -- Name: TABLE compiled_truth_facts; Type: ACL; Schema: public; Owner: -
@@ -5353,17 +5831,20 @@ GRANT SELECT,INSERT,UPDATE ON TABLE public.compiled_truth TO openclaw_runtime;
 
 GRANT SELECT,INSERT ON TABLE public.compiled_truth_facts TO openclaw_runtime;
 
+
 --
 -- Name: SEQUENCE compiled_truth_id_seq; Type: ACL; Schema: public; Owner: -
 --
 
 GRANT SELECT,USAGE ON SEQUENCE public.compiled_truth_id_seq TO openclaw_runtime;
 
+
 --
 -- Name: TABLE contradiction_facts; Type: ACL; Schema: public; Owner: -
 --
 
-GRANT SELECT,INSERT,UPDATE ON TABLE public.contradiction_facts TO openclaw_runtime;
+GRANT SELECT,INSERT ON TABLE public.contradiction_facts TO openclaw_runtime;
+
 
 --
 -- Name: TABLE contradictions; Type: ACL; Schema: public; Owner: -
@@ -5371,11 +5852,13 @@ GRANT SELECT,INSERT,UPDATE ON TABLE public.contradiction_facts TO openclaw_runti
 
 GRANT SELECT,INSERT,UPDATE ON TABLE public.contradictions TO openclaw_runtime;
 
+
 --
 -- Name: SEQUENCE contradictions_id_seq; Type: ACL; Schema: public; Owner: -
 --
 
 GRANT SELECT,USAGE ON SEQUENCE public.contradictions_id_seq TO openclaw_runtime;
+
 
 --
 -- Name: TABLE document_extractions; Type: ACL; Schema: public; Owner: -
@@ -5383,11 +5866,13 @@ GRANT SELECT,USAGE ON SEQUENCE public.contradictions_id_seq TO openclaw_runtime;
 
 GRANT SELECT,INSERT,UPDATE ON TABLE public.document_extractions TO openclaw_runtime;
 
+
 --
 -- Name: SEQUENCE document_extractions_id_seq; Type: ACL; Schema: public; Owner: -
 --
 
 GRANT SELECT,USAGE ON SEQUENCE public.document_extractions_id_seq TO openclaw_runtime;
+
 
 --
 -- Name: TABLE document_facts; Type: ACL; Schema: public; Owner: -
@@ -5395,11 +5880,13 @@ GRANT SELECT,USAGE ON SEQUENCE public.document_extractions_id_seq TO openclaw_ru
 
 GRANT SELECT,INSERT ON TABLE public.document_facts TO openclaw_runtime;
 
+
 --
 -- Name: SEQUENCE document_facts_id_seq; Type: ACL; Schema: public; Owner: -
 --
 
 GRANT SELECT,USAGE ON SEQUENCE public.document_facts_id_seq TO openclaw_runtime;
+
 
 --
 -- Name: TABLE entity_resolution_consumptions; Type: ACL; Schema: public; Owner: -
@@ -5407,11 +5894,13 @@ GRANT SELECT,USAGE ON SEQUENCE public.document_facts_id_seq TO openclaw_runtime;
 
 GRANT SELECT,INSERT ON TABLE public.entity_resolution_consumptions TO openclaw_runtime;
 
+
 --
 -- Name: SEQUENCE entity_resolution_consumptions_id_seq; Type: ACL; Schema: public; Owner: -
 --
 
 GRANT SELECT,USAGE ON SEQUENCE public.entity_resolution_consumptions_id_seq TO openclaw_runtime;
+
 
 --
 -- Name: TABLE entity_resolution_decisions; Type: ACL; Schema: public; Owner: -
@@ -5419,11 +5908,13 @@ GRANT SELECT,USAGE ON SEQUENCE public.entity_resolution_consumptions_id_seq TO o
 
 GRANT SELECT,INSERT ON TABLE public.entity_resolution_decisions TO openclaw_runtime;
 
+
 --
 -- Name: TABLE entity_resolution_runs; Type: ACL; Schema: public; Owner: -
 --
 
 GRANT SELECT,INSERT ON TABLE public.entity_resolution_runs TO openclaw_runtime;
+
 
 --
 -- Name: TABLE evaluation_criteria; Type: ACL; Schema: public; Owner: -
@@ -5431,11 +5922,13 @@ GRANT SELECT,INSERT ON TABLE public.entity_resolution_runs TO openclaw_runtime;
 
 GRANT SELECT,INSERT ON TABLE public.evaluation_criteria TO openclaw_runtime;
 
+
 --
 -- Name: TABLE evaluations; Type: ACL; Schema: public; Owner: -
 --
 
 GRANT SELECT,INSERT,UPDATE ON TABLE public.evaluations TO openclaw_runtime;
+
 
 --
 -- Name: SEQUENCE evaluations_id_seq; Type: ACL; Schema: public; Owner: -
@@ -5443,11 +5936,13 @@ GRANT SELECT,INSERT,UPDATE ON TABLE public.evaluations TO openclaw_runtime;
 
 GRANT SELECT,USAGE ON SEQUENCE public.evaluations_id_seq TO openclaw_runtime;
 
+
 --
 -- Name: TABLE evidence_artifacts; Type: ACL; Schema: public; Owner: -
 --
 
 GRANT SELECT,INSERT,UPDATE ON TABLE public.evidence_artifacts TO openclaw_runtime;
+
 
 --
 -- Name: SEQUENCE evidence_artifacts_id_seq; Type: ACL; Schema: public; Owner: -
@@ -5455,11 +5950,13 @@ GRANT SELECT,INSERT,UPDATE ON TABLE public.evidence_artifacts TO openclaw_runtim
 
 GRANT SELECT,USAGE ON SEQUENCE public.evidence_artifacts_id_seq TO openclaw_runtime;
 
+
 --
 -- Name: TABLE fact_promotion_policy; Type: ACL; Schema: public; Owner: -
 --
 
 GRANT SELECT ON TABLE public.fact_promotion_policy TO openclaw_runtime;
+
 
 --
 -- Name: TABLE fact_sources; Type: ACL; Schema: public; Owner: -
@@ -5467,11 +5964,13 @@ GRANT SELECT ON TABLE public.fact_promotion_policy TO openclaw_runtime;
 
 GRANT SELECT,INSERT ON TABLE public.fact_sources TO openclaw_runtime;
 
+
 --
 -- Name: SEQUENCE fact_sources_id_seq; Type: ACL; Schema: public; Owner: -
 --
 
 GRANT SELECT,USAGE ON SEQUENCE public.fact_sources_id_seq TO openclaw_runtime;
+
 
 --
 -- Name: SEQUENCE facts_id_seq; Type: ACL; Schema: public; Owner: -
@@ -5479,11 +5978,13 @@ GRANT SELECT,USAGE ON SEQUENCE public.fact_sources_id_seq TO openclaw_runtime;
 
 GRANT SELECT,USAGE ON SEQUENCE public.facts_id_seq TO openclaw_runtime;
 
+
 --
 -- Name: TABLE lead_artifacts; Type: ACL; Schema: public; Owner: -
 --
 
 GRANT SELECT,INSERT,UPDATE ON TABLE public.lead_artifacts TO openclaw_runtime;
+
 
 --
 -- Name: SEQUENCE lead_artifacts_id_seq; Type: ACL; Schema: public; Owner: -
@@ -5491,11 +5992,13 @@ GRANT SELECT,INSERT,UPDATE ON TABLE public.lead_artifacts TO openclaw_runtime;
 
 GRANT SELECT,USAGE ON SEQUENCE public.lead_artifacts_id_seq TO openclaw_runtime;
 
+
 --
 -- Name: TABLE leads; Type: ACL; Schema: public; Owner: -
 --
 
 GRANT SELECT,INSERT,UPDATE ON TABLE public.leads TO openclaw_runtime;
+
 
 --
 -- Name: SEQUENCE leads_id_seq; Type: ACL; Schema: public; Owner: -
@@ -5503,11 +6006,13 @@ GRANT SELECT,INSERT,UPDATE ON TABLE public.leads TO openclaw_runtime;
 
 GRANT SELECT,USAGE ON SEQUENCE public.leads_id_seq TO openclaw_runtime;
 
+
 --
 -- Name: TABLE memo_citations; Type: ACL; Schema: public; Owner: -
 --
 
 GRANT SELECT,INSERT ON TABLE public.memo_citations TO openclaw_runtime;
+
 
 --
 -- Name: TABLE memos; Type: ACL; Schema: public; Owner: -
@@ -5515,11 +6020,13 @@ GRANT SELECT,INSERT ON TABLE public.memo_citations TO openclaw_runtime;
 
 GRANT SELECT,INSERT,UPDATE ON TABLE public.memos TO openclaw_runtime;
 
+
 --
 -- Name: SEQUENCE memos_id_seq; Type: ACL; Schema: public; Owner: -
 --
 
 GRANT SELECT,USAGE ON SEQUENCE public.memos_id_seq TO openclaw_runtime;
+
 
 --
 -- Name: TABLE notification_attempts; Type: ACL; Schema: public; Owner: -
@@ -5527,11 +6034,13 @@ GRANT SELECT,USAGE ON SEQUENCE public.memos_id_seq TO openclaw_runtime;
 
 GRANT SELECT ON TABLE public.notification_attempts TO openclaw_runtime;
 
+
 --
 -- Name: SEQUENCE notification_attempts_id_seq; Type: ACL; Schema: public; Owner: -
 --
 
 GRANT SELECT,USAGE ON SEQUENCE public.notification_attempts_id_seq TO openclaw_runtime;
+
 
 --
 -- Name: SEQUENCE notification_outbox_id_seq; Type: ACL; Schema: public; Owner: -
@@ -5539,11 +6048,13 @@ GRANT SELECT,USAGE ON SEQUENCE public.notification_attempts_id_seq TO openclaw_r
 
 GRANT SELECT,USAGE ON SEQUENCE public.notification_outbox_id_seq TO openclaw_runtime;
 
+
 --
 -- Name: TABLE orchestration_audit; Type: ACL; Schema: public; Owner: -
 --
 
 GRANT SELECT,INSERT ON TABLE public.orchestration_audit TO openclaw_runtime;
+
 
 --
 -- Name: SEQUENCE orchestration_audit_id_seq; Type: ACL; Schema: public; Owner: -
@@ -5551,11 +6062,13 @@ GRANT SELECT,INSERT ON TABLE public.orchestration_audit TO openclaw_runtime;
 
 GRANT SELECT,USAGE ON SEQUENCE public.orchestration_audit_id_seq TO openclaw_runtime;
 
+
 --
 -- Name: TABLE preference_forget_markers; Type: ACL; Schema: public; Owner: -
 --
 
 GRANT SELECT,INSERT ON TABLE public.preference_forget_markers TO openclaw_runtime;
+
 
 --
 -- Name: SEQUENCE preference_forget_markers_id_seq; Type: ACL; Schema: public; Owner: -
@@ -5563,11 +6076,13 @@ GRANT SELECT,INSERT ON TABLE public.preference_forget_markers TO openclaw_runtim
 
 GRANT SELECT,USAGE ON SEQUENCE public.preference_forget_markers_id_seq TO openclaw_runtime;
 
+
 --
 -- Name: TABLE preference_observations; Type: ACL; Schema: public; Owner: -
 --
 
 GRANT SELECT,INSERT ON TABLE public.preference_observations TO openclaw_runtime;
+
 
 --
 -- Name: SEQUENCE preference_observations_id_seq; Type: ACL; Schema: public; Owner: -
@@ -5575,11 +6090,13 @@ GRANT SELECT,INSERT ON TABLE public.preference_observations TO openclaw_runtime;
 
 GRANT SELECT,USAGE ON SEQUENCE public.preference_observations_id_seq TO openclaw_runtime;
 
+
 --
 -- Name: SEQUENCE proposals_id_seq; Type: ACL; Schema: public; Owner: -
 --
 
 GRANT SELECT,USAGE ON SEQUENCE public.proposals_id_seq TO openclaw_runtime;
+
 
 --
 -- Name: TABLE schema_migrations; Type: ACL; Schema: public; Owner: -
@@ -5587,11 +6104,13 @@ GRANT SELECT,USAGE ON SEQUENCE public.proposals_id_seq TO openclaw_runtime;
 
 GRANT SELECT ON TABLE public.schema_migrations TO openclaw_runtime;
 
+
 --
 -- Name: TABLE signal_sources; Type: ACL; Schema: public; Owner: -
 --
 
 GRANT SELECT,INSERT,UPDATE ON TABLE public.signal_sources TO openclaw_runtime;
+
 
 --
 -- Name: SEQUENCE signal_sources_id_seq; Type: ACL; Schema: public; Owner: -
@@ -5599,11 +6118,13 @@ GRANT SELECT,INSERT,UPDATE ON TABLE public.signal_sources TO openclaw_runtime;
 
 GRANT SELECT,USAGE ON SEQUENCE public.signal_sources_id_seq TO openclaw_runtime;
 
+
 --
 -- Name: TABLE sources; Type: ACL; Schema: public; Owner: -
 --
 
 GRANT SELECT,INSERT,UPDATE ON TABLE public.sources TO openclaw_runtime;
+
 
 --
 -- Name: SEQUENCE sources_id_seq; Type: ACL; Schema: public; Owner: -
@@ -5611,11 +6132,13 @@ GRANT SELECT,INSERT,UPDATE ON TABLE public.sources TO openclaw_runtime;
 
 GRANT SELECT,USAGE ON SEQUENCE public.sources_id_seq TO openclaw_runtime;
 
+
 --
 -- Name: TABLE trajectory_events; Type: ACL; Schema: public; Owner: -
 --
 
 GRANT SELECT,INSERT,UPDATE ON TABLE public.trajectory_events TO openclaw_runtime;
+
 
 --
 -- Name: SEQUENCE trajectory_events_id_seq; Type: ACL; Schema: public; Owner: -
@@ -5623,11 +6146,13 @@ GRANT SELECT,INSERT,UPDATE ON TABLE public.trajectory_events TO openclaw_runtime
 
 GRANT SELECT,USAGE ON SEQUENCE public.trajectory_events_id_seq TO openclaw_runtime;
 
+
 --
 -- Name: TABLE trajectory_points; Type: ACL; Schema: public; Owner: -
 --
 
-GRANT SELECT,INSERT,UPDATE ON TABLE public.trajectory_points TO openclaw_runtime;
+GRANT SELECT,INSERT ON TABLE public.trajectory_points TO openclaw_runtime;
+
 
 --
 -- Name: TABLE trusted_context_uses; Type: ACL; Schema: public; Owner: -
@@ -5635,11 +6160,13 @@ GRANT SELECT,INSERT,UPDATE ON TABLE public.trajectory_points TO openclaw_runtime
 
 GRANT SELECT,INSERT ON TABLE public.trusted_context_uses TO openclaw_runtime;
 
+
 --
 -- Name: SEQUENCE trusted_context_uses_id_seq; Type: ACL; Schema: public; Owner: -
 --
 
 GRANT SELECT,USAGE ON SEQUENCE public.trusted_context_uses_id_seq TO openclaw_runtime;
+
 
 --
 -- Name: TABLE user_preference_audit; Type: ACL; Schema: public; Owner: -
@@ -5647,11 +6174,13 @@ GRANT SELECT,USAGE ON SEQUENCE public.trusted_context_uses_id_seq TO openclaw_ru
 
 GRANT SELECT,INSERT ON TABLE public.user_preference_audit TO openclaw_runtime;
 
+
 --
 -- Name: SEQUENCE user_preference_audit_id_seq; Type: ACL; Schema: public; Owner: -
 --
 
 GRANT SELECT,USAGE ON SEQUENCE public.user_preference_audit_id_seq TO openclaw_runtime;
+
 
 --
 -- Name: TABLE user_preferences; Type: ACL; Schema: public; Owner: -
@@ -5659,11 +6188,13 @@ GRANT SELECT,USAGE ON SEQUENCE public.user_preference_audit_id_seq TO openclaw_r
 
 GRANT SELECT,INSERT,UPDATE ON TABLE public.user_preferences TO openclaw_runtime;
 
+
 --
 -- Name: TABLE workflow_requests; Type: ACL; Schema: public; Owner: -
 --
 
 GRANT SELECT,INSERT ON TABLE public.workflow_requests TO openclaw_runtime;
+
 
 --
 -- Name: SEQUENCE workflow_requests_id_seq; Type: ACL; Schema: public; Owner: -
@@ -5671,13 +6202,16 @@ GRANT SELECT,INSERT ON TABLE public.workflow_requests TO openclaw_runtime;
 
 GRANT SELECT,USAGE ON SEQUENCE public.workflow_requests_id_seq TO openclaw_runtime;
 
+
 --
 -- Name: SEQUENCE workflow_runs_id_seq; Type: ACL; Schema: public; Owner: -
 --
 
 GRANT SELECT,USAGE ON SEQUENCE public.workflow_runs_id_seq TO openclaw_runtime;
 
+
 --
 -- PostgreSQL database dump complete
 --
+
 

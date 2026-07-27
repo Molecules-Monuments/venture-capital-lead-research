@@ -48,6 +48,14 @@ LOCK_TOKEN="bootstrap:$$"
 printf '%s\n' "$LOCK_TOKEN" >"$LOCK_DIR/owner"
 
 python3 scripts/render_channel_config.py "$ENV_FILE"
+# Git carries only the executable bit, so a clone taken under a restrictive
+# umask (this package's own scripts run at 077) leaves the host paths Compose
+# bind-mounts unreadable to the service accounts inside the images: postgres
+# runs as uid 999 and would skip an unreadable 000_roles.sh, silently starting
+# a database with no runtime role. Normalize exactly the two bind-mounted paths
+# and nothing else; the operator's umask still governs everything they own.
+chmod a+rx "$PACKAGE_DIR/migrations/000_roles.sh"
+chmod a+rx "$PACKAGE_DIR/inbox"
 compose config --quiet
 compose pull postgres
 # Digest pulls (compose pull, BuildKit build bases) do not tag the pinned

@@ -13,7 +13,13 @@ from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from check_env import parse_dotenv
+# The sibling import below byte-compiles check_env into scripts/__pycache__,
+# which then makes `verify_release.py --pristine` report an undeclared file and
+# tells the operator their package is untrustworthy. Suppress it here so the
+# validator stays safe to run even when someone omits `-B`.
+sys.dont_write_bytecode = True
+
+from check_env import parse_dotenv  # noqa: E402
 
 
 REQUIRED_SECTIONS = {
@@ -62,6 +68,8 @@ REQUIRED_REVIEWED_ARTIFACTS = {
     "workspaces/vc-chief/vc/data_retention.md",
     "workspaces/vc-chief/vc/document_intake.md",
     "workspaces/vc-chief/vc/evals/memo-eval.jsonl",
+    "workspaces/vc-chief/vc/evals/routing-eval.jsonl",
+    "workspaces/vc-chief/vc/evals/scoring-eval.jsonl",
     "workspaces/vc-chief/vc/exclusion_criteria.md",
     "workspaces/vc-chief/vc/prequalification.md",
     "workspaces/vc-chief/vc/primary_sources.md",

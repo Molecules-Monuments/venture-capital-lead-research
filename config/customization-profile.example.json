@@ -8,9 +8,15 @@
   },
   "investment_policy": {
     "fund_strategy": "<SEED_VC_OR_OTHER>",
-    "stages": ["<STAGE>"],
-    "sectors": ["<SECTOR>"],
-    "geographies": ["<GEOGRAPHY>"],
+    "stages": [
+      "<STAGE>"
+    ],
+    "sectors": [
+      "<SECTOR>"
+    ],
+    "geographies": [
+      "<GEOGRAPHY>"
+    ],
     "check_size_currency": "EUR",
     "check_size_min": 0,
     "check_size_max": 0,
@@ -42,13 +48,17 @@
     "evaluation_record": "<PATH_OR_ID>"
   },
   "approvals": {
-    "stable_approver_ids": ["<STABLE_ID>"],
+    "stable_approver_ids": [
+      "<STABLE_ID>"
+    ],
     "allowed_channel_ids": [],
     "expiry_minutes": 30,
     "separation_of_duties_reviewed": false
   },
   "privacy_retention": {
-    "jurisdictions": ["<JURISDICTION>"],
+    "jurisdictions": [
+      "<JURISDICTION>"
+    ],
     "lawful_bases_reviewed": false,
     "confidentiality_classes_reviewed": false,
     "retention_schedule_reviewed": false,
@@ -64,10 +74,18 @@
   },
   "agent_profile": {
     "roster": [
-      "vc-chief", "lead-router", "lead-signal-detector", "outbound-scout",
-      "inbound-intake-analyst", "document-intake-analyst",
-      "founder-researcher", "traction-analyst", "market-mapper",
-      "qualification-analyst", "memo-writer", "data-steward"
+      "vc-chief",
+      "lead-router",
+      "lead-signal-detector",
+      "outbound-scout",
+      "inbound-intake-analyst",
+      "document-intake-analyst",
+      "founder-researcher",
+      "traction-analyst",
+      "market-mapper",
+      "qualification-analyst",
+      "memo-writer",
+      "data-steward"
     ],
     "roster_or_route_changes": [],
     "schema_and_eval_updates_completed": false
@@ -86,6 +104,8 @@
       "workspaces/vc-chief/vc/data_retention.md": "<SHA256>",
       "workspaces/vc-chief/vc/document_intake.md": "<SHA256>",
       "workspaces/vc-chief/vc/evals/memo-eval.jsonl": "<SHA256>",
+      "workspaces/vc-chief/vc/evals/routing-eval.jsonl": "<SHA256>",
+      "workspaces/vc-chief/vc/evals/scoring-eval.jsonl": "<SHA256>",
       "workspaces/vc-chief/vc/exclusion_criteria.md": "<SHA256>",
       "workspaces/vc-chief/vc/prequalification.md": "<SHA256>",
       "workspaces/vc-chief/vc/primary_sources.md": "<SHA256>",

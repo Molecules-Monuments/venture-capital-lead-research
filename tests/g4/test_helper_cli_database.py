@@ -761,7 +761,11 @@ class HelperCliDatabaseTests(unittest.TestCase):
             "approval-decide", "--request-id", requested["approval"]["request_id"], "--decision", "approve",
             "--approver", "g4-operator", "--approval-channel", "g4-channel", "--reason", "binding test",
         ], env_extra={"VCOPS_OPERATOR_MODE": "1", "VCOPS_OPERATOR_ID": "g4-operator"})
-        token_hash = hashlib.sha256((TEST_APPROVAL_PEPPER + requested["token"]).encode()).hexdigest()
+        # Must mirror vcops._approval_token_hash exactly: HMAC-SHA-256 keyed by
+        # the pepper, not a secret-prefix hash.
+        token_hash = hmac.new(
+            TEST_APPROVAL_PEPPER.encode(), requested["token"].encode(), hashlib.sha256
+        ).hexdigest()
         scope_hash = canonical_hash(scope)
         with self.assertRaises(psycopg.errors.InvalidAuthorizationSpecification):
             self.query(

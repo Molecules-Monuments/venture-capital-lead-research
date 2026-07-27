@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import re
 import subprocess
 import sys
@@ -513,12 +514,48 @@ def validate_workflows(findings: list[Finding]) -> None:
         add(findings, "workflow_static", PACKAGE / "scripts/validate_workflows.py", (process.stdout + process.stderr)[-4000:])
 
 
+def validate_agent_exec_paths(findings: list[Finding]) -> None:
+    """Every helper path named in agent markdown must exist and be executable.
+
+    Agent markdown is prompt text: a path written here is what the model will
+    actually try to run. A stale path is therefore a runtime failure in the
+    system's only write lane, and it is invisible to every other gate because
+    no test executes the prose. Any `/workspaces/.../bin/...` token must resolve
+    to a real file in the package, and any token under the model-executable
+    `bin/agent/` prefix must additionally be on the exec allowlist.
+    """
+    approvals_path = PACKAGE / "config/exec-approvals.json"
+    allowlisted: set[str] = set()
+    try:
+        approvals = json.loads(approvals_path.read_text(encoding="utf-8"))
+        for agent in (approvals.get("agents") or {}).values():
+            for item in agent.get("allowlist") or []:
+                if isinstance(item.get("pattern"), str):
+                    allowlisted.add(item["pattern"])
+    except (OSError, json.JSONDecodeError, AttributeError) as exc:
+        add(findings, "exec_approvals_unreadable", approvals_path, str(exc))
+        return
+
+    token = re.compile(r"/workspaces/vc-chief/vc/bin/[A-Za-z0-9_./-]+")
+    for path in sorted(WORKSPACES_ROOT.glob("*/*.md")):
+        for reference in sorted(set(token.findall(path.read_text(encoding="utf-8")))):
+            target = PACKAGE / reference.lstrip("/")
+            if not target.is_file():
+                add(findings, "agent_exec_path_missing", path, f"{reference} does not exist in the package")
+                continue
+            if not os.access(target, os.X_OK):
+                add(findings, "agent_exec_path_not_executable", path, f"{reference} is not executable")
+            if "/bin/agent/" in reference and reference not in allowlisted:
+                add(findings, "agent_exec_path_not_allowlisted", path, f"{reference} is absent from config/exec-approvals.json")
+
+
 def main() -> int:
     findings: list[Finding] = []
     config = load_config(findings)
     validate_skills_and_agents(config, findings)
     validate_router_and_hook(findings)
     validate_workflows(findings)
+    validate_agent_exec_paths(findings)
     validate_resolver_routing(config, load_vcrun(findings), findings)
     report = {
         "result": "PASS" if not findings else "FAIL",

@@ -145,6 +145,24 @@ FIXED_PROJECT_VOLUMES = {
     "postgres-data": "openclaw-lead-research-v3_postgres-data",
     "openclaw-state": "openclaw-lead-research-v3_openclaw-state",
 }
+# The six independently generated deployment secrets. No two may be equal; see
+# the pairwise-distinctness check in validate().
+DEPLOYMENT_SECRET_KEYS = (
+    "OPENCLAW_GATEWAY_TOKEN",
+    "POSTGRES_PASSWORD",
+    "OPENCLAW_DB_PASSWORD",
+    "VCOPS_APPROVAL_PEPPER",
+    "VC_TRUSTED_CONTEXT_KEY",
+    "BACKUP_HMAC_KEY",
+)
+# Compose defaults for the two published host ports. check_env must fold these
+# in before checking for a collision: a .env that leaves one blank and sets the
+# other to the omitted one's default would otherwise validate and then fail at
+# `docker compose up` with a port-bind error.
+PORT_DEFAULTS = {
+    "OPENCLAW_GATEWAY_PORT": 18789,
+    "MSTEAMS_WEBHOOK_PORT": 3978,
+}
 
 
 def parse_dotenv(path: Path) -> dict[str, str]:
@@ -174,6 +192,17 @@ def parse_dotenv(path: Path) -> dict[str, str]:
             content = handle.read(1024 * 1024 + 1)
             if len(content) > 1024 * 1024:
                 raise ValueError(f"{path}: environment file grew beyond the 1 MiB limit")
+            # str.splitlines() strips a trailing \r, so a CRLF file would parse
+            # cleanly here and pass every check — then bootstrap.sh's
+            # `grep | cut` image lookup keeps the \r and `docker pull` fails
+            # with a bare "invalid reference format". Reject it with an
+            # actionable message instead of failing opaquely three steps later.
+            if b"\r\n" in content or b"\r" in content:
+                raise ValueError(
+                    f"{path}: environment file has CRLF (Windows) line endings; "
+                    "convert it to LF, e.g. `tr -d '\\r' < .env > .env.lf && "
+                    "mv .env.lf .env && chmod 0600 .env`"
+                )
             lines = content.decode("utf-8").splitlines()
     finally:
         if descriptor >= 0:
@@ -496,14 +525,35 @@ def main() -> int:
         errors.append("VC_TRUSTED_CONTEXT_KEY must be exactly 64 hexadecimal characters")
     if not re.fullmatch(r"[0-9a-fA-F]{64}", values.get("BACKUP_HMAC_KEY", "")):
         errors.append("BACKUP_HMAC_KEY must be exactly 64 hexadecimal characters")
+    # Every one of the six deployment secrets must be independently generated.
+    # README, RUNBOOK, and .env.example each print a separate `openssl rand`
+    # line per field, but that rule was previously machine-checked for only two
+    # of the fifteen possible pairings. Reuse is not symmetric in consequence:
+    # OPENCLAW_GATEWAY_TOKEN is handed to every gateway client and is visible in
+    # `docker inspect`, while VC_TRUSTED_CONTEXT_KEY signs the capability tokens
+    # vcops verifies — so a deployment that sets both to the same value lets
+    # anyone holding the gateway token mint trusted context for any sender.
+    # Check all pairings, keeping the two specific legacy messages intact.
+    if values.get("POSTGRES_PASSWORD") == values.get("OPENCLAW_DB_PASSWORD") and values.get("POSTGRES_PASSWORD"):
+        errors.append("owner and runtime database passwords must differ")
     if values.get("BACKUP_HMAC_KEY") in {
         values.get("OPENCLAW_GATEWAY_TOKEN"),
         values.get("VCOPS_APPROVAL_PEPPER"),
         values.get("VC_TRUSTED_CONTEXT_KEY"),
     }:
         errors.append("BACKUP_HMAC_KEY must not be reused as another deployment secret")
-    if values.get("POSTGRES_PASSWORD") == values.get("OPENCLAW_DB_PASSWORD") and values.get("POSTGRES_PASSWORD"):
-        errors.append("owner and runtime database passwords must differ")
+    first_use: dict[str, str] = {}
+    for key in DEPLOYMENT_SECRET_KEYS:
+        value = values.get(key, "")
+        if not value:
+            continue
+        if value in first_use:
+            errors.append(
+                f"{key} must not reuse the value of {first_use[value]}; generate every "
+                "deployment secret independently with `openssl rand -hex 32`"
+            )
+        else:
+            first_use[value] = key
     for key in ("VC_PRIMARY_MODEL", "VC_FAST_MODEL"):
         value = values.get(key, "")
         if value and ("/" not in value or re.search(r"replace|placeholder|example", value, re.I)):
@@ -523,16 +573,24 @@ def main() -> int:
         if value and value != "127.0.0.1":
             errors.append(f"{key} must remain 127.0.0.1")
     ports: dict[str, int] = {}
-    for key in ("OPENCLAW_GATEWAY_PORT", "MSTEAMS_WEBHOOK_PORT"):
+    for key, default in PORT_DEFAULTS.items():
         value = values.get(key, "")
         if not value:
+            # An omitted port is not absent at runtime — Compose substitutes its
+            # default. Fold it in so the collision check below sees the ports
+            # the deployment will actually bind, matching how the volume check
+            # below already folds in VOLUME_DEFAULTS.
+            ports[key] = default
             continue
         if not value.isdigit() or not 1 <= int(value) <= 65535:
             errors.append(f"{key} must be an integer from 1 through 65535")
         else:
             ports[key] = int(value)
     if len(ports) == 2 and len(set(ports.values())) != 2:
-        errors.append("OPENCLAW_GATEWAY_PORT and MSTEAMS_WEBHOOK_PORT must differ")
+        errors.append(
+            "OPENCLAW_GATEWAY_PORT and MSTEAMS_WEBHOOK_PORT must bind different host "
+            f"ports; the effective values collide: {ports}"
+        )
 
     for key in ("VC_QUARANTINE_VOLUME", "OPENCLAW_RUNTIME_CONFIG_VOLUME"):
         value = values.get(key, "")

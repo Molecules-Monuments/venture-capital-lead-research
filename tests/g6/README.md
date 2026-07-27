@@ -10,10 +10,10 @@ validation inside the built image. Version 3 intentionally removes
 Run from the Version 3.0 root:
 
 ```sh
-python3 -m unittest discover -s tests/v3 -p 'test_*.py' -v
-python3 -m unittest discover -s tests/infrastructure -p 'test_*.py' -v
-python3 -m unittest discover -s tests/g6 -p 'test*.py' -v
-python3 scripts/run_g6_image.py --image <built-image>
+python3 -B -m unittest discover -s tests/v3 -p 'test_*.py' -v
+python3 -B -m unittest discover -s tests/infrastructure -p 'test_*.py' -v
+python3 -B -m unittest discover -s tests/g6 -p 'test*.py' -v
+python3 -B scripts/run_g6_image.py --image <built-image>
 ```
 
 `run_g6_image.py` validates inert, Slack, Teams, Discord, and Telegram renders

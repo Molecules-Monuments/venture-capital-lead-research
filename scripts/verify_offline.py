@@ -123,6 +123,14 @@ def main() -> int:
         help="run the disposable 100k-company/1m-fact retrieval scale gate",
     )
     parser.add_argument(
+        "--with-schema-reference",
+        action="store_true",
+        help=(
+            "verify docs/SCHEMA.sql still matches the schema the migrations produce "
+            "(requires PostgreSQL 17 client tools)"
+        ),
+    )
+    parser.add_argument(
         "--with-deployment",
         action="store_true",
         help="run the real bootstrap/vcrun deployment gate (requires Docker and a clean package)",
@@ -155,6 +163,16 @@ def main() -> int:
     )
     if args.with_g4_database:
         checks.append(command_check("g4-database", [sys.executable, "-B", "scripts/run_g4.py"], timeout=900))
+    if args.with_schema_reference:
+        # Kept out of the default matrix on purpose: this one needs a local
+        # PostgreSQL, and the default gate is deliberately database-free.
+        checks.append(
+            command_check(
+                "schema-reference-current",
+                [sys.executable, "-B", "scripts/generate_schema_reference.py", "--check"],
+                timeout=900,
+            )
+        )
     if args.with_g6_image:
         checks.append(
             command_check(

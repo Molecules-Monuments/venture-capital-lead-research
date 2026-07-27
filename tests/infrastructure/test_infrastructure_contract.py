@@ -381,6 +381,54 @@ class LifecycleScriptContractTests(unittest.TestCase):
                     )
         self.assertTrue(privileged, "expected privileged entrypoints to remain in bin/")
 
+    def test_channel_plugin_lock_agrees_with_the_npm_lockfile(self) -> None:
+        """The reviewed channel-plugin pin must match what npm would install.
+
+        config/channel-plugins.lock.json is a review artifact: no script reads
+        it, so nothing else would notice if it drifted away from
+        runtime-packages/package-lock.json — the file that actually determines
+        the bytes in the image. A stale pin here would silently misdescribe the
+        shipped channel plugins to a reviewer, so bind the two together.
+        """
+        reviewed = json.loads(
+            (PACKAGE / "config/channel-plugins.lock.json").read_text(encoding="utf-8")
+        )
+        npm_lock = json.loads(
+            (PACKAGE / "runtime-packages/package-lock.json").read_text(encoding="utf-8")
+        )
+        entries = npm_lock["packages"]
+        checked = 0
+        for name, pin in reviewed["packages"].items():
+            # Bundled-private packages ship inside the upstream image and are
+            # deliberately absent from the npm dependency graph.
+            if pin.get("distribution") == "bundled-private":
+                self.assertNotIn(f"node_modules/{name}", entries, name)
+                self.assertNotIn("integrity", pin, f"{name} is bundled; it has no npm integrity")
+                continue
+            installed = entries.get(f"node_modules/{name}")
+            self.assertIsNotNone(installed, f"{name} is pinned but absent from package-lock.json")
+            self.assertEqual(pin["version"], installed["version"], f"{name} version drift")
+            self.assertEqual(pin["integrity"], installed["integrity"], f"{name} integrity drift")
+            checked += 1
+        self.assertGreater(checked, 0, "expected at least one npm-installed channel plugin")
+
+    def test_channel_plugin_lock_covers_every_shipped_channel(self) -> None:
+        """Every channel this deployment can select must have a reviewed pin."""
+        reviewed = json.loads(
+            (PACKAGE / "config/channel-plugins.lock.json").read_text(encoding="utf-8")
+        )
+        pinned = set(reviewed["packages"])
+        for channel in ("slack", "msteams", "discord", "telegram"):
+            self.assertIn(f"@openclaw/{channel}", pinned, f"{channel} has no reviewed plugin pin")
+        declared = json.loads(
+            (PACKAGE / "runtime-packages/package.json").read_text(encoding="utf-8")
+        )["dependencies"]
+        for name, pin in reviewed["packages"].items():
+            if pin.get("distribution") == "bundled-private":
+                continue
+            self.assertIn(name, declared, f"{name} is pinned but not a declared runtime dependency")
+            self.assertEqual(declared[name], pin["version"], f"{name} version differs from package.json")
+
 
 if __name__ == "__main__":
     unittest.main()

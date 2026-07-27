@@ -3,7 +3,7 @@
 Run from the package root:
 
 ```sh
-python3 -m unittest discover -s tests/g7 -p 'test_*.py' -v
+python3 -B -m unittest discover -s tests/g7 -p 'test_*.py' -v
 ```
 
 The gate is a hard pass only when every test succeeds. It checks the offline

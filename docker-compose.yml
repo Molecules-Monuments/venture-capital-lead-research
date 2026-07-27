@@ -8,7 +8,6 @@ services:
       POSTGRES_DB: openclaw
       POSTGRES_USER: openclaw_owner
       POSTGRES_PASSWORD_FILE: /run/secrets/postgres_owner_password
-      OPENCLAW_DB_PASSWORD_FILE: /run/secrets/openclaw_db_password
       PGDATA: /var/lib/postgresql/data/pgdata
       # initdb's default pg_hba trusts loopback TCP ahead of the appended
       # scram rule, which defeats the negative credential proof in
@@ -65,6 +64,7 @@ services:
         test ! -L /home/node/.openclaw/exec-approvals.json
         chown node:node /home/node/.openclaw/exec-approvals.json
         chmod 0600 /home/node/.openclaw/exec-approvals.json
+        cmp -s /opt/openclaw-seed/exec-approvals.json /home/node/.openclaw/exec-approvals.json
         jq -e '.version == 1 and .defaults.security == "deny" and .defaults.ask == "off" and .defaults.askFallback == "deny" and .defaults.autoAllowSkills == false and (.agents | keys == ["data-steward"]) and .agents["data-steward"].security == "allowlist" and .agents["data-steward"].ask == "off" and .agents["data-steward"].askFallback == "deny" and .agents["data-steward"].autoAllowSkills == false and (.agents["data-steward"].allowlist | length == 2) and ([.agents["data-steward"].allowlist[] | {id,pattern,source}] | sort_by(.id) == ([{"id":"2DC7C1B8-73D4-42D3-9B6F-CA3FAE54E070","pattern":"/workspaces/vc-chief/vc/bin/agent/vcops","source":"version-3-package"},{"id":"C62E453F-6D6C-4E78-85CE-BB139A57978D","pattern":"/workspaces/vc-chief/vc/bin/agent/vcrun","source":"version-3-fixed-workflows"}] | sort_by(.id)))' /home/node/.openclaw/exec-approvals.json >/dev/null
     volumes:
       - openclaw-state:/home/node/.openclaw

@@ -26,6 +26,13 @@ RUNTIME_ALLOWED = {
     "deployment-lock.json",
 }
 REVIEW_ONLY_ROOTS = {"_internal"}
+# Operator working directories. Their contents are deliberately undeclared —
+# `inbox` is the documented document drop point (bind-mounted read-only into the
+# gateway) and `quarantine` receives rejected uploads — so a system that is
+# actually processing documents would otherwise fail --pristine for doing its
+# job. The directories themselves, and their tracked .gitkeep, stay declared;
+# only the operator's own files inside them are tolerated.
+OPERATOR_DATA_ROOTS = {"inbox", "quarantine"}
 
 
 def unique_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
@@ -88,8 +95,12 @@ def main() -> int:
                 errors.append(f"hash mismatch: {relative}")
             if info.st_size != entry.get("size"):
                 errors.append(f"size mismatch: {relative}")
-            if format(stat.S_IMODE(info.st_mode), "04o") != entry.get("mode"):
-                errors.append(f"mode mismatch: {relative}")
+            # Git records the executable bit and discards the rest of the mode,
+            # so only that bit is part of the release contract. Comparing full
+            # permissions here would fail every clone taken under a umask other
+            # than 022 while proving nothing about the package's integrity.
+            if bool(info.st_mode & stat.S_IXUSR) != entry.get("executable"):
+                errors.append(f"executable-bit mismatch: {relative}")
         except OSError as exc:
             errors.append(f"missing/invalid file {relative}: {exc}")
 
@@ -117,6 +128,13 @@ def main() -> int:
                     continue
                 if not stat.S_ISDIR(info.st_mode) or stat.S_ISLNK(info.st_mode):
                     errors.append(f"invalid review-only root type: {relative}")
+                continue
+            if root in OPERATOR_DATA_ROOTS and relative != root and relative not in declared:
+                # Operator-supplied payload, not a package file. A symlink here
+                # would still be a real finding: the gateway follows it out of
+                # the intended directory, so keep rejecting those.
+                if stat.S_ISLNK(info.st_mode):
+                    errors.append(f"symlink in operator data directory: {relative}")
                 continue
             if stat.S_ISDIR(info.st_mode) and not stat.S_ISLNK(info.st_mode):
                 continue

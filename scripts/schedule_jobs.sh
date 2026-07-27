@@ -17,7 +17,7 @@ umask 077
 # delivery, configure a channel. See docs/RUNBOOK.md and CUSTOMIZATION.md.
 #
 # Usage:  ./scripts/schedule_jobs.sh
-# Tunables (env or .env-adjacent):
+# Tunables (process environment only; these are NOT read from .env):
 #   VC_SCAN_CRON       cron expression for the source scan   (default "0 7 * * 1-5")
 #   VC_SCAN_TZ         IANA timezone                          (default "Europe/Berlin")
 #   VC_SCAN_DELIVERY   optional: "--announce --channel <c> --to <target>" for a digest

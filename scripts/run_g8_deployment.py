@@ -69,6 +69,8 @@ REVIEWED_ARTIFACTS = (
     "workspaces/vc-chief/vc/data_retention.md",
     "workspaces/vc-chief/vc/document_intake.md",
     "workspaces/vc-chief/vc/evals/memo-eval.jsonl",
+    "workspaces/vc-chief/vc/evals/routing-eval.jsonl",
+    "workspaces/vc-chief/vc/evals/scoring-eval.jsonl",
     "workspaces/vc-chief/vc/exclusion_criteria.md",
     "workspaces/vc-chief/vc/prequalification.md",
     "workspaces/vc-chief/vc/primary_sources.md",

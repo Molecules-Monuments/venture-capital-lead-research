@@ -48,11 +48,11 @@ archive (excluded from the published package).
 | Proof | Result |
 | --- | --- |
 | Complete aggregate offline suites | 190 tests passed; 0 failed; 0 skipped; 24/24 offline checks pass |
-| Disposable PostgreSQL G4 | 80/80 across seven suites (semantics 6, document security 13, database contract 8, helper CLI 18, workflow execution 10, research intelligence 18, source surveillance 7); migrations 001–016 applied and registered twice |
+| Disposable PostgreSQL G4 | 80/80 across seven suites (semantics 6, document security 13, database contract 8, helper CLI 18, workflow execution 10, research intelligence 18, source surveillance 7); migrations 001–017 applied and registered twice |
 | Real deployment gate (G8) | PASS — `./scripts/bootstrap.sh` completes on the pinned images; the negative credential proof is rejected over TCP with no host trust rules remaining; fixed workflows run through real `vcrun`/Lobster inside the deployed gateway; an autonomous run leaves a non-empty knowledge base; teardown removes all state |
 | Exact-image gate (G6) | PASS — 8/8 against the image rebuilt from this tree |
 | Reference retrieval scale | PASS — 100k companies / 1m facts, all frozen thresholds met |
-| Release integrity | Current manifest (328 files), pristine inventory, workflow validation (18 workflows), Python/shell syntax, and Ruff pass |
+| Release integrity | Current manifest (`file_count` matches the packaged inventory), pristine inventory, workflow validation (18 workflows), Python/shell syntax, and Ruff pass |
 | Skills, agents, workflows | 26 skills, 12 agents, **18 workflows**, 0 findings (`validate_skill_system.py`) |
 
 The local image digest is deployment-specific: `bootstrap.sh` rebuilds the
@@ -104,8 +104,9 @@ policy to require human confirmation (`config`: `fact_promotion_policy`,
 proof uses:
 
 ```sh
-python3 scripts/verify_offline.py \
+python3 -B scripts/verify_offline.py \
   --with-g4-database \
+  --with-schema-reference \
   --with-deployment \
   --with-retrieval-scale \
   --with-g6-image openclaw-lead-research:3.0.0

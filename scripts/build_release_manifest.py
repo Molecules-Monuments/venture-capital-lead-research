@@ -51,7 +51,13 @@ def inventory() -> list[dict[str, object]]:
                 "path": relative,
                 "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
                 "size": info.st_size,
-                "mode": format(stat.S_IMODE(info.st_mode), "04o"),
+                # Only the executable bit is recorded. Git carries that bit and
+                # nothing else, so a manifest that pinned full permissions would
+                # make every clone taken under a umask other than 022 fail the
+                # integrity gate for a reason that says nothing about integrity.
+                # Content is bound by sha256; the exec bit is bound because it
+                # is the one permission that changes how a file is treated.
+                "executable": bool(info.st_mode & stat.S_IXUSR),
             }
         )
     return entries
