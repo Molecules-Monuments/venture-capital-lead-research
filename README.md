@@ -796,7 +796,10 @@ Prerequisites:
 - a compatible Python interpreter and POSIX shell;
 - one-time access to the exact hash-pinned Python packages or an approved
   package cache;
-- optional local `initdb`, `pg_ctl`, and `psql` for database/scale gates; and
+- optional local `initdb`, `pg_ctl`, and `psql` **from PostgreSQL 17** for the
+  database/scale/schema gates — they must match the deployed
+  `POSTGRES_IMAGE` major, and the gates refuse to run against any other
+  major rather than validate a version this package never deploys; and
 - optional Docker Engine/Compose for image and deployment gates.
 
 The deterministic offline suites run on Linux or macOS. The *deployment*

@@ -9,6 +9,11 @@ Run the complete gate from the repository root:
 python3 -B scripts/run_g4.py
 ```
 
+The runner requires PostgreSQL 17 client tools on PATH — the major this
+package deploys (`POSTGRES_IMAGE`) — and aborts with an actionable message on
+any other major, because a gate that validates migrations against a version
+the deployment never runs would report PASS while proving nothing.
+
 The runner always starts a disposable local PostgreSQL cluster and refuses an
 external database URL. Run it with the release virtual-environment Python so
 the hash-pinned dependencies are present. All database mutations are isolated

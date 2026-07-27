@@ -10,6 +10,7 @@ It never targets a configured production database.
 from __future__ import annotations
 
 import hashlib
+import importlib.util
 import json
 import os
 import re
@@ -81,12 +82,56 @@ def apply_migration(
         )
 
 
+def pinned_postgres_major() -> int:
+    """Major PostgreSQL version this package actually deploys.
+
+    Read from check_env.py's POSTGRES_IMAGE so the pinned image stays the one
+    source of truth; nothing here should carry a second copy of the version.
+    """
+    spec = importlib.util.spec_from_file_location("g4_check_env", PACKAGE / "scripts/check_env.py")
+    if spec is None or spec.loader is None:
+        raise GateError("cannot load scripts/check_env.py to read the pinned image")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    matched = re.match(r"postgres:(\d+)\.", module.POSTGRES_IMAGE)
+    if not matched:
+        raise GateError(f"cannot read a pinned PostgreSQL major from {module.POSTGRES_IMAGE!r}")
+    return int(matched.group(1))
+
+
+def require_pinned_postgres(initdb: str) -> None:
+    """Refuse to run the gate against a PostgreSQL major the package never ships.
+
+    The harness finds its tools on PATH, so on a host with several PostgreSQL
+    installations it will silently pick whichever is linked. A gate that
+    validates the migration set against a different major than the deployment
+    runs is worse than no gate: it reports PASS while proving nothing about the
+    version operators will actually use. Fail loudly and say how to fix it.
+    """
+    expected = pinned_postgres_major()
+    probe = run([initdb, "--version"], timeout=30)
+    rendered = (probe.stdout or "") + (probe.stderr or "")
+    found = re.search(r"\b(\d+)\.\d+", rendered)
+    if not found:
+        raise GateError(f"cannot determine the local PostgreSQL version: {rendered.strip()!r}")
+    actual = int(found.group(1))
+    if actual != expected:
+        raise GateError(
+            f"local PostgreSQL major {actual} does not match the pinned deployment major "
+            f"{expected} (POSTGRES_IMAGE in scripts/check_env.py). This gate would validate "
+            f"the migration set against a version this package never deploys. Put the "
+            f"PostgreSQL {expected} client tools first on PATH, for example "
+            f"PATH=\"$(brew --prefix postgresql@{expected})/bin:$PATH\"."
+        )
+
+
 @contextmanager
 def disposable_postgres() -> Iterator[str]:
     tools = {name: shutil.which(name) for name in ("initdb", "pg_ctl", "psql")}
     missing = [name for name, path in tools.items() if not path]
     if missing:
         raise GateError(f"required PostgreSQL tools are missing: {', '.join(missing)}")
+    require_pinned_postgres(tools["initdb"])
     if hasattr(os, "geteuid") and os.geteuid() == 0:
         raise GateError("refusing to initialize PostgreSQL as root")
     with tempfile.TemporaryDirectory(prefix="openclaw-v3-g4-") as directory:

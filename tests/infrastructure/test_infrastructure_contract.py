@@ -381,6 +381,58 @@ class LifecycleScriptContractTests(unittest.TestCase):
                     )
         self.assertTrue(privileged, "expected privileged entrypoints to remain in bin/")
 
+    def test_database_gate_refuses_a_postgres_major_the_package_never_deploys(self) -> None:
+        """The G4 harness must bind itself to the pinned PostgreSQL major.
+
+        It resolves initdb/pg_ctl/psql from PATH, so on a host carrying more
+        than one PostgreSQL it would otherwise validate the migration set
+        against whichever happens to be linked and still report PASS — proving
+        nothing about the version operators actually run. The expected major
+        must come from POSTGRES_IMAGE so there is only one pin to update.
+        """
+        spec = importlib.util.spec_from_file_location(
+            "infra_run_g4", PACKAGE / "scripts/run_g4.py"
+        )
+        assert spec is not None and spec.loader is not None
+        gate = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(gate)
+
+        env_spec = importlib.util.spec_from_file_location(
+            "infra_check_env", PACKAGE / "scripts/check_env.py"
+        )
+        assert env_spec is not None and env_spec.loader is not None
+        env_module = importlib.util.module_from_spec(env_spec)
+        env_spec.loader.exec_module(env_module)
+
+        expected = gate.pinned_postgres_major()
+        self.assertTrue(
+            env_module.POSTGRES_IMAGE.startswith(f"postgres:{expected}."),
+            f"pinned major {expected} disagrees with {env_module.POSTGRES_IMAGE}",
+        )
+        compose = (PACKAGE / "docker-compose.yml").read_text(encoding="utf-8")
+        self.assertIn(f"postgres:{expected}.", compose)
+
+        # A mismatched toolchain must raise, not proceed.
+        fake = PACKAGE / "scripts" / "_g4_fake_initdb_probe"
+        self.assertFalse(fake.exists())
+        with tempfile.TemporaryDirectory(prefix="g4-version-guard-") as temporary:
+            wrong = Path(temporary) / "initdb"
+            wrong.write_text(
+                f"#!/bin/sh\necho 'initdb (PostgreSQL) {expected - 1}.4'\n", encoding="utf-8"
+            )
+            wrong.chmod(0o755)
+            with self.assertRaises(gate.GateError) as raised:
+                gate.require_pinned_postgres(str(wrong))
+            self.assertIn(str(expected - 1), str(raised.exception))
+            self.assertIn(str(expected), str(raised.exception))
+
+            right = Path(temporary) / "initdb-ok"
+            right.write_text(
+                f"#!/bin/sh\necho 'initdb (PostgreSQL) {expected}.10'\n", encoding="utf-8"
+            )
+            right.chmod(0o755)
+            gate.require_pinned_postgres(str(right))  # must not raise
+
     def test_channel_plugin_lock_agrees_with_the_npm_lockfile(self) -> None:
         """The reviewed channel-plugin pin must match what npm would install.
 
