@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: 0BSD
 -- OpenClaw Lead Research System 3.0
 -- Permit an evidence-readiness downgrade without falsifying the numeric score.
 

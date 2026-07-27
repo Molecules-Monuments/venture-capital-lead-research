@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: 0BSD
 -- OpenClaw Lead Research System 3.0
 -- Autonomous research-intelligence persistence: claim identity, the reviewed
 -- promotion policy, and the deterministic claim-to-verified-fact promotion

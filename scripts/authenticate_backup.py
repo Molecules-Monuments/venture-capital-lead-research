@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: 0BSD
 """Create or verify the authenticated checksum envelope for a recovery point."""
 
 from __future__ import annotations

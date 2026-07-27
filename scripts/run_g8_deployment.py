@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: 0BSD
 """Run the real deployment path end-to-end on the pinned images (G8 gate).
 
 This is the execution-based deployment coverage the offline suites cannot

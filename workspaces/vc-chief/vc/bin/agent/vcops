@@ -1,4 +1,5 @@
 #!/bin/sh
+# SPDX-License-Identifier: 0BSD
 set -eu
 
 # Agent-facing immutable launcher. OpenClaw's exec tool accepts caller-supplied

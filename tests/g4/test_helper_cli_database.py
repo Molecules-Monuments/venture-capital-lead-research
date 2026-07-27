@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: 0BSD
 import base64
 import hashlib
 import hmac

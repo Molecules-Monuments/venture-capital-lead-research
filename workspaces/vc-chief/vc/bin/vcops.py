@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: 0BSD
 """Bounded persistence and document-intake CLI for OpenClaw Lead Research v3.0.
 
 Every command emits exactly one JSON object on stdout.  The program accepts no
@@ -1702,6 +1703,10 @@ def fetch_one(cur: Any, *, not_found: str | None = None) -> dict[str, Any]:
 
 
 def cmd_preflight(_args: argparse.Namespace) -> dict[str, Any]:
+    """Read-only readiness probe: verify the bounded filesystem roots (inbox,
+    channel media, writable state/extract/quarantine) and that a database is
+    configured, without touching the database itself.
+    """
     inbox_ok = False
     media_ok = False
     writable_ok = False
@@ -1740,6 +1745,9 @@ def cmd_preflight(_args: argparse.Namespace) -> dict[str, Any]:
 
 
 def cmd_db_check(_args: argparse.Namespace) -> dict[str, Any]:
+    """Read-only database probe: confirm connectivity and role, and report
+    whether the expected application schema (workflow_runs) is present.
+    """
     with connection() as conn, conn.cursor() as cur:
         cur.execute("SELECT current_database() AS database, current_user AS role, now() AS database_time")
         row = fetch_one(cur)
@@ -1749,6 +1757,9 @@ def cmd_db_check(_args: argparse.Namespace) -> dict[str, Any]:
 
 
 def cmd_health(args: argparse.Namespace) -> dict[str, Any]:
+    """Combined runtime-preflight: run the filesystem preflight and the database
+    check together and report ok only when both pass.
+    """
     result = cmd_preflight(args)
     try:
         database = cmd_db_check(args)
@@ -1760,6 +1771,11 @@ def cmd_health(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def cmd_company_upsert(args: argparse.Namespace) -> dict[str, Any]:
+    """Idempotently create or return a company keyed on its canonical domain.
+
+    On a domain collision the existing row is returned, but a mismatched name
+    fails closed rather than silently rebinding the domain to a new identity.
+    """
     name = require_text(args.name, "name", maximum=500)
     domain = normalize_domain(args.domain)
     metadata = parse_json(args.metadata, default={}, expected=dict)
@@ -1791,6 +1807,11 @@ def cmd_company_upsert(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def cmd_create_lead(args: argparse.Namespace) -> dict[str, Any]:
+    """Idempotently create a lead in the 'new' status.
+
+    Replays are deduplicated on the idempotency key and the provider-event
+    triple; a returning replay whose request hash differs fails closed.
+    """
     if args.origin_group not in {"outbound", "inbound", "unspecified"}:
         raise VcopsError("invalid_origin_group", "origin_group must be outbound, inbound, or unspecified")
     metadata = parse_json(args.metadata, default={}, expected=dict)
@@ -1853,6 +1874,11 @@ def cmd_create_lead(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def cmd_lead_show(args: argparse.Namespace) -> dict[str, Any]:
+    """Read a lead and its attached evidence artifacts (agent lane).
+
+    In model-facing lanes both the lead and its artifacts are filtered to the
+    public/internal confidentiality ceiling.
+    """
     model_limited = AGENT_MODE or WORKFLOW_MODE
     with connection() as conn, conn.cursor() as cur:
         if model_limited:
@@ -2284,6 +2310,10 @@ def _resolve_entity(
 
 
 def cmd_entity_resolve(args: argparse.Namespace) -> dict[str, Any]:
+    """Read-only entity resolution: match an identity to an existing company and
+    return the decision, candidate facts, and history without persisting anything
+    (agent lane).
+    """
     identity = _entity_identity_from_args(args)
     requester_id = require_text(args.requester_id, "requester_id", maximum=200)
     with connection() as conn, conn.cursor() as cur:
@@ -2573,6 +2603,12 @@ CONFIDENTIALITY_RANK = {"public": 0, "internal": 1, "confidential": 2, "restrict
 
 
 def cmd_source_add(args: argparse.Namespace) -> dict[str, Any]:
+    """Idempotently register or update an evidence source keyed on
+    (provider, account, stable_source_id).
+
+    Refuses to lower an existing source's trust level or confidentiality unless
+    --allow-downgrade is given for a deliberate operator override.
+    """
     uri = normalize_uri(args.uri)
     metadata = parse_json(args.metadata, default={}, expected=dict)
     with connection() as conn, conn.cursor() as cur:
@@ -2683,6 +2719,12 @@ def cmd_workflow_request_claim(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def cmd_document_request_claim(args: argparse.Namespace) -> dict[str, Any]:
+    """Claim the outer workflow request for the document-ingest workflow.
+
+    Accepts only capability-bound channel media (a verified trusted context) and
+    is idempotent on (workflow_id, idempotency_key); a replay with a differing
+    payload fails closed.
+    """
     workflow = "document-ingest"
     idempotency_key = require_text(args.idempotency_key, "idempotency_key", maximum=300)
     document_path = require_text(args.document_path, "document_path", maximum=4_096)
@@ -2733,6 +2775,12 @@ def cmd_document_request_claim(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def cmd_workflow_start(args: argparse.Namespace) -> dict[str, Any]:
+    """Idempotently open a workflow run in the 'queued' state.
+
+    Validates lead/company lineage, restricts to reviewed fixed workflow IDs in
+    workflow mode, and is replay-safe on (workflow_id, idempotency_key) with a
+    fail-closed input-hash check.
+    """
     metadata = parse_json(args.metadata, default={}, expected=dict)
     run_id = str(uuid4())
     with connection() as conn, conn.cursor() as cur:
@@ -2810,6 +2858,10 @@ def _transition_run(cur: Any, run_id: str, target: str, expected_revision: int, 
 
 
 def cmd_workflow_transition(args: argparse.Namespace) -> dict[str, Any]:
+    """Advance a workflow run to a target status under an optimistic revision
+    check, enforcing the allowed state machine via the governed transition
+    function; the same-status case is a no-op.
+    """
     result = parse_json(args.result, default={}, expected=dict)
     with connection() as conn, conn.cursor() as cur:
         row = _transition_run(cur, args.run_id, args.status, args.expected_revision, args.error, result)
@@ -2817,6 +2869,11 @@ def cmd_workflow_transition(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def cmd_workflow_reconcile_failure(args: argparse.Namespace) -> dict[str, Any]:
+    """Reconcile a fixed-workflow run to 'failed' after a runner crash.
+
+    Idempotent and fail-closed: reports not_started/already_failed without
+    change, and refuses to overwrite a terminal succeeded/cancelled/lost run.
+    """
     workflow = require_text(args.workflow, "workflow", maximum=200)
     if workflow not in FIXED_WORKFLOW_IDS:
         raise VcopsError("workflow_not_fixed", "failure reconciliation is limited to fixed release workflows", exit_code=1)
@@ -2874,6 +2931,12 @@ def cmd_workflow_reconcile_failure(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def cmd_workflow_cancel(args: argparse.Namespace) -> dict[str, Any]:
+    """Request cooperative cancellation of a workflow run under a revision check.
+
+    A running run gets a cooperative cancel request; forcing it straight to the
+    terminal 'cancelled' state (--terminal) requires operator mode. Already
+    terminal runs return unchanged.
+    """
     if args.terminal and not OPERATOR_MODE:
         raise VcopsError("operator_required", "terminal cancellation reconciliation requires operator mode", exit_code=1)
     with connection() as conn, conn.cursor() as cur:
@@ -2905,6 +2968,11 @@ def cmd_workflow_cancel(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def cmd_fact_add(args: argparse.Namespace) -> dict[str, Any]:
+    """Insert one fact for a company (optionally a lead) and link its sources.
+
+    Enforces lead/company lineage and 0..1 confidence, and fails closed if a
+    verified_fact is recorded without at least one --source-id.
+    """
     parsed = parse_numeric_claim(args.value)
     value_kind = args.value_kind or ("numeric" if parsed["value"] is not None else "text")
     if value_kind == "numeric" and parsed["value"] is None:
@@ -3143,6 +3211,12 @@ def _resolve_document_evidence_source(
 
 
 def cmd_evidence_record(args: argparse.Namespace) -> dict[str, Any]:
+    """Record one piece of evidence (a web source or a document extraction) as a
+    company-scoped submitted_claim fact and link its source.
+
+    Deduplicates on a company-scoped claim hash under a per-company advisory lock,
+    reusing an existing claim as supporting evidence rather than duplicating it.
+    """
     evidence = parse_json(args.evidence, default=None, expected=dict)
     if not evidence:
         raise VcopsError("invalid_evidence", "evidence must be one JSON object")
@@ -3269,6 +3343,12 @@ def cmd_evidence_record(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def cmd_fact_promote(args: argparse.Namespace) -> dict[str, Any]:
+    """Promote a submitted_claim fact to verified_fact when the corroboration
+    policy is met (via promote_submitted_claim).
+
+    Idempotent: a no-op for facts that are not a live submitted_claim or already
+    superseded, and it reports why promotion did not occur.
+    """
     fact_id = _positive_bigint(args.fact_id, "fact_id")
     if fact_id is None:
         raise VcopsError("invalid_identifier", "fact_id is required")
@@ -3505,6 +3585,13 @@ def _fact_source_packet(cur: Any, fact_id: int) -> list[dict[str, Any]]:
 
 
 def cmd_compiled_truth(args: argparse.Namespace) -> dict[str, Any]:
+    """Compile a lead's facts, contradictions, and trajectories into a
+    deterministic compiled-truth snapshot with decision guards.
+
+    Runs under a per-lead advisory lock so the frozen packet and its decision
+    guards (identity_reliable, blocking_contradiction) are a consistent basis
+    for downstream evaluation.
+    """
     if args.min_confidence < 0 or args.min_confidence > 1:
         raise VcopsError("invalid_confidence", "minimum confidence must be between 0 and 1")
     with connection() as conn, conn.cursor() as cur:
@@ -3782,6 +3869,12 @@ def _require_fact_lead(args: argparse.Namespace, left: Mapping[str, Any], right:
 
 
 def cmd_contradiction_check(args: argparse.Namespace) -> dict[str, Any]:
+    """Classify a pair of facts and, when they contradict, persist an open
+    contradiction finding linking both facts (workflow lane).
+
+    Serializes on a per-lead advisory lock and is a no-op that only returns the
+    classification when the pair does not contradict.
+    """
     with connection() as conn, conn.cursor() as cur:
         left, right = _load_fact(cur, args.left_fact_id), _load_fact(cur, args.right_fact_id)
         lead_id = _require_fact_lead(args, left, right)
@@ -3810,6 +3903,12 @@ def cmd_contradiction_check(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def cmd_trajectory_check(args: argparse.Namespace) -> dict[str, Any]:
+    """Classify a pair of facts and, when they form a trajectory, persist a
+    directional trajectory event with its two dated points (workflow lane).
+
+    Requires numeric, dated facts; serializes on a per-lead advisory lock and is
+    a no-op that only returns the classification otherwise.
+    """
     with connection() as conn, conn.cursor() as cur:
         left, right = _load_fact(cur, args.left_fact_id), _load_fact(cur, args.right_fact_id)
         lead_id = _require_fact_lead(args, left, right)
@@ -3844,6 +3943,10 @@ def cmd_trajectory_check(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def cmd_evaluation_preview(args: argparse.Namespace) -> dict[str, Any]:
+    """Read-only scoring preview: compute the deterministic weighted evaluation
+    from criteria, weights, and decision context without persisting anything
+    (agent lane).
+    """
     criteria = parse_json(args.criteria, default={}, expected=dict)
     weights = parse_json(args.weights, default=None, expected=dict) if args.weights else None
     decision_context = parse_json(args.decision_context, default={}, expected=dict)
@@ -3851,6 +3954,12 @@ def cmd_evaluation_preview(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def cmd_evaluation_save(args: argparse.Namespace) -> dict[str, Any]:
+    """Persist a lead evaluation bound to a compiled-truth snapshot (workflow lane).
+
+    Fail-closed: requires the current snapshot, a matching evidence-packet hash,
+    complete decision guards, unchanged live contradiction state, and evidence
+    drawn only from that snapshot's ledger; idempotent on the request hash.
+    """
     criteria = parse_json(args.criteria, default={}, expected=dict)
     weights = parse_json(args.weights, default=None, expected=dict) if args.weights else None
     caller_decision_context = parse_json(args.decision_context, default={}, expected=dict)
@@ -4025,6 +4134,13 @@ def cmd_evaluation_save(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def cmd_memo_save(args: argparse.Namespace) -> dict[str, Any]:
+    """Persist a memo for a lead with validated, content-addressed citations
+    (workflow lane).
+
+    Each citation must match the reviewed contract, be unique, and have its
+    marker present in the body; content is keyed by its SHA-256 and the write is
+    replay-safe under a per-lead advisory lock.
+    """
     content = require_text(args.content, "content", maximum=2_000_000)
     title = require_text(args.title, "title", maximum=500)
     generated_by = require_text(args.generated_by, "generated_by", maximum=300)
@@ -4174,6 +4290,11 @@ def new_approval_token() -> str:
 
 
 def cmd_approval_request(args: argparse.Namespace) -> dict[str, Any]:
+    """Mint a pending, scoped, time-bounded approval and return its one-time token.
+
+    Idempotent on the idempotency key, but a replay fails closed because the raw
+    token is issued exactly once and cannot be re-derived.
+    """
     if not 1 <= args.expires_minutes <= 10_080:
         raise VcopsError("invalid_expiry", "approval expiry must be between 1 minute and 7 days")
     scope = parse_json(args.scope, default={}, expected=dict)
@@ -4208,6 +4329,12 @@ def cmd_approval_request(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def cmd_approval_decide(args: argparse.Namespace) -> dict[str, Any]:
+    """Approve or reject a pending approval from an authenticated operator-only
+    runtime (operator lane).
+
+    Delegates to the governed decide_approval function, which fails if the
+    approval is absent, expired, or already decided.
+    """
     operator_id = os.environ.get("VCOPS_OPERATOR_ID")
     if AGENT_MODE or os.environ.get("VCOPS_OPERATOR_MODE") != "1" or not operator_id or not secrets.compare_digest(operator_id, args.approver):
         raise VcopsError("operator_context_required", "approval decisions require an authenticated operator-only runtime", exit_code=1)
@@ -4222,6 +4349,11 @@ def cmd_approval_decide(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def cmd_approval_consume(args: argparse.Namespace) -> dict[str, Any]:
+    """Always refuse: standalone approval consumption is forbidden.
+
+    An approval must be consumed in the same transaction as its governed
+    mutation (e.g. data-erase-lead), never on its own.
+    """
     del args
     raise VcopsError(
         "atomic_governed_action_required",
@@ -4272,6 +4404,11 @@ def cmd_data_erase_lead(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def cmd_notification_enqueue(args: argparse.Namespace) -> dict[str, Any]:
+    """Append a durable internal-log notification record to the outbox.
+
+    This release supports only silent internal logging (no proactive provider
+    delivery); idempotent on the idempotency key with a fail-closed payload check.
+    """
     if args.provider != "internal_log" or args.severity != "silent_log":
         raise VcopsError(
             "provider_delivery_unavailable",
@@ -4328,14 +4465,26 @@ def cmd_notification_enqueue(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def cmd_notification_claim(args: argparse.Namespace) -> dict[str, Any]:
+    """Always refuse: no proactive notification dispatcher ships in this release,
+    so there is nothing to claim for delivery.
+    """
     raise VcopsError("provider_delivery_unavailable", "no proactive notification dispatcher is shipped in this release", exit_code=1)
 
 
 def cmd_notification_mark(args: argparse.Namespace) -> dict[str, Any]:
+    """Always refuse: without a shipped dispatcher there are no provider delivery
+    receipts to record.
+    """
     raise VcopsError("provider_delivery_unavailable", "provider delivery receipts cannot be recorded without a shipped dispatcher", exit_code=1)
 
 
 def cmd_preference_lookup(args: argparse.Namespace) -> dict[str, Any]:
+    """Read the active bounded preferences for the principal named by a verified
+    trusted context (agent lane).
+
+    The capability-bound context is consumed on read, so preferences are scoped
+    to the authenticated principal and cannot be enumerated across users.
+    """
     context = verify_trusted_context(args.trusted_context, "preference.read")
     with connection() as conn, conn.cursor() as cur:
         principal_id = consume_trusted_context(
@@ -4358,6 +4507,13 @@ def cmd_preference_lookup(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def cmd_preference_observe(args: argparse.Namespace) -> dict[str, Any]:
+    """Record one direct-message observation of a bounded user preference and
+    activate it once the evidence threshold is met.
+
+    Append-only and idempotent on the event; group messages are refused, and an
+    inferred preference activates only after three distinct observations (an
+    explicit one activates immediately).
+    """
     key, value = _preference_value(args.preference_key, args.preference_value)
     context = verify_trusted_context(args.trusted_context, "preference.write")
     if context["is_group"]:
@@ -4425,6 +4581,12 @@ def cmd_preference_observe(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def cmd_preference_forget(args: argparse.Namespace) -> dict[str, Any]:
+    """Forget one or all bounded preferences for the principal by writing forget
+    markers (append-only), then deactivating the affected preference(s).
+
+    Restricted to direct messages; the markers also censor earlier observations
+    from future evidence counting.
+    """
     context = verify_trusted_context(args.trusted_context, "preference.forget")
     if context["is_group"]:
         raise VcopsError("group_preference_write_denied", "persistent preferences can be changed only from direct messages", exit_code=1)
@@ -4722,12 +4884,22 @@ def cmd_proposal_decide(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def cmd_document_preview(args: argparse.Namespace) -> dict[str, Any]:
+    """Read-only inspection of a bounded intake document (type, size, hash) with
+    no database write or extraction (agent lane).
+    """
     _verified_media_context(getattr(args, "trusted_context", None), args.path, "read")
     document = inspect_document(args.path)
     return {"ok": True, "supported": True, "document": document, **document}
 
 
 def cmd_document_extract(args: argparse.Namespace) -> dict[str, Any]:
+    """Snapshot a document to an immutable content-addressed artifact and extract
+    its untrusted content, optionally persisting the extraction.
+
+    In workflow mode it must bind to a pre-claimed request and matching document
+    hash; parser failures are routed to quarantine; the DB write is idempotent
+    and skipped entirely when no authority database is configured.
+    """
     if WORKFLOW_MODE and not args.workflow_request_id:
         raise VcopsError("workflow_request_required", "workflow document extraction requires the pre-mutation request claim", exit_code=1)
     media_context, media_scope = _verified_media_context(
@@ -4965,6 +5137,13 @@ def cmd_document_extract(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def cmd_document_extraction_show(args: argparse.Namespace) -> dict[str, Any]:
+    """Return a succeeded document extraction's content to its verified channel
+    principal (agent lane, read-only).
+
+    Access is capability-bound: the caller's trusted context must match the
+    extraction's own principal, and the returned content is flagged as untrusted
+    document input whose instructions must never be followed.
+    """
     extraction_id = _positive_bigint(args.extraction_id, "extraction_id")
     with connection() as conn, conn.cursor() as cur:
         cur.execute(
@@ -5012,6 +5191,12 @@ def cmd_document_extraction_show(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def cmd_document_association_request_claim(args: argparse.Namespace) -> dict[str, Any]:
+    """Claim the outer request for the document-lead-intake workflow that binds a
+    verified extraction to a new lead.
+
+    Requires a trusted context matching the extraction's channel principal and is
+    idempotent on (workflow_id, idempotency_key) with a fail-closed payload check.
+    """
     workflow = "document-lead-intake"
     extraction_id = _positive_bigint(args.extraction_id, "extraction_id")
     idempotency_key = require_text(args.idempotency_key, "idempotency_key", maximum=300)
@@ -5093,6 +5278,12 @@ def cmd_document_association_request_claim(args: argparse.Namespace) -> dict[str
 
 
 def cmd_document_associate_lead(args: argparse.Namespace) -> dict[str, Any]:
+    """Attach a verified document extraction's artifact to a lead as a submission,
+    completing the document-lead-intake workflow (workflow lane).
+
+    Fails closed unless the claimed request, extraction, and artifact all agree;
+    idempotent on (lead_id, artifact_id).
+    """
     workflow_request_id = _positive_bigint(args.workflow_request_id, "workflow_request_id")
     extraction_id = _positive_bigint(args.extraction_id, "extraction_id")
     lead_id = _positive_bigint(args.lead_id, "lead_id")

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: 0BSD
 """Verify package inventory self-consistency against its embedded manifest."""
 
 from __future__ import annotations
@@ -97,6 +98,9 @@ def main() -> int:
         for path in PACKAGE.rglob("*"):
             relative = path.relative_to(PACKAGE).as_posix()
             if relative == "manifest.json":
+                continue
+            # Version-control metadata is not part of the deployable package.
+            if relative == ".git" or relative.startswith(".git/"):
                 continue
             try:
                 info = path.lstat()

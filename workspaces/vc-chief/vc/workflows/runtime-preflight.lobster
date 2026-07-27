@@ -1,4 +1,10 @@
 name: vc-runtime-preflight-v3
+# SPDX-License-Identifier: 0BSD
+
+# Smoke-test the fixed-workflow runtime end to end: drive a workflow_run through
+# its full lifecycle (start -> running -> succeeded) using only the read-only
+# preflight check. It mutates no business state and is the cheapest proof that
+# vcrun, the Lobster engine, and the workflow-transition boundary are healthy.
 
 args:
   idempotency_key:

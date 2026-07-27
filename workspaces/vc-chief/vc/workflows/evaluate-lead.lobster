@@ -1,4 +1,11 @@
 name: vc-evaluate-lead-v3
+# SPDX-License-Identifier: 0BSD
+
+# Compile the lead's accepted evidence into a frozen truth snapshot, score it
+# against the reviewed rubric, and pause at the single human approval checkpoint
+# before persisting the evaluation. This is the ONE fixed workflow with an
+# approval gate: the investment decision stays human-gated, and the memo is
+# persisted (via memo-record) only from this human-approved frozen snapshot.
 
 args:
   idempotency_key:

@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: 0BSD
 -- OpenClaw Lead Research System 3.0
 -- Typed company identity and append-only entity-resolution evidence.
 

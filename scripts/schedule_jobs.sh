@@ -1,4 +1,5 @@
 #!/bin/sh
+# SPDX-License-Identifier: 0BSD
 set -eu
 umask 077
 # Deliberate opt-in: seed the autonomous scheduled jobs (source surveillance and

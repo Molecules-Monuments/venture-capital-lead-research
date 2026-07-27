@@ -1,4 +1,5 @@
 name: vc-source-scan-v3
+# SPDX-License-Identifier: 0BSD
 
 # Claim the enabled watchlist sources due this cycle and return the worklist.
 # This is the deterministic trigger of automated source surveillance: it records

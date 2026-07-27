@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: 0BSD
 """Build or verify the deterministic Version 3.0 deployment manifest."""
 
 from __future__ import annotations
@@ -25,7 +26,7 @@ EXCLUDED_FILES = {
     "config/runtime/secrets/vc_trusted_context_key",
     "deployment-lock.json",
 }
-EXCLUDED_PARTS = {"__pycache__", ".pytest_cache", ".ruff_cache"}
+EXCLUDED_PARTS = {".git", "__pycache__", ".pytest_cache", ".ruff_cache"}
 EXCLUDED_SUFFIXES = {".pyc", ".pyo"}
 EXCLUDED_PREFIXES = {"_internal"}
 

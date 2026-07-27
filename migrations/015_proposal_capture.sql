@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: 0BSD
 -- OpenClaw Lead Research System 3.0
 -- Durable capture of governance proposals. schema-proposal and source-improvement
 -- produce reviewed change proposals whose only sink was transient conversation

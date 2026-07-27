@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: 0BSD
 """Adversarial end-to-end coverage for autonomous research-intelligence persistence.
 
 Executes the real evidence-record / contradiction-record / trajectory-record /

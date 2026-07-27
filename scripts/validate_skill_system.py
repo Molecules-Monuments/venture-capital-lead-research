@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: 0BSD
 """Fail-closed production validator for Version 3 skills, agents, tools, and routes."""
 
 from __future__ import annotations

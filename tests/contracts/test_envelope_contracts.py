@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: 0BSD
 """Instance + cross-schema contract tests for the machine-consumed orchestration
 envelopes (data-steward-output, vc-chief-output, return-assessment) and the
 family-A/B boundary consistency invariants.

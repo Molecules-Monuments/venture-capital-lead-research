@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: 0BSD
 """Operator-only Lobster pause controller; never add this path to exec approvals."""
 
 from __future__ import annotations

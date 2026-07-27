@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: 0BSD
 """Deterministic contract tests for the five dossier-backed v3 agent boundaries."""
 
 from __future__ import annotations

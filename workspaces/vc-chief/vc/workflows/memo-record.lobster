@@ -1,4 +1,5 @@
 name: vc-memo-record-v3
+# SPDX-License-Identifier: 0BSD
 
 # Persist the memo prose produced from the frozen, human-approved snapshot.
 # The memo-citation provenance trigger confines every citation to the

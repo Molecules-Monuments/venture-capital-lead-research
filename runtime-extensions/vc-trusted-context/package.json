@@ -2,6 +2,7 @@
   "name": "@openclaw-lead-research/vc-trusted-context",
   "version": "3.0.0",
   "private": true,
+  "license": "0BSD",
   "type": "module",
   "openclaw": {
     "extensions": ["./index.js"]

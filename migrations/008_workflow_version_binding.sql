@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: 0BSD
 -- OpenClaw Lead Research System 3.0
 -- Bind idempotent workflow state to the exact package and policy semantics.
 

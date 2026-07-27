@@ -1,4 +1,5 @@
 name: vc-outbound-scout-v3
+# SPDX-License-Identifier: 0BSD
 
 # Source discovery happens in a bounded research agent. This deterministic lane
 # deduplicates and persists a candidate already selected by that agent.

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: 0BSD
 """Validate Version 3 configs inside the exact built OpenClaw image.
 
 This gate is deliberately offline: every container has networking disabled,

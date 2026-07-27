@@ -1,4 +1,5 @@
 #!/bin/sh
+# SPDX-License-Identifier: 0BSD
 set -eu
 
 export LC_ALL=C

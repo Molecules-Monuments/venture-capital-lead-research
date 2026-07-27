@@ -1,4 +1,5 @@
 #!/bin/sh
+# SPDX-License-Identifier: 0BSD
 set -eu
 
 # Internal child-process boundary for the reviewed Lobster workflows.

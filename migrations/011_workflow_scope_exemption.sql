@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: 0BSD
 -- OpenClaw Lead Research System 3.0
 -- Extend the workflow-run scope exemption to the reviewed lead/company-free fixed workflows.
 

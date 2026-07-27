@@ -1,4 +1,10 @@
 name: vc-document-lead-intake-v3
+# SPDX-License-Identifier: 0BSD
+
+# Create a candidate lead from an already-ingested document extraction: resolve
+# the company identity (from the supplied name/domain), open the lead, and bind
+# the extraction to it as founding evidence. This is the document-originated
+# entry into the research pipeline (paired with document-ingest above).
 
 args:
   idempotency_key:

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: 0BSD
 """Execute the restored source-surveillance workflows end-to-end against the live DB.
 
 Drives the real source-watch / source-scan / source-unwatch .lobster files so the

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: 0BSD
 """Validate deployment configuration without evaluating shell code."""
 
 from __future__ import annotations

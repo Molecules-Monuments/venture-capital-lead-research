@@ -1,4 +1,5 @@
 name: vc-orchestration-record-v3
+# SPDX-License-Identifier: 0BSD
 
 # Persist one orchestration/delegation audit entry (delegation_eval,
 # return_assessment, or chief_output) for a lead's research run, correlated with

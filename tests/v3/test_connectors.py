@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: 0BSD
 """Config-driven third-party connector (MCP) injection — offline, no DB, no model.
 
 Proves that render_channel_config.apply_connectors turns a config/connectors.json

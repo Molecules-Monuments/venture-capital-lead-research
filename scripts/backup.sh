@@ -1,6 +1,12 @@
 #!/bin/sh
+# SPDX-License-Identifier: 0BSD
 set -eu
 umask 077
+
+# Create one authenticated, self-consistent recovery point: quiesce the
+# consumers, dump the database and tar the state/inbox/quarantine trees, then
+# write an HMAC-signed checksum manifest (BACKUP_HMAC_KEY) so a later restore can
+# prove the bytes are the ones this backup produced. Usage: backup.sh DEST_DIR.
 
 PACKAGE_DIR="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 ENV_FILE="$PACKAGE_DIR/.env"

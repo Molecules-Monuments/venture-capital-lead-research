@@ -1,4 +1,5 @@
 #!/bin/sh
+# SPDX-License-Identifier: 0BSD
 set -eu
 
 operator_id="${VCOPS_OPERATOR_ID:-}"

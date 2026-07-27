@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: 0BSD
 -- OpenClaw Lead Research System 2.0
 -- Bind idempotency to request content, freeze evidence history, and enforce lineage.
 

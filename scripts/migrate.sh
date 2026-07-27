@@ -1,6 +1,12 @@
 #!/bin/sh
+# SPDX-License-Identifier: 0BSD
 set -eu
 umask 077
+
+# Apply the pending forward SQL migrations in order under a checksum ledger:
+# a race-safe advisory lock serialises concurrent runs, each migration's bytes
+# are verified against the recorded checksum (a changed or renamed applied
+# migration fails closed), and only unregistered ones are applied and recorded.
 
 PACKAGE_DIR="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 ENV_FILE="${1:-$PACKAGE_DIR/.env}"

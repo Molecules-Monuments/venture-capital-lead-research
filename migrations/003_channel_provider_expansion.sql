@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: 0BSD
 -- OpenClaw Lead Research System 2.0
 -- Expand the notification provider contract for the four channel profiles.
 

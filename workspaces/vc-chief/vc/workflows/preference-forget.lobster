@@ -1,4 +1,10 @@
 name: vc-preference-forget-v3
+# SPDX-License-Identifier: 0BSD
+
+# Delete one bounded per-principal preference, gated by a trusted-context
+# capability bound to the owning channel identity. This is the data-subject
+# "forget" path for the closed preference set (the counterpart to
+# preference-observe).
 
 args:
   idempotency_key:

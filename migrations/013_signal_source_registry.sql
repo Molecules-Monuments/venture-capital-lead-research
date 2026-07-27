@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: 0BSD
 -- OpenClaw Lead Research System 3.0
 -- Restore automated source surveillance: a queryable watchlist registry that a
 -- scheduled or operator-triggered source-scan can read by cadence. The

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: 0BSD
 """Fail closed when the publication customization profile is missing or incomplete."""
 
 from __future__ import annotations

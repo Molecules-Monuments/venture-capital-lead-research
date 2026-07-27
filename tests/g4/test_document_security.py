@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: 0BSD
 import json
 import hashlib
 import os

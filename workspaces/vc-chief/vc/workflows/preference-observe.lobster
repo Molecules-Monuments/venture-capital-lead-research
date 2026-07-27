@@ -1,4 +1,10 @@
 name: vc-preference-observe-v3
+# SPDX-License-Identifier: 0BSD
+
+# Record one bounded per-principal preference observation (e.g. a requester's
+# preferred memo length or citation density), gated by a trusted-context
+# capability that binds it to a specific channel identity. Preferences are a
+# closed allowlist of keys/values — this never stores free-form memory.
 
 args:
   idempotency_key:

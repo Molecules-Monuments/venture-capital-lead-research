@@ -1,4 +1,5 @@
 name: vc-source-watch-v3
+# SPDX-License-Identifier: 0BSD
 
 # Register or re-enable one watched signal source in the surveillance watchlist
 # (the "monitor this website" path). Curates configuration only; it starts no

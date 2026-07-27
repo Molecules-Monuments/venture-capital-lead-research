@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: 0BSD
 """Run the complete deterministic Version 3 offline verification matrix."""
 
 from __future__ import annotations

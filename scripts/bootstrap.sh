@@ -1,4 +1,5 @@
 #!/bin/sh
+# SPDX-License-Identifier: 0BSD
 set -eu
 umask 077
 # Keep lifecycle runs from shedding bytecode caches into the pristine package.

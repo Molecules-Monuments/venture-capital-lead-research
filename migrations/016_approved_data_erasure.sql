@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: 0BSD
 -- OpenClaw Lead Research System 3.0
 -- Approved product-data erasure. Closes two gaps at once: product-data
 -- retention/erasure (subject request, legal hold expiry) had no executor, and

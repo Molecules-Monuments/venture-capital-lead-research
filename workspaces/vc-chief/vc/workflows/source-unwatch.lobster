@@ -1,4 +1,5 @@
 name: vc-source-unwatch-v3
+# SPDX-License-Identifier: 0BSD
 
 # Disable one watched signal source without deleting its history.
 args:

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: 0BSD
 """Record and validate the release/image contract for one deployment."""
 
 from __future__ import annotations

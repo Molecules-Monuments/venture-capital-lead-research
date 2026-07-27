@@ -1,4 +1,5 @@
 name: vc-trajectory-record-v3
+# SPDX-License-Identifier: 0BSD
 
 # Record the deterministic trajectory classification for two persisted facts
 # on the autonomous path.

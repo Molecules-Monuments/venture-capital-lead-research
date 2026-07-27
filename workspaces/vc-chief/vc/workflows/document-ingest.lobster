@@ -1,4 +1,10 @@
 name: vc-document-ingest-v3
+# SPDX-License-Identifier: 0BSD
+
+# Ingest one operator-supplied document from /inbox and run the deterministic
+# extraction pipeline on it, gated by a short-lived trusted-context capability
+# that binds this run to that exact file. Produces a content-addressed evidence
+# extraction (hash + stored bytes); it does not create a lead by itself.
 
 args:
   idempotency_key:
