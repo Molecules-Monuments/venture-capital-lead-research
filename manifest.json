@@ -66,14 +66,14 @@
     {
       "executable": false,
       "path": "03_CURRENT_DOCUMENT_ASSESSMENT.md",
-      "sha256": "4dd1e5e3cf09551afe9a1478379609753c179c9e64947f235f03849f6c5a3f52",
-      "size": 3941
+      "sha256": "0a62f77e1ed84f462061ee11fe20f5eccec93ffeb50f4ad760a1d33b97b0b896",
+      "size": 3946
     },
     {
       "executable": false,
       "path": "CUSTOMIZATION.md",
-      "sha256": "0cd98cd79b070d96bb64e22663eecf027d2600130f94305e1b46ddb9d706f064",
-      "size": 15959
+      "sha256": "f325e7d62582e00eeda902ad9dfa88158f38dbb520adf00d24fb9963fd970622",
+      "size": 16203
     },
     {
       "executable": false,
@@ -90,8 +90,8 @@
     {
       "executable": false,
       "path": "README.md",
-      "sha256": "1f5bf5693639da5cd45e60092d8b0ff59ef6c185292d2d52d5a5564a66849b0a",
-      "size": 73406
+      "sha256": "a2f3ff690411ea1830a4ca3006f39fbf30a9b9d94bd021b5526d0ddf9224c7c1",
+      "size": 73216
     },
     {
       "executable": false,
@@ -204,14 +204,14 @@
     {
       "executable": false,
       "path": "docs/PRODUCTION_READINESS.md",
-      "sha256": "c08be47ced55d0981dbba0ec8b7b6bbf7003c40fb794bc1a0ec7eb929bfffd81",
+      "sha256": "e7cf8a87f4ca37f4666835d7dfcd563e3c1e2ceff1f34609f0edf88c6530be05",
       "size": 10085
     },
     {
       "executable": false,
       "path": "docs/RUNBOOK.md",
-      "sha256": "d8dc03c2db300d0c93eb7e0f024cc6b512cfa4e6ebdafab3eaa6ae762bd4f220",
-      "size": 35726
+      "sha256": "a86f23c0981d343ed4508d5f31edbbc3ea2964f21e0005b7512e2e919ecea37e",
+      "size": 33341
     },
     {
       "executable": false,
@@ -1482,8 +1482,8 @@
     {
       "executable": false,
       "path": "workspaces/vc-chief/vc/data_retention.md",
-      "sha256": "1004df70b341df66bbcda0f27394040b755345addcb3d730ddc5c682fbd6b2e5",
-      "size": 3774
+      "sha256": "727532db122e6a1a7cd7a03f4faa156e6d7befcef7597b68e1048913ec5fca52",
+      "size": 3928
     },
     {
       "executable": false,
@@ -1536,8 +1536,8 @@
     {
       "executable": false,
       "path": "workspaces/vc-chief/vc/exclusion_criteria.md",
-      "sha256": "583bf1175e4729ec569b1acd7441fdc59f4c5e565b90f25aa41945aa626dd5f2",
-      "size": 2868
+      "sha256": "470dfe425706b6072dabf6ad7ec1732d0ba25410a726ad4ac51303903df83e63",
+      "size": 2935
     },
     {
       "executable": false,
@@ -1602,14 +1602,14 @@
     {
       "executable": false,
       "path": "workspaces/vc-chief/vc/prequalification.md",
-      "sha256": "6d44625bbca7cfe2f23d27589107317fa4cb73c2c03a2a33065145dbff6adf14",
-      "size": 1336
+      "sha256": "47a43c1672088067e5d0baa0d52406c9dc546cf5dd291874b5cd21b0de7a1eb7",
+      "size": 1356
     },
     {
       "executable": false,
       "path": "workspaces/vc-chief/vc/primary_sources.md",
-      "sha256": "e64bb4d38213e72f672a411923fe43d86010684e8dec71986ad707f4dc3c8b59",
-      "size": 1430
+      "sha256": "b69054895ee005e43e3b690de6fb54d4f809d887a916ddd3404dc07edeba44fb",
+      "size": 1508
     },
     {
       "executable": false,
@@ -1722,8 +1722,8 @@
     {
       "executable": false,
       "path": "workspaces/vc-chief/vc/scoring-rubric.md",
-      "sha256": "53686f3e90a5f4bfcf98bcfa46fec473e9c98922f8b4dc5fcc525aaacd33f84b",
-      "size": 5844
+      "sha256": "dc4a3487fd660045d8b9dea6600e1c298b6d7e6032e708cec8461546e26455f6",
+      "size": 5917
     },
     {
       "executable": false,
@@ -1794,14 +1794,14 @@
     {
       "executable": false,
       "path": "workspaces/vc-chief/vc/thesis.md",
-      "sha256": "b9a83526881196c870c7b74bea863a79881fa290876f1f9f18f6656fea8f3bf6",
-      "size": 9760
+      "sha256": "b3e0487b97cbaed04929c6c890469c6e0d9ef0efe3a0dd369fda76a7b9fe8123",
+      "size": 9850
     },
     {
       "executable": false,
       "path": "workspaces/vc-chief/vc/third_party_connectors.md",
-      "sha256": "a6d7ce9a7a59da2b0d57a6d2d942cf34db0667972c5bd511706d2633f108fe89",
-      "size": 3328
+      "sha256": "814080dd26697b4646c6308b19037ca3e258b79d8b098da3ecb2cece14f7a778",
+      "size": 3486
     },
     {
       "executable": false,

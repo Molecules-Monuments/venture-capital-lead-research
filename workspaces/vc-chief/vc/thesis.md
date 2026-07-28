@@ -1,9 +1,10 @@
 # Investment Thesis
 
 > [MUST_CUSTOMIZE] This AI-infrastructure/Europe thesis is an example, not
-> a default recommendation. Replace it with the deploying fund's mandate,
-> stage, sector, geography, check/ownership, and outlier policy; then rebuild
-> chronological routing/scoring cases.
+> a default recommendation. Replace it with your firm's mandate, stage,
+> sector, geography, check/ownership and outlier policy. The routing and
+> scoring cases under `tests/g3` are pinned examples; re-pin them with
+> `scripts/init_customization.py --update-hashes` after editing.
 
 Policy version: `3.0`; substantive thesis content is retained from the 2026-06-10 ground source. The customized Version 3 scoring rubric and typed evidence states govern operational decisions.
 

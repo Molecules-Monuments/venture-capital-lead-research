@@ -1,8 +1,9 @@
 # Exclusion Criteria
 
 > [MUST_CUSTOMIZE] Replace mandate-specific exclusions and red lists with
-> reviewed local policy. Legal, privacy, and ethical prohibitions remain hard
-> safety gates; prestige or sparse public data must not become an exclusion.
+> reviewed local policy. Legal, privacy and ethical prohibitions remain hard
+> safety gates. The shipped rubric gives prestige cues no score weight and
+> treats sparse public data as missing evidence, not as an exclusion.
 
 Policy version: `3.0`; exclusion content retained from the 2026-06-10 ground source and applied with the Version 3 typed evidence/status rules.
 

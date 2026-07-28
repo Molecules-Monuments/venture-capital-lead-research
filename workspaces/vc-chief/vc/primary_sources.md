@@ -2,7 +2,8 @@
 
 > [MUST_CUSTOMIZE] Replace this source-class example with reviewed sources,
 > stable URLs/providers, allowed data, purpose, terms/rate/cost constraints,
-> owner, freshness, expected signal, and stop rule. Measure marginal yield.
+> owner, freshness, expected signal, and stop rule. Whether a source's terms
+> permit your use of it is yours to establish; ask your counsel if in doubt.
 
 Policy version: `3.0`; source classes retained from the 2026-06-10 ground source and subject to current terms, trust, and research-budget review.
 

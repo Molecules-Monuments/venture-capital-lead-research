@@ -1,7 +1,8 @@
 # Scoring Rubric
 
-> [MUST_CUSTOMIZE] Criterion definitions, weights, evidence coverage
-> gates, and recommendation thresholds require a local time-split backtest.
+> [MUST_CUSTOMIZE] The criterion definitions, weights, evidence coverage
+> gates and recommendation thresholds below are examples to edit; the software
+> applies them but does not assess whether they predict anything.
 > Update the machine rubric, helper/workflow versions, and fixtures together.
 
 Policy version: `3.0`

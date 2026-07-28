@@ -96,9 +96,10 @@ needs.
 The deterministic package and the deployment path are verified. Whether the
 system's *autonomous decision quality* is fit for real capital allocation is
 **not established by this package** and requires the BLOCKED live-model gates to
-be run and reviewed. A cautious fund should additionally set the fact-promotion
-policy to require human confirmation (`config`: `fact_promotion_policy`,
-`auto_promote=false`) until the model-behavioral gates are commissioned.
+be run and reviewed. The `fact_promotion_policy` row controls autonomous
+promotion: with `auto_promote=false` no `submitted_claim` becomes a
+`verified_fact` without a human at the `evaluate-lead` gate. Which setting fits
+a deployment is the operator's decision.
 
 `scripts/verify_offline.py` is the unified package verifier. The complete release
 proof uses:
@@ -146,8 +147,8 @@ bypassing the helper's client-side checks:
   hash is still **model-supplied**: the package does not yet fetch the URL to
   compute the hash independently — a boundary that fetches and hashes the
   source itself remains the deferred CR-001 part-6 closure. It is backstopped
-  by the human `evaluate-lead` gate, and a cautious fund can still set
-  `fact_promotion_policy.auto_promote=false` (recommendation above).
+  by the human `evaluate-lead` gate, and `auto_promote=false` disables
+  autonomous promotion entirely.
 
 The 2026-07-23 final-audit session additionally closed, with execution-verified
 G4/G5/G7/v3 tests: the build-context secret exclusion (`.dockerignore`), the

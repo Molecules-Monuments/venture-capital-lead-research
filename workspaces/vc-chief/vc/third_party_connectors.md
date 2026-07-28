@@ -1,8 +1,10 @@
 # Third Party Connectors
 
-> [MUST_CUSTOMIZE] Record each approved processor/provider, data classes,
-> purpose, terms, region, credentials, cost/rate limits, and revocation test.
-> An available connector is not standing authority to use it.
+> [MUST_CUSTOMIZE] This file is your connector register: record each approved
+> processor/provider, data classes, purpose, terms, region, credentials,
+> cost/rate limits and revocation test. The software reads only the entries in
+> `config/connectors.json`. An available connector is not standing authority to
+> use it; ask your counsel about processor terms if in doubt.
 
 Policy version: `3.0`; connector use requires current terms/rate/retention review and Version 3 scoped approval where paid, sensitive, or login-gated.
 

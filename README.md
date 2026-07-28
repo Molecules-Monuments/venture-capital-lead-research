@@ -850,18 +850,15 @@ deliberately edit a governed artifact, such as the thesis or rubric.
 
 Then customize organization intent, thesis/exclusions, rubric, sources, research
 depth, model/search choices, privacy/retention, approvers, channel/users,
-attachment policy, and memo style. Backtest routing/scoring on locally labeled,
-time-split examples. Set `status=reviewed` last. Owner and reviewer must be
-different stable identities.
+attachment policy, and memo style. The shipped routing and scoring cases are
+examples; how you validate a replacement rubric is your decision. Set
+`status=reviewed` last. Owner and reviewer must be different stable identities.
 
 > [!NOTE]
-> Every feature is available by configuration; running solo puts nothing out of
-> reach. But the privacy fields apply to **any** deployment, including a private
-> CLI-only one — this system researches identifiable people and sends what it
-> finds to a model provider, so a lawful basis and a retention schedule are
-> owed even with no channel enabled. `docs/RUNBOOK.md` §5.0.1 explains how much
-> verification each choice actually costs, and which attestations to decline
-> rather than guess.
+> The twenty review flags are attestations this package neither makes nor
+> evaluates: `check_customization.py` refuses the profile until each is `true`.
+> See [RUNBOOK.md](docs/RUNBOOK.md) §5.0 for which commissioning rows the
+> shipped gates already discharge.
 
 ### 2. Create `.env`
 

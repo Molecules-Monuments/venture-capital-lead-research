@@ -1,8 +1,8 @@
 # Pre-Qualification
 
-> [MUST_CUSTOMIZE] Set stage/thesis-specific minimum evidence and research
-> promotion thresholds from review capacity and labeled cases. Do not convert
-> missing early-stage metrics into negative evidence.
+> [MUST_CUSTOMIZE] The minimum evidence and research promotion thresholds
+> below are examples to edit. The software treats missing data as a zero
+> contribution and never as negative evidence (see `missing_data_handling.md`).
 
 Policy version: `3.0`
 

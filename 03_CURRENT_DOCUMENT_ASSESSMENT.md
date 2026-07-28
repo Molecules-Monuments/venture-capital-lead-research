@@ -35,7 +35,7 @@ product policy.
 - Scoring uses typed evidence state, nullable quality for unknown/blocked/N/A,
   separate coverage, a deterministic calculation, and database-derived
   contradiction/trajectory readiness guards. The bundled rubric is explicitly
-  a sample that must be replaced and time-split backtested.
+  a sample; the package does not assert its predictive validity.
 - Runtime timeouts/concurrency now agree with the documented profiles.
 - File support is accurately PDF/PPTX/XLSX/CSV; legacy XLS is conversion/quarantine.
 - Publication decisions are classified as must customize, review/confirm, or

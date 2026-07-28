@@ -234,61 +234,25 @@ So the work that genuinely remains is: your live image IDs, your health endpoint
 your restart-survival and restore drill, your credential rotation, live-running
 the remaining workflows, and judging model output quality.
 
-### 5.0.1 Scaling the checklist to your deployment
+### 5.0.1 Which rows apply
 
-**Every feature here is available by configuration.** Nothing is reserved for
-large organizations, and running as a single operator does not put channels,
-multi-user access, or fact promotion out of reach. What changes with scope is
-how much verification you owe, not which features you may switch on.
+Every feature is available by configuration. None is reserved for a particular
+size of organization, and no row below is waived by running a small deployment
+— what varies is only how many rows are in scope for what you enabled.
 
-**The channel matrix is mechanical, not a compliance project.** All twelve rows
-in `docs/CHANNELS.md` are things you do at a keyboard: send a DM as an allowed
-user and as an unknown one, set the same preference key as two users and check
-they stay isolated, attach a supported document and a macro-enabled one,
-restart the gateway mid-conversation and confirm one logical turn, then roll
-back to `none`. Budget an afternoon per channel. If you want a channel, enable
-it and work the matrix — do not avoid the feature to avoid the checklist.
+The channel matrix in `docs/CHANNELS.md` is twelve mechanical rows exercised
+against a running deployment: allowed and unknown senders, preference isolation
+between two users, a supported and an unsupported attachment, a restart
+mid-conversation, and rollback to `none`. It is keyboard work, not a document
+exercise.
 
-**Data-protection duties do not come from the channel.** This system researches
-founders and teams, who are identifiable people, and it sends what it gathers
-to a remote model provider. `lawful_bases_reviewed`,
-`confidentiality_classes_reviewed`, `retention_schedule_reviewed`,
-`deletion_and_legal_hold_tested` and `remote_processor_reviewed` therefore
-apply to **every** configuration, including a private CLI-only deployment with
-no channel at all. You cannot scope them away by turning features off; you have
-to decide them. A diligent non-lawyer can: name your jurisdiction, write down
-your lawful basis for researching business contacts, set a retention period,
-and actually exercise deletion — `vcops preference-forget` for a user's stored
-preferences and the approval-gated `vcops data-erase-lead` for a lead's record.
-Run both once and keep the output; that is what
-`deletion_and_legal_hold_tested` is asking you to have done. Take advice where
-your situation is not routine.
+The twenty review flags in the customization profile are attestations. This
+package neither makes nor evaluates them: `check_customization.py` refuses the
+profile until each is `true`, and the deployment does not start. Whether any
+given statement holds for your organization, jurisdiction, data and model
+choice is outside this software's scope and is yours to determine.
 
-**The evaluation records are the one place to be proportionate.**
-`investment_policy.rubric_backtest_record`, `models.benchmark_record` and
-`search.evaluation_record` expect a backtest on labelled, time-split examples.
-If you do not have a labelled history, do the honest small version — score
-twenty companies whose outcome you already know, record what the rubric said
-and where it disagreed with you, and reference that record — and treat the
-rubric as provisional until you have more. Write down what you actually did; a
-truthful small evaluation is evidence, an invented large one is not.
-
-**If you cannot make a statement truthfully, do not set the flag.**
-`check_customization.py` will refuse the profile and the deployment will not
-start. That is intended behaviour, not an obstacle to work around.
-
-Two settings are worth choosing deliberately rather than inheriting:
-
-- `fact_promotion_policy.auto_promote` decides whether corroborated model
-  output becomes a `verified_fact` without you. `docs/PRODUCTION_READINESS.md`
-  recommends `false` until you have judged the model's behaviour yourself. Turn
-  it on when you have, not before.
-- `PRIMARY_CHANNEL` decides whether anyone but you can reach the system. Both
-  values are supported; the channel one costs you the twelve-row matrix and
-  makes the identity allowlist load-bearing.
-
-Whatever else you skip, do the restore drill in §5.4. It is the one row no gate
-covers, and an unrestorable backup is discovered at the worst possible moment.
+The restore drill in §5.4 is the one item no gate covers.
 
 ### 5.1 Image and configuration
 

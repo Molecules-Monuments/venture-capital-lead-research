@@ -1,8 +1,10 @@
 # Data Retention
 
-> [MUST_CUSTOMIZE] Obtain jurisdiction/client review for purpose, lawful
-> basis, retention, deletion, legal hold, processor, backup, and restore rules.
-> Narrative periods are not complete until deterministic purge tests pass.
+> [MUST_CUSTOMIZE] This file records whatever purpose, lawful basis,
+> retention, deletion, legal-hold, processor, backup and restore policy your
+> firm determines. The periods below are examples with no automated enforcement
+> behind them. These are legal determinations, not software settings — ask your
+> counsel if any of them are in doubt.
 
 Policy version: `3.0`
 
@@ -57,6 +59,7 @@ tests pass (see the banner above):
   rendered memo body), `memo_citations`, `lead_artifacts`,
   `evidence_artifacts`, and `document_extractions`. Treat
   `vcops data-erase-lead` as the audited entry point to an erasure procedure,
-  not as a complete right-to-erasure executor; a deployment with a statutory
-  erasure obligation must document and rehearse the out-of-band steps before
+  not as a complete right-to-erasure executor. What it does not reach is listed
+  below, and covering that gap is outside the software; document and rehearse
+  the out-of-band steps before
   it relies on this path.
