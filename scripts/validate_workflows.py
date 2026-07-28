@@ -12,14 +12,22 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import json
+import os
 import re
 import shlex
+import sys
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Sequence
 
 import yaml
 
+
+# The inventory below is derived by loading vcops.py by path, which would
+# byte-compile it into workspaces/vc-chief/vc/bin/__pycache__ and make
+# `verify_release.py --pristine` report an undeclared file. Suppress it so the
+# validator stays safe to run even when someone omits `-B`.
+sys.dont_write_bytecode = True
 
 PACKAGE = Path(__file__).resolve().parent.parent
 WORKFLOWS = PACKAGE / "workspaces/vc-chief/vc/workflows"
@@ -114,6 +122,47 @@ def _substitute_bounded_references(command: str) -> str:
     return command
 
 
+def _shell_active_text(command: str, *, expansion: bool = False) -> str:
+    """Blank out the text `/bin/sh -lc` cannot act on, preserving length.
+
+    Control operators (including a newline, which terminates a command just as
+    `;` does) are inert inside either quote style, so both are blanked for the
+    operator scan. Parameter expansion is inert only inside single quotes, so
+    `expansion=True` keeps double-quoted text. Scanning the raw string instead
+    would both miss a newline smuggled through a YAML block scalar and reject
+    an ordinary quoted argument such as `--name "Ben & Co"`.
+    """
+    rendered: list[str] = []
+    quote: str | None = None
+    index = 0
+    while index < len(command):
+        character = command[index]
+        if quote is None:
+            if character in "'\"":
+                quote = character
+                rendered.append(" ")
+            elif character == "\\":
+                # A backslash escapes the next character out of shell meaning.
+                rendered.append(" ")
+                index += 1
+                if index < len(command):
+                    rendered.append(" ")
+            else:
+                rendered.append(character)
+        elif character == quote:
+            quote = None
+            rendered.append(" ")
+        elif quote == '"' and character == "\\":
+            rendered.append(" ")
+            index += 1
+            if index < len(command):
+                rendered.append(" ")
+        else:
+            rendered.append(character if (expansion and quote == '"') else " ")
+        index += 1
+    return "".join(rendered)
+
+
 def _validate_command(
     command: str,
     *,
@@ -127,8 +176,13 @@ def _validate_command(
         findings.append(Finding("command_substitution", "shell command substitution is forbidden", step_id))
     if re.search(r"\$\{[^}]+\}", command):
         findings.append(Finding("raw_env", "raw shell/template expansion is forbidden", step_id))
-    if re.search(r"(?<![\"'])\$LOBSTER_ARG_[A-Z][A-Z0-9_]*", command):
-        findings.append(Finding("arg_unquoted", "Lobster arguments must be double-quoted", step_id))
+    # Both reference families carry channel-controlled values ($VCOPS_* step
+    # env is fed from trusted-context fields such as sender_id, which are
+    # length-bounded but not charset-bounded), so both must be quoted or the
+    # `/bin/sh -lc` layer word-splits and globs them. Same alternation as
+    # _substitute_bounded_references, which erases them before the later scans.
+    if re.search(r"(?<![\"'])\$(?:LOBSTER_ARG|VCOPS)_[A-Z][A-Z0-9_]*", command):
+        findings.append(Finding("arg_unquoted", "Lobster argument and step-env references must be double-quoted", step_id))
     if "openclaw.invoke" in command:
         findings.append(Finding("openclaw_invoke", "arbitrary OpenClaw tool invocation is forbidden", step_id))
     if re.search(r"(?:^|\s)--unsafe(?:-|\b)|(?:^|\s)--unsafe-ground(?:\s|$)", command):
@@ -143,8 +197,21 @@ def _validate_command(
         if path not in SAFE_STEP_PATHS:
             findings.append(Finding("step_ref_unbounded", f"unreviewed step-output path: {path}", step_id))
 
+    # The runner is `/bin/sh -lc` with the full gateway environment, so any
+    # chaining/redirection operator or unsanctioned expansion sidesteps every
+    # command and option allowlist below. Scan after bounded-reference
+    # substitution: whatever `$name` remains is not a reviewed reference. Both
+    # scans look only at shell-active text, so a quoted literal is not a false
+    # positive and a newline cannot smuggle a second command past them.
+    sanitized = _substitute_bounded_references(command)
+    if re.search(r"[;|&<>\n\r]", _shell_active_text(sanitized)):
+        findings.append(Finding("shell_operator", "shell chaining/redirection/backgrounding is forbidden", step_id))
+    expandable = _shell_active_text(sanitized, expansion=True)
+    for name in sorted({match.group(1) for match in re.finditer(r"\$(?!\{)([A-Za-z_][A-Za-z0-9_]*)", expandable)}):
+        findings.append(Finding("raw_env", f"raw environment expansion is forbidden: ${name}", step_id))
+
     try:
-        tokens = shlex.split(_substitute_bounded_references(command), posix=True)
+        tokens = shlex.split(sanitized, posix=True)
     except ValueError as exc:
         findings.append(Finding("shell_parse", f"command cannot be parsed safely: {exc}", step_id))
         return findings
@@ -158,6 +225,14 @@ def _validate_command(
         if "openclaw.invoke" not in command and tokens[0] not in SHELL_BUILTINS:
             findings.append(Finding("command_wrapper", f"unreviewed executable: {tokens[0]}", step_id))
         return findings
+    # Allowlisted is not the same as present: the wrapper these steps invoke
+    # must actually exist and be executable in the package, or every workflow
+    # fails at runtime while this gate reports PASS.
+    wrapper = PACKAGE / tokens[0].lstrip("/")
+    if not wrapper.is_file():
+        findings.append(Finding("command_wrapper_missing", f"{tokens[0]} does not exist in the package", step_id))
+    elif not os.access(wrapper, os.X_OK):
+        findings.append(Finding("command_wrapper_not_executable", f"{tokens[0]} is not executable", step_id))
     if len(tokens) < 2 or tokens[1] not in command_parsers:
         findings.append(Finding("command_unknown", f"unknown vcops command: {tokens[1] if len(tokens) > 1 else ''}", step_id))
         return findings
@@ -276,7 +351,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = arg_parser.parse_args(argv)
     vcops_parser, findings = _load_vcops_parser()
     if vcops_parser is not None:
-        for path in args.paths or sorted(WORKFLOWS.glob("*.lobster")):
+        paths = list(args.paths) or sorted(WORKFLOWS.glob("*.lobster"))
+        if not paths:
+            # Fail closed, mirroring run_g4's "no numbered migrations found":
+            # an empty inventory validated successfully would report PASS
+            # while proving nothing.
+            findings.append(Finding("workflow_inventory_empty", "no workflow files found to validate"))
+        for path in paths:
             path_findings, _ = validate_workflow(path, vcops_parser)
             findings.extend(path_findings)
     report = {"result": "PASS" if not findings else "FAIL", "findings": [item.as_dict() for item in findings]}

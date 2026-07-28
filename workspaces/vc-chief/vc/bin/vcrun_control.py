@@ -14,6 +14,12 @@ import sys
 from pathlib import Path
 
 
+# The fixed implementation below is loaded by path, which would byte-compile it
+# into workspaces/vc-chief/vc/bin/__pycache__ and make `verify_release.py
+# --pristine` report an undeclared file. The image wrappers already pass `-B`;
+# suppress it here too so a direct operator invocation is equally safe.
+sys.dont_write_bytecode = True
+
 _IMAGE_IMPL_PATH = Path("/workspaces/vc-chief/vc/bin/vcrun.py")
 _IMPL_PATH = _IMAGE_IMPL_PATH if _IMAGE_IMPL_PATH.is_file() else Path(__file__).with_name("vcrun.py")
 _SPEC = importlib.util.spec_from_file_location("vcrun_fixed_impl", _IMPL_PATH)

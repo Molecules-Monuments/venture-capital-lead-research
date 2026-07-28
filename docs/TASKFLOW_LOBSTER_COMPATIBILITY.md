@@ -86,11 +86,19 @@ The agent-facing command contract is intentionally narrower than the upstream CL
 ```text
 /workspaces/vc-chief/vc/bin/vcrun-control resume \
   --id <8-hex-approval-id> \
-  --approve <yes|no>
+  --approve yes
 
 /workspaces/vc-chief/vc/bin/vcrun-control resume \
   --id <8-hex-approval-id> \
-  --cancel
+  --approve no \
+  --run-id <postgres-run-id> \
+  --expected-revision <n>
+
+/workspaces/vc-chief/vc/bin/vcrun-control resume \
+  --id <8-hex-approval-id> \
+  --cancel \
+  --run-id <postgres-run-id> \
+  --expected-revision <n>
 ```
 
 The operator wrapper's internal mapping follows the pinned Lobster CLI contract: upstream accepts `resume --id <approval-id> --approve yes|no` or `--cancel` and resolves that ID through the protected state index (`upstream_lobster/src/cli.ts:519-541`; parsing/resolution in `upstream_lobster/src/resume.ts:24-43,90-149`). On cancel, the CLI removes persisted state/index and returns `status: cancelled`; on workflow resume it reloads the saved state and decision. The ID is a correlation handle, not authentication, so the non-allowlisted wrapper still requires the stable administrative operator identity.

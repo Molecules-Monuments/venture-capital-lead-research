@@ -43,7 +43,9 @@ def _load_json(path: Path) -> dict[str, Any]:
         if not stat.S_ISREG(info.st_mode) or stat.S_ISLNK(info.st_mode):
             raise LockError(f"must be a regular, non-symlink file: {path}")
         value = json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=_unique_object)
-    except (OSError, json.JSONDecodeError) as exc:
+    # UnicodeError covers UnicodeDecodeError: a lock file that is not valid UTF-8
+    # must surface as LockError, not as a traceback.
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
         raise LockError(f"cannot read valid JSON from {path}: {exc}") from exc
     if not isinstance(value, dict):
         raise LockError(f"JSON root must be an object: {path}")
@@ -170,7 +172,11 @@ def _role_required_repo_digest(role: str, reference: str) -> str | None:
 
 
 def inspect(role: str, image: str, *, required_repo_digest: str | None = None) -> dict[str, object]:
-    raw = subprocess.check_output(["docker", "image", "inspect", image], text=True)
+    # Bounded like every other subprocess in this package: backup.sh and
+    # update.sh call this while consumers are stopped, so an unresponsive
+    # Docker daemon must fail the lifecycle script rather than leave the
+    # deployment quiesced indefinitely.
+    raw = subprocess.check_output(["docker", "image", "inspect", image], text=True, timeout=60)
     data = json.loads(raw, object_pairs_hook=_unique_object)[0]
     record = {
         "role": role,

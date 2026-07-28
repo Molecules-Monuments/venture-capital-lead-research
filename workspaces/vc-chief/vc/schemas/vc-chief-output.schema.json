@@ -40,7 +40,7 @@
         "required": ["task_id", "agent", "pre_eval_ref", "return_assessment_ref", "disposition"],
         "properties": {
           "task_id": { "type": "string", "minLength": 1 },
-          "agent": { "$ref": "#/$defs/agent" },
+          "agent": { "$ref": "#/$defs/specialistAgent" },
           "pre_eval_ref": { "type": "string", "minLength": 1 },
           "return_assessment_ref": { "type": ["string", "null"], "minLength": 1 },
           "disposition": { "enum": ["accept", "targeted_retry", "discard", "human_review", "not_returned"] }
@@ -48,7 +48,7 @@
       }
     },
     "evidence_refs": { "type": "array", "items": { "type": "string" } },
-    "missing_data": { "type": "array", "items": { "type": "string" } },
+    "missing_data": { "type": "array", "items": { "$ref": "#/$defs/missingData" } },
     "contradictions": { "type": "array", "items": { "type": "string" } },
     "resource_usage": {
       "type": "object",
@@ -79,12 +79,24 @@
     }
   ],
   "$defs": {
-    "agent": {
+    "specialistAgent": {
       "enum": [
-        "vc-chief", "lead-router", "lead-signal-detector", "inbound-intake-analyst",
-        "document-intake-analyst", "outbound-scout", "founder-researcher", "traction-analyst",
-        "market-mapper", "qualification-analyst", "memo-writer", "data-steward"
+        "lead-router", "lead-signal-detector", "outbound-scout",
+        "inbound-intake-analyst", "document-intake-analyst",
+        "founder-researcher", "traction-analyst", "market-mapper",
+        "qualification-analyst", "memo-writer", "data-steward"
       ]
+    },
+    "missingData": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["field", "state", "reason", "evidence_needed"],
+      "properties": {
+        "field": { "type": "string", "minLength": 1 },
+        "state": { "enum": ["missing", "unknown", "not_applicable", "blocked"] },
+        "reason": { "type": "string", "minLength": 1 },
+        "evidence_needed": { "type": "string", "minLength": 1 }
+      }
     },
     "error": {
       "oneOf": [

@@ -68,9 +68,16 @@ class WorkflowValidatorTests(unittest.TestCase):
             "name: fixture\nargs:\n  lead_id: {default: ''}\nsteps:\n"
             "  - id: bad\n    run: '/workspaces/vc-chief/vc/bin/agent/vcops lead-show --lead-id $LOBSTER_ARG_LEAD_ID'\n    timeout_ms: 1000\n"
         )
+        # Step-env references carry channel-controlled values too (VCOPS_SENDER_ID
+        # comes from the trusted context), so the quoting rule must cover them.
+        unquoted_step_env = self.validate(
+            "name: fixture\nsteps:\n"
+            "  - id: bad\n    run: '/workspaces/vc-chief/vc/bin/agent/vcops lead-show --lead-id $VCOPS_SENDER_ID'\n    timeout_ms: 1000\n"
+        )
         self.assertIn("command_substitution", command_substitution)
         self.assertIn("raw_env", raw_template)
         self.assertIn("arg_unquoted", unquoted_env)
+        self.assertIn("arg_unquoted", unquoted_step_env)
 
     def test_legacy_future_and_unbounded_step_refs_are_rejected(self) -> None:
         legacy = self.validate(
@@ -144,6 +151,64 @@ steps:
         self.assertIn("command_substitution", stdin_injection)
         self.assertIn("step_ref_order", stdin_injection)
         self.assertIn("step_ref_unbounded", stdin_injection)
+
+    def test_shell_operators_and_bare_env_expansion_are_rejected(self) -> None:
+        # The runner is `/bin/sh -lc`: any chaining/redirection operator or
+        # unsanctioned bare `$VAR` sidesteps the command and option allowlists.
+        operator_probes = (
+            "; /bin/echo pwned",
+            " && /bin/echo pwned",
+            " | /bin/cat",
+            " > /tmp/pwned",
+            " &",
+            " < /etc/passwd",
+        )
+        for payload in operator_probes:
+            with self.subTest(payload=payload):
+                codes = self.validate(
+                    "name: fixture\nsteps:\n  - id: bad\n"
+                    f"    run: '/workspaces/vc-chief/vc/bin/agent/vcops preflight{payload}'\n"
+                    "    timeout_ms: 1000\n"
+                )
+                self.assertIn("shell_operator", codes)
+        # A newline terminates a command exactly as `;` does, and YAML offers
+        # three ways to put one inside `run:` — a literal block, an escape in a
+        # double-quoted scalar, and a more-indented line inside the folded
+        # style the shipped workflows use. shlex treats all three as ordinary
+        # whitespace, so only an explicit check catches them.
+        newline_probes = (
+            "    run: |\n      /workspaces/vc-chief/vc/bin/agent/vcops preflight\n      /bin/echo pwned\n",
+            '    run: "/workspaces/vc-chief/vc/bin/agent/vcops preflight\\n/bin/echo pwned"\n',
+            '    run: "/workspaces/vc-chief/vc/bin/agent/vcops preflight\\r/bin/echo pwned"\n',
+            "    run: >-\n      /workspaces/vc-chief/vc/bin/agent/vcops preflight\n       /bin/echo pwned\n",
+        )
+        for payload in newline_probes:
+            with self.subTest(payload=payload):
+                codes = self.validate("name: fixture\nsteps:\n  - id: bad\n" + payload + "    timeout_ms: 1000\n")
+                self.assertIn("shell_operator", codes)
+        bare_env = self.validate(
+            "name: fixture\nsteps:\n  - id: bad\n"
+            "    run: '/workspaces/vc-chief/vc/bin/agent/vcops lead-show --lead-id \"$HOME\"'\n"
+            "    timeout_ms: 1000\n"
+        )
+        self.assertIn("raw_env", bare_env)
+        sanctioned = self.validate(
+            "name: fixture\nargs:\n  lead_id: {default: ''}\nsteps:\n"
+            "  - id: ok\n    run: '/workspaces/vc-chief/vc/bin/agent/vcops lead-show --lead-id \"$LOBSTER_ARG_LEAD_ID\"'\n"
+            "    timeout_ms: 1000\n"
+        )
+        self.assertNotIn("raw_env", sanctioned)
+        self.assertNotIn("shell_operator", sanctioned)
+        # The shell cannot act on a metacharacter inside quotes, so rejecting
+        # one would block ordinary reviewed arguments (a company name carrying
+        # an ampersand, a threshold phrased with `>`).
+        quoted_literal = self.validate(
+            "name: fixture\nsteps:\n  - id: ok\n"
+            "    run: '/workspaces/vc-chief/vc/bin/agent/vcops company-upsert --name \"Ben & Co\" --metadata {}'\n"
+            "    timeout_ms: 1000\n"
+        )
+        self.assertNotIn("shell_operator", quoted_literal)
+        self.assertNotIn("raw_env", quoted_literal)
 
     def test_release_workflows_have_no_static_findings(self) -> None:
         for path in sorted(g5.WORKFLOWS.glob("*.lobster")):

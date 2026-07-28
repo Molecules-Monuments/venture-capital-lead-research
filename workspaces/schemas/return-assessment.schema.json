@@ -13,7 +13,7 @@
   "properties": {
     "schema_version": { "const": "3.0" },
     "task_id": { "type": "string", "minLength": 1 },
-    "agent": { "type": "string", "minLength": 1 },
+    "agent": { "$ref": "#/$defs/specialistAgent" },
     "packet_schema_valid": { "type": "boolean" },
     "identifiers_match": { "type": "boolean" },
     "scope_respected": { "type": "boolean" },
@@ -39,6 +39,16 @@
     "contradictions": { "type": "array", "items": { "type": "string" } },
     "disposition": { "enum": ["accept", "targeted_retry", "discard", "human_review"] },
     "reason": { "type": "string", "minLength": 1 }
+  },
+  "$defs": {
+    "specialistAgent": {
+      "enum": [
+        "lead-router", "lead-signal-detector", "outbound-scout",
+        "inbound-intake-analyst", "document-intake-analyst",
+        "founder-researcher", "traction-analyst", "market-mapper",
+        "qualification-analyst", "memo-writer", "data-steward"
+      ]
+    }
   },
   "allOf": [
     {

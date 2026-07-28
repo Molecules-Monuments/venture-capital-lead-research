@@ -11,6 +11,10 @@ ENV_FILE="$PACKAGE_DIR/.env"
 COMPOSE_FILE="$PACKAGE_DIR/docker-compose.yml"
 COMPOSE_PROJECT="openclaw-lead-research-v3"
 LOCK_DIR="/tmp/openclaw-lead-research-v3-lifecycle.lock"
+# Captured before the cd into the package below: a relative destination must
+# resolve where the operator invoked the script, not inside the live package
+# tree that recovery points are documented to stay out of.
+INVOCATION_PWD="$PWD"
 BACKUP_DESTINATION="${1:-}"
 LOCK_OWNED=0
 LOCK_TOKEN=""
@@ -63,7 +67,7 @@ printf '%s\n' "$LOCK_TOKEN" >"$LOCK_DIR/owner"
 # already stopped it.
 case "$BACKUP_DESTINATION" in
   /*) ;;
-  *) BACKUP_DESTINATION="$PWD/$BACKUP_DESTINATION" ;;
+  *) BACKUP_DESTINATION="$INVOCATION_PWD/$BACKUP_DESTINATION" ;;
 esac
 DESTINATION_PARENT_INPUT="$(dirname -- "$BACKUP_DESTINATION")"
 DESTINATION_NAME="$(basename -- "$BACKUP_DESTINATION")"

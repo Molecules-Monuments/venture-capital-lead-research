@@ -24,6 +24,12 @@ from pathlib import Path
 from typing import Iterator
 
 
+# pinned_postgres_major() loads scripts/check_env.py by path, which would
+# byte-compile it into scripts/__pycache__ and make `verify_release.py
+# --pristine` report an undeclared file. Suppress it so the gate stays safe to
+# run even when someone omits `-B`.
+sys.dont_write_bytecode = True
+
 PACKAGE = Path(__file__).resolve().parent.parent
 MIGRATIONS = PACKAGE / "migrations"
 TESTS = PACKAGE / "tests/g4"
@@ -55,7 +61,7 @@ def apply_migration(
     checksum = hashlib.sha256(migration.read_bytes()).hexdigest()
     applied = run(
         [
-            psql, "-X", "-v", "ON_ERROR_STOP=1", "--set", f"migration_checksum={checksum}",
+            psql, "-X", "-v", "ON_ERROR_STOP=1",
             database_url, "-f", migration,
         ],
         env=env,
@@ -66,7 +72,13 @@ def apply_migration(
             f"migration {migration.name} failed on idempotence pass {pass_number}: "
             f"{applied.stderr or applied.stdout}"
         )
-    version, name = migration.stem.split("_", 1)
+    # Register exactly the row a real deployment writes. scripts/migrate.sh uses
+    # name="${migration_file%.sql}" — the full stem, version prefix included —
+    # and register_schema_migration() compares the stored name verbatim, so a
+    # second, divergent copy of that rule here would mean this gate validates a
+    # ledger no deployment ever produces.
+    version = migration.stem.split("_", 1)[0]
+    name = migration.stem
     registered = run(
         [
             psql, "-X", "-v", "ON_ERROR_STOP=1", database_url, "-c",
@@ -229,10 +241,18 @@ def main() -> int:
     try:
         with disposable_postgres() as owner_url:
             runtime_url = re.sub(r"\buser=\S+", "user=openclaw_runtime", owner_url)
+            migration_files = sorted(MIGRATIONS.glob("[0-9][0-9][0-9]_*.sql"))
             checksums = {
                 path.name.split("_", 1)[0]: hashlib.sha256(path.read_bytes()).hexdigest()
-                for path in sorted(MIGRATIONS.glob("[0-9][0-9][0-9]_*.sql"))
+                for path in migration_files
             }
+            # Keyed by the 3-digit prefix, so two migrations sharing one would
+            # collapse into a single entry while both are still applied.
+            if len(checksums) != len(migration_files):
+                raise GateError(
+                    "migration filenames must have unique 3-digit prefixes; "
+                    f"{len(migration_files)} files produced {len(checksums)} keys"
+                )
             environment = os.environ.copy()
             environment.update(
                 {

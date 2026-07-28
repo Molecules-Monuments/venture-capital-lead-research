@@ -214,7 +214,11 @@ Outbound adjustment:
 
 - Outbound discovery usually has less financial evidence.
 - Missing financials should not be filled with guesses.
-- If financial data is absent, mark `not_disclosed` or `unknown`.
+- If financial data is absent, record it as missing data in the vocabulary of
+  the lane you are writing (`missing_data_handling.md` maps the two): intake
+  lanes use `status: not_disclosed` when the company plainly knows the figure
+  but has not published it, and `status: absent` otherwise; research lanes use
+  `state: missing` and name the non-disclosure in `reason`.
 
 ## Exclusion themes
 

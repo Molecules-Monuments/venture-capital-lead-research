@@ -5,9 +5,10 @@
 docs/SCHEMA.sql is documentation, not a migration, but it is published as a
 single-file view of the schema and is therefore only useful if it is provably
 the schema the migrations actually produce. This script is how it is produced:
-it applies migrations/000_roles.sh's roles plus every numbered forward
-migration to a throwaway cluster (reusing run_g4.py's disposable-Postgres
-harness) and dumps the result.
+it applies every numbered forward migration to a throwaway cluster (reusing
+run_g4.py's disposable-Postgres harness, which creates an openclaw_runtime
+role inline for the grants the migrations reference — 000_roles.sh itself is a
+deployment-lifecycle script and is not run here) and dumps the result.
 
 Two things are stripped from the raw pg_dump output so that regenerating on an
 unchanged tree is byte-stable and reviewable:
@@ -39,6 +40,12 @@ import sys
 from pathlib import Path
 
 
+# load_harness() loads scripts/run_g4.py (and through it scripts/check_env.py)
+# by path, which would byte-compile both into scripts/__pycache__ and make
+# `verify_release.py --pristine` report undeclared files. Suppress it so this
+# generator stays safe to run even when someone omits `-B`.
+sys.dont_write_bytecode = True
+
 PACKAGE = Path(__file__).resolve().parent.parent
 TARGET = PACKAGE / "docs/SCHEMA.sql"
 HEADER = """-- SPDX-License-Identifier: 0BSD
@@ -46,9 +53,10 @@ HEADER = """-- SPDX-License-Identifier: 0BSD
 --
 -- This file is NOT a migration and is applied by nothing: migrate.sh only reads
 -- migrations/NNN_*.sql, and this file lives under docs/. It is a schema-only
--- snapshot of the database after migrations/000_roles.sh (roles) and the
--- seventeen forward migrations 001-017 are applied in order, provided as a
--- single-file view so the whole schema can be read and audited in one place.
+-- snapshot of the database after the {migration_span} are
+-- applied in order (against a cluster with the openclaw_runtime role the
+-- migrations' grants reference), provided as a single-file view so the whole
+-- schema can be read and audited in one place.
 --
 -- The authoritative, reviewed source of the schema is the migrations/ directory.
 -- This snapshot is generated from it and can lag if the migrations change; it is
@@ -95,7 +103,14 @@ def render() -> str:
     if dumped.returncode:
         raise SystemExit(f"pg_dump failed: {dumped.stderr}")
     body = DUMP_VERSION.sub("", RESTRICT.sub("", dumped.stdout))
-    return HEADER + body
+    # Derived, not hardcoded: a generated file must not carry a migration count
+    # that silently goes stale the moment the next migration lands.
+    stems = sorted(
+        path.name.split("_", 1)[0]
+        for path in (PACKAGE / "migrations").glob("[0-9][0-9][0-9]_*.sql")
+    )
+    span = f"{len(stems)} forward migrations {stems[0]}-{stems[-1]}" if stems else "no forward migrations"
+    return HEADER.format(migration_span=span) + body
 
 
 def main() -> int:

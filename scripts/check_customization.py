@@ -62,6 +62,7 @@ REQUIRED_REVIEWED_ARTIFACTS = {
     "config/openclaw.json",
     "tests/g3/routing_cases.jsonl",
     "tests/g3/scoring_boundary_cases.jsonl",
+    "workspaces/outbound-scout/USER.md",
     "workspaces/vc-chief/USER.md",
     "workspaces/vc-chief/vc/approval-policy.md",
     "workspaces/vc-chief/vc/channel_policy.md",
@@ -142,7 +143,10 @@ def main() -> int:
         if path.is_symlink() or not path.is_file() or path.stat().st_size > 2 * 1024 * 1024:
             raise OSError("customization profile must be a regular, non-symlink file of at most 2 MiB")
         profile = json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=unique_object)
-    except (OSError, json.JSONDecodeError, DuplicateKeyError) as exc:
+    # UnicodeDecodeError is a ValueError but neither of the two below, so a
+    # non-UTF-8 profile would otherwise exit with a traceback instead of this
+    # validator's FAIL envelope.
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError, DuplicateKeyError) as exc:
         print(json.dumps({"result": "FAIL", "errors": [str(exc)]}, indent=2))
         return 1
 
@@ -210,6 +214,16 @@ def main() -> int:
         ZoneInfo(str(organization.get("timezone", "")))
     except (ZoneInfoNotFoundError, ValueError):
         errors.append("organization.timezone must be a valid IANA timezone")
+    # Both identities must exist before the inequality means anything: a
+    # missing or blank approved_by would satisfy the separation-of-duties
+    # comparison vacuously and pass a review record with no accountable
+    # reviewer.
+    for label, identity in (
+        ("review.approved_by", review.get("approved_by")),
+        ("organization.deployment_owner", organization.get("deployment_owner")),
+    ):
+        if not isinstance(identity, str) or not identity.strip():
+            errors.append(f"{label} must be a non-empty stable ID")
     if review.get("approved_by") == organization.get("deployment_owner"):
         errors.append("review.approved_by must differ from organization.deployment_owner")
     artifacts = review.get("reviewed_artifacts")

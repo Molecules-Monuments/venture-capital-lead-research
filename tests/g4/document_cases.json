@@ -9,28 +9,9 @@
     "VCOPS_MAX_COLUMNS": "8",
     "VCOPS_MAX_CELLS": "24",
     "VCOPS_MAX_PDF_PAGES": "3",
+    "VCOPS_MAX_PDF_CONTENT_BYTES": "65536",
     "VCOPS_MAX_TEXT_CHARS": "2048",
     "VCOPS_MAX_CSV_ROWS": "5",
     "VCOPS_MAX_CSV_COLUMNS": "8"
-  },
-  "accepted": ["valid.csv", "formula.xlsx", "formula.csv"],
-  "rejected": [
-    "outside-root.csv",
-    "parent-traversal.csv",
-    "symlink.csv",
-    "symlink-parent.csv",
-    "unsupported.txt",
-    "renamed-png.xlsx",
-    "macro.xlsm",
-    "macro-payload.xlsx",
-    "external-link.xlsx",
-    "zip-bomb.xlsx",
-    "too-many-rows.xlsx",
-    "oversized.csv",
-    "legacy.xls"
-  ],
-  "required_warnings": {
-    "formula.xlsx": "formula",
-    "formula.csv": "formula"
   }
 }

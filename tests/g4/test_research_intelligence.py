@@ -350,6 +350,7 @@ class ResearchIntelligenceTests(unittest.TestCase):
         })
         check = state["trajectory_check"]["json"]
         self.assertEqual(check["classification"], "trajectory")
+        self.assertEqual("up", check["trajectory"]["direction"])
         self.assertEqual(
             self.query(
                 "SELECT count(*) FROM trajectory_points WHERE trajectory_event_id=%s",
@@ -357,6 +358,18 @@ class ResearchIntelligenceTests(unittest.TestCase):
             ),
             2,
         )
+        # Chronology, not argument order, decides direction: the same pair
+        # recorded with left/right swapped must persist the same 'up', never a
+        # caller-invertible 'down'.
+        state = self.execute("trajectory-record.lobster", {
+            "idempotency_key": self.prefix + "-traj-rev",
+            "lead_id": str(self.lead_id),
+            "left_fact_id": str(current["id"]),
+            "right_fact_id": str(old["id"]),
+        })
+        check = state["trajectory_check"]["json"]
+        self.assertEqual(check["classification"], "trajectory")
+        self.assertEqual("up", check["trajectory"]["direction"])
         type(self).cited_fact_id = old["id"]
         type(self).cited_source_id = source["id"]
 
@@ -508,9 +521,12 @@ class ResearchIntelligenceTests(unittest.TestCase):
                 "evidence-record", "--lead-id", str(lead), "--evidence", json.dumps(spec),
             ], env_extra={"VCOPS_WORKFLOW_MODE": "1"})
 
+        # The dedup race is lead-scoped: two concurrent identical writes for
+        # ONE lead must land as one fact (the SELECT-then-INSERT window is
+        # closed by the company advisory lock).
         threads = [
             threading.Thread(target=writer, args=("a", self.lead_id)),
-            threading.Thread(target=writer, args=("b", second_lead)),
+            threading.Thread(target=writer, args=("b", self.lead_id)),
         ]
         for thread in threads:
             thread.start()
@@ -520,10 +536,28 @@ class ResearchIntelligenceTests(unittest.TestCase):
         self.assertEqual(len(fact_ids), 1, f"concurrent writes split the claim: {fact_ids}")
         self.assertEqual(
             self.query(
+                "SELECT count(*) FROM facts WHERE company_id=%s AND definition=%s AND lead_id=%s",
+                (self.company_id, claim, self.lead_id),
+            ),
+            1,
+        )
+        # A second lead of the same company recording the same claim gets its
+        # OWN fact: compiled-truth and the evaluation lineage guard are
+        # lead-scoped, so reusing the first lead's fact id would strand the
+        # claim outside the second lead's citable ledger (test_16 pins the
+        # same boundary for document evidence).
+        other = self.invoke([
+            "evidence-record", "--lead-id", str(second_lead),
+            "--evidence", json.dumps(dict(payload, source={"url": f"https://shared-{self.prefix}.invalid/x"})),
+        ], env_extra={"VCOPS_WORKFLOW_MODE": "1"})
+        self.assertFalse(other["reused"], other)
+        self.assertNotIn(other["fact"]["id"], fact_ids)
+        self.assertEqual(
+            self.query(
                 "SELECT count(*) FROM facts WHERE company_id=%s AND definition=%s",
                 (self.company_id, claim),
             ),
-            1,
+            2,
         )
 
     def test_10_orchestration_audit_persists_and_reads_back(self):
@@ -731,6 +765,26 @@ class ResearchIntelligenceTests(unittest.TestCase):
             state["fact_promote"]["json"]["promoted"],
             "two model-supplied hosts with no verified content must not corroborate",
         )
+        # (1b) A case-varied scheme cannot dodge the web classification: the
+        # normalization CHECK refuses to store it at all, and the promotion
+        # predicate matches the scheme case-insensitively as a second layer.
+        with self.assertRaises(psycopg.errors.CheckViolation):
+            with psycopg.connect(OWNER_DATABASE_URL) as conn, conn.cursor() as cur:
+                cur.execute(
+                    "INSERT INTO sources"
+                    " (source_kind, trust_level, confidentiality, canonical_uri,"
+                    "  provider, provider_account_id, stable_source_id)"
+                    " VALUES ('public_web', 'public_web', 'internal', %s,"
+                    "         'web-research', 'default', %s)",
+                    (
+                        f"HTTPS://upper-{self.prefix}.invalid/metrics",
+                        "url:" + self.content_hash("upper-scheme"),
+                    ),
+                )
+        predicate = self.query(
+            "SELECT prosrc FROM pg_proc WHERE proname='promote_submitted_claim'", owner=True,
+        )
+        self.assertIn("~* '^https?://'", predicate)
         # (3-precursor) One content-addressed source (tag C): still one key.
         state = self.execute("evidence-record.lobster", {
             "idempotency_key": self.prefix + "-ca-3",
@@ -932,6 +986,62 @@ class ResearchIntelligenceTests(unittest.TestCase):
         ], env_extra={"VCOPS_WORKFLOW_MODE": "1"})
         self.assertTrue(accepted["ok"])
         self.assertEqual(accepted["fact"]["fact_status"], "submitted_claim")
+
+    def test_17_fact_pair_commands_honor_the_model_confidentiality_ceiling(self):
+        # Facts inherit their lead's confidentiality boundary. The fact-pair
+        # and promotion commands return the facts' values, definitions, and
+        # periods to the workflow lane, so they must be gated exactly like
+        # lead-show and memo-show — otherwise the model reads a restricted
+        # lead's evidence by fact id.
+        source = self.operator([
+            "source-add", "--kind", "public_web", "--trust-level", "public_web", "--uri",
+            f"https://ceiling-{self.prefix}.invalid/x", "--provider", "manual",
+            "--stable-id", self.prefix + "-ceiling",
+        ])["source"]
+        common = [
+            "--lead-id", str(self.lead_id), "--company-id", str(self.company_id),
+            "--fact-type", "arr", "--definition", "ceiling probe revenue", "--currency", "EUR",
+            "--status", "verified_fact", "--confidence", "0.9", "--source-id", str(source["id"]),
+            "--evidence-role", "primary",
+        ]
+        early = self.operator([
+            "fact-add", *common, "--value", "100k",
+            "--period-start", "2025-01-01", "--period-end", "2025-06-30",
+        ])["fact"]
+        late = self.operator([
+            "fact-add", *common, "--value", "200k",
+            "--period-start", "2025-07-01", "--period-end", "2025-12-31",
+        ])["fact"]
+        self.query(
+            "UPDATE leads SET confidentiality='restricted' WHERE id=%s", (self.lead_id,), owner=True,
+        )
+        try:
+            for command in ("trajectory-check", "contradiction-check"):
+                denied = self.invoke([
+                    command, "--left-fact-id", str(early["id"]), "--right-fact-id", str(late["id"]),
+                ], expect_ok=False, env_extra={"VCOPS_WORKFLOW_MODE": "1"})
+                self.assertEqual(denied["error"]["code"], "not_found", command)
+            denied = self.invoke(
+                ["fact-promote", "--fact-id", str(early["id"])],
+                expect_ok=False, env_extra={"VCOPS_WORKFLOW_MODE": "1"},
+            )
+            self.assertEqual(denied["error"]["code"], "not_found")
+            # The operator lane is unrestricted, so the gate is a lane cap and
+            # not an outage.
+            operator_view = self.operator([
+                "trajectory-check", "--left-fact-id", str(early["id"]),
+                "--right-fact-id", str(late["id"]),
+            ])
+            self.assertEqual(operator_view["classification"], "trajectory")
+        finally:
+            self.query(
+                "UPDATE leads SET confidentiality='internal' WHERE id=%s", (self.lead_id,), owner=True,
+            )
+        # Back at the ceiling the same pair is readable by the model lane.
+        allowed = self.invoke([
+            "trajectory-check", "--left-fact-id", str(early["id"]), "--right-fact-id", str(late["id"]),
+        ], env_extra={"VCOPS_WORKFLOW_MODE": "1"})
+        self.assertEqual(allowed["classification"], "trajectory")
 
 
 if __name__ == "__main__":

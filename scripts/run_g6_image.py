@@ -71,7 +71,6 @@ EXPECTED_DEBIAN_PACKAGES = {
     "jq": "1.6-2.1+deb12u2",
     "libmagic1": "1:5.44-3",
     "poppler-utils": "22.12.0-2+deb12u2",
-    "postgresql-client": "15+248+deb12u1",
     "python3": "3.11.2-1+b1",
     "python3-pip": "23.0.1+dfsg-1",
     "python3-venv": "3.11.2-1+b1",
@@ -179,7 +178,7 @@ def package_provenance(image: str) -> dict[str, Any]:
         "tavily:read('/opt/openclaw-runtime/node_modules/@openclaw/tavily-plugin/package.json'),"
         "duckduckgo:read('/app/extensions/duckduckgo/package.json'),"
         "ollama:read('/app/extensions/ollama/package.json'),"
-        "trusted_context:read('/app/extensions/vc-trusted-context/package.json')}));"
+        "trusted_context:read('/opt/openclaw-extensions/vc-trusted-context/package.json')}));"
     )
     version_result = run(
         [
@@ -225,7 +224,7 @@ def package_provenance(image: str) -> dict[str, Any]:
 
 def workshop_guard_probe(image: str) -> dict[str, Any]:
     script = """
-import plugin from 'file:///app/extensions/vc-trusted-context/index.js';
+import plugin from 'file:///opt/openclaw-extensions/vc-trusted-context/index.js';
 const hooks = {};
 plugin.register({on: (name, handler) => { hooks[name] = handler; }});
 const invoke = (action, agentId = 'vc-chief') =>

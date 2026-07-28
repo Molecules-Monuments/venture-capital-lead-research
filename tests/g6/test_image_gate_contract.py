@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import importlib.util
+import re
 import tempfile
 import unittest
 from pathlib import Path
@@ -35,7 +36,14 @@ class ImageChannelGateContractTests(unittest.TestCase):
             },
             set(gate.EXPECTED_PACKAGES),
         )
-        self.assertEqual(10, len(gate.EXPECTED_DEBIAN_PACKAGES))
+        # Derived from the Dockerfile rather than counted: a count-only pin let
+        # a name or version swap inside the gate's own list pass unnoticed.
+        dockerfile = (PACKAGE / "Dockerfile.openclaw").read_text(encoding="utf-8")
+        install_block = dockerfile.split("apt-get install -y --no-install-recommends", 1)[1]
+        declared = dict(
+            re.findall(r"^\s+([a-z0-9][a-z0-9.+-]*)=(\S+) \\$", install_block, re.MULTILINE)
+        )
+        self.assertEqual(declared, dict(gate.EXPECTED_DEBIAN_PACKAGES))
 
     def test_fixture_envs_are_secure_literal_complete_families(self) -> None:
         with tempfile.TemporaryDirectory() as raw:

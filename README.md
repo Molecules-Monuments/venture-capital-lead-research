@@ -665,6 +665,8 @@ Residual risks remain: host/Docker compromise, gateway compromise, prompt
 injection, data disclosure to configured processors, parser defects, provider
 outages, and operator misconfiguration. Read [OPERATIONS.md](docs/OPERATIONS.md)
 and [trust_boundaries.md](workspaces/vc-chief/vc/trust_boundaries.md).
+Vulnerability reporting and the supported-version policy are in
+[SECURITY.md](SECURITY.md).
 
 ## Database design
 
@@ -769,7 +771,7 @@ enforcement point. The skill then:
 3. proposes the smallest versioned change;
 4. predefines regression, security, cost, and latency criteria;
 5. shadow-tests on frozen inputs without writing business state;
-6. reports gains, regressions, unknowns, and rollback triggers; and
+6. reports gains, regressions, unknowns, and rollback triggers;
 7. delegates a reusable skill candidate to `skillify` for a complete pending
    Workshop artifact; and
 8. requires a named human to export that artifact into a normal repository
@@ -793,7 +795,11 @@ require.
 
 Prerequisites:
 
-- a compatible Python interpreter and POSIX shell;
+- Python **3.11 or newer** and a POSIX shell — the hash-locked
+  `requirements-dev.lock` is compiled for 3.11+, and under `--require-hashes`
+  pip refuses the extra unhashed backports (`tomli`, `exceptiongroup`) that
+  older interpreters would pull in; 3.11 also matches the deployed image's
+  Python, so one floor covers both;
 - one-time access to the exact hash-pinned Python packages or an approved
   package cache;
 - optional local `initdb`, `pg_ctl`, and `psql` **from PostgreSQL 17** for the
@@ -878,8 +884,8 @@ With the venv active:
 
 ```sh
 ./scripts/check_env.sh .env
-python -B scripts/check_customization.py config/customization-profile.json .env
-python -B scripts/render_channel_config.py .env
+python3 -B scripts/check_customization.py config/customization-profile.json .env
+python3 -B scripts/render_channel_config.py .env
 docker compose -f docker-compose.yml \
   -p openclaw-lead-research-v3 --env-file .env config --quiet
 ```
@@ -982,7 +988,7 @@ evidence.
 ### Offline source gate
 
 ```sh
-python -B scripts/verify_offline.py
+python3 -B scripts/verify_offline.py
 ```
 
 This runs agent/schema, provider/context, resolution, infrastructure,
@@ -994,7 +1000,7 @@ release inventory. It needs no live provider credential.
 ### Disposable PostgreSQL gate
 
 ```sh
-python -B scripts/verify_offline.py --with-g4-database
+python3 -B scripts/verify_offline.py --with-g4-database
 ```
 
 The same PostgreSQL prerequisite covers the schema-reference gate, which
@@ -1002,7 +1008,7 @@ re-derives `docs/SCHEMA.sql` from the migrations and fails if the published
 reference has drifted:
 
 ```sh
-python -B scripts/verify_offline.py --with-schema-reference
+python3 -B scripts/verify_offline.py --with-schema-reference
 ```
 
 The runner creates a temporary local cluster, refuses an external database
@@ -1014,7 +1020,7 @@ and transaction contracts without touching production.
 ### Reference retrieval scale
 
 ```sh
-python -B scripts/verify_offline.py \
+python3 -B scripts/verify_offline.py \
   --with-g4-database --with-retrieval-scale
 ```
 
@@ -1028,7 +1034,7 @@ or data distribution.
 ```sh
 docker build -f Dockerfile.openclaw \
   -t openclaw-lead-research:3.0.0 .
-python -B scripts/verify_offline.py \
+python3 -B scripts/verify_offline.py \
   --with-g6-image openclaw-lead-research:3.0.0
 ```
 
@@ -1047,9 +1053,9 @@ as those checks.
 After any package change, regenerate the manifest only after tests pass:
 
 ```sh
-python -B scripts/build_release_manifest.py
-python -B scripts/build_release_manifest.py --check
-python -B scripts/verify_release.py --pristine
+python3 -B scripts/build_release_manifest.py
+python3 -B scripts/build_release_manifest.py --check
+python3 -B scripts/verify_release.py --pristine
 ```
 
 ## Project structure
@@ -1059,6 +1065,7 @@ python -B scripts/verify_release.py --pristine
 ├── README.md                         # Public architecture, setup, use, and risk guide
 ├── LICENSE                           # 0BSD license for original project material
 ├── THIRD_PARTY_NOTICES.md            # Upstream attribution and license boundary
+├── SECURITY.md                       # Vulnerability reporting and support policy
 ├── VERSION                           # 3.0.0
 ├── CUSTOMIZATION.md                  # Required fund/deployment decisions
 ├── 00_RESEARCH_AND_IMPLEMENTATION_PLAN.md  # Version 3 plan of record

@@ -2,19 +2,34 @@
 
 Policy version: `3.0`
 
-## Canonical states
+## Canonical semantics and per-lane vocabularies
 
-Use exactly:
+The semantic distinctions below are canonical. They are deliberately encoded
+in two lane-specific schema vocabularies, because intake lanes and research
+lanes miss data for different reasons; use the exact enum of the schema you
+are writing:
 
-- `unknown`: not established;
-- `not_disclosed`: likely known by the company but not disclosed;
-- `not_applicable`: field does not apply;
-- `not_evidenced`: a claim exists without admissible support;
-- `extraction_failed`: source exists but extraction failed;
-- `conflicting`: comparable evidence cannot both be true;
-- `stale`: evidence is too old for the present claim.
+| Semantic distinction | Intake/sourcing lanes — `missing_data[].status` (lead-router, lead-signal-detector, inbound-intake-analyst, document-intake-analyst, outbound-scout) | Research/analysis lanes — `missing_data[].state` (founder-researcher, traction-analyst, market-mapper, qualification-analyst, memo-writer, vc-chief) |
+|---|---|---|
+| Not established / not found | `absent` | `missing` |
+| Likely known by the company but not disclosed | `not_disclosed` | `missing` (state the non-disclosure in `reason`) |
+| Field does not apply | `not_applicable` | `not_applicable` |
+| Source exists but extraction failed | `extraction_failed` | `blocked` (name the failed source in `reason`) |
+| Deliberately out of the lane's scope | `not_requested` | `not_applicable` (record the scope bound in `reason`) |
+| Cannot be established with authorized effort | — (intake does not research) | `unknown` |
+| Access or policy prevents research | — | `blocked` |
 
-`company_submitted_claim` is an evidence status, not a missing-data value.
+Intake-lane items carry `field`, `status`, `reason` (inbound intake adds
+`source_ref`); research-lane items carry `field`, `state`, `reason`, and
+`evidence_needed`. The `data-steward` envelope's `missing_data` is a free-text
+list naming operation-level omissions; it is not an evidence vocabulary.
+
+Evidence that exists but is unverified, contradicted, or too old is not
+"missing data": that belongs to the evidence layer — fact statuses
+`submitted_claim`, `contradicted`, `stale`, `unknown`, and `retracted`, plus
+contradiction records. A claim without admissible support stays a
+`submitted_claim`; `company_submitted_claim` wording in reports reflects that
+evidence status, not a missing-data value.
 
 ## Rules
 

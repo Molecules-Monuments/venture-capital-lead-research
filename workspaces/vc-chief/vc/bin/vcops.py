@@ -27,6 +27,7 @@ import sys
 import tempfile
 import unicodedata
 import zipfile
+import zlib
 import xml.etree.ElementTree as ElementTree
 from contextlib import contextmanager
 from datetime import UTC, date, datetime, timedelta
@@ -70,8 +71,16 @@ STATE_ROOT = Path(os.environ.get("VCOPS_STATE_ROOT", "/home/node/.openclaw/vcops
 EXTRACT_ROOT = STATE_ROOT / "extractions"
 RUBRIC_PATH = WORKSPACE_ROOT / "scoring-rubric.v3.json"
 
+# Document-intake resource caps. Every VCOPS_MAX_* name below is test-facing
+# only: the three env -i lane wrappers forward a fixed allowlist that contains
+# none of them, so a deployment cannot raise these bounds and the shipped
+# defaults are what any real lane enforces. The gate harness sets them to small
+# values (tests/g4/document_cases.json) to exercise the limits cheaply. Where a
+# pair is read, the first name is the shared knob across parsers and the second
+# is the per-format override.
 MAX_DOCUMENT_BYTES = int(os.environ.get("VCOPS_MAX_DOCUMENT_BYTES", 25 * 1024 * 1024))
 MAX_PDF_PAGES = int(os.environ.get("VCOPS_MAX_PDF_PAGES", 300))
+MAX_PDF_CONTENT_BYTES = int(os.environ.get("VCOPS_MAX_UNCOMPRESSED_BYTES", os.environ.get("VCOPS_MAX_PDF_CONTENT_BYTES", 64 * 1024 * 1024)))
 MAX_TEXT_CHARS = int(os.environ.get("VCOPS_MAX_EXTRACTED_TEXT_BYTES", os.environ.get("VCOPS_MAX_TEXT_CHARS", 2_000_000)))
 MAX_XLSX_FILES = int(os.environ.get("VCOPS_MAX_ARCHIVE_ENTRIES", os.environ.get("VCOPS_MAX_XLSX_FILES", 2_000)))
 MAX_XLSX_UNCOMPRESSED = int(os.environ.get("VCOPS_MAX_UNCOMPRESSED_BYTES", os.environ.get("VCOPS_MAX_XLSX_UNCOMPRESSED", 100 * 1024 * 1024)))
@@ -105,8 +114,12 @@ RUNNER_FAILURE_CLASSES = {
     # in 'running'. The g5 reason-parity test asserts vcrun and vcops agree here.
     "lobster_no_exit",
 }
+# Must stay in exact parity with guard_workflow_run_transition in
+# migrations/001_initial_v2.sql: a looser row here would pass the local gate
+# and surface as a generic constraint_violation from the trigger instead of
+# the typed invalid_transition envelope.
 RUN_TRANSITIONS = {
-    "queued": {"started", "running", "waiting", "blocked", "cancelled", "failed", "lost"},
+    "queued": {"started", "running", "cancelled", "failed", "lost"},
     "started": {"running", "waiting", "blocked", "succeeded", "failed", "cancelled", "lost"},
     "running": {"waiting", "blocked", "succeeded", "failed", "cancelled", "lost"},
     "waiting": {"running", "blocked", "succeeded", "failed", "cancelled", "lost"},
@@ -155,7 +168,6 @@ WORKFLOW_COMMANDS = {
     "entity-resolve",
     "workflow-request-claim",
     "workflow-start",
-    "create-run",
     "workflow-transition",
     "workflow-cancel",
     "workflow-reconcile-failure",
@@ -216,6 +228,10 @@ GOVERNED_SQLSTATE_ERRORS = {
     "28000": ("authorization_denied", "the runtime role is not authorized for this operation"),
     "40001": ("serialization_conflict", "a concurrent change lost the write; retry"),
     "22023": ("invalid_parameter", "a supplied value was rejected by a governed boundary"),
+    "22P02": ("invalid_parameter", "a supplied value has an invalid textual representation for its type"),
+    "22003": ("invalid_parameter", "a supplied numeric value is out of range for its column type"),
+    "22007": ("invalid_parameter", "a supplied date or timestamp has an invalid textual format"),
+    "22008": ("invalid_parameter", "a supplied date or timestamp value is out of range"),
     "23514": ("constraint_violation", "a governed check constraint refused the write"),
     "23503": ("foreign_key_violation", "a referenced row does not exist or is still referenced"),
     "23505": ("unique_violation", "a uniqueness constraint refused the write"),
@@ -270,6 +286,11 @@ def parse_json(value: str | None, *, default: Any, expected: type | tuple[type, 
     except (json.JSONDecodeError, ValueError) as exc:
         message = exc.msg if isinstance(exc, json.JSONDecodeError) else str(exc)
         raise VcopsError("invalid_json", f"invalid JSON: {message}") from exc
+    except RecursionError as exc:
+        # Deeply nested agent-supplied JSON exhausts the decoder's recursion
+        # budget; RecursionError is not a ValueError, so it would otherwise
+        # escape as internal_error/exit 3.
+        raise VcopsError("invalid_json", "invalid JSON: input is nested too deeply") from exc
     if not isinstance(parsed, expected):
         raise VcopsError("invalid_json_type", f"expected JSON {expected}, got {type(parsed).__name__}")
     return parsed
@@ -295,8 +316,14 @@ def _decode_base64url(value: str) -> bytes:
 
 def verify_trusted_context(token: str, required_scope: str | None = None) -> dict[str, Any]:
     rendered = require_text(token, "trusted_context", maximum=32_768)
-    if rendered.count(".") != 1:
-        raise VcopsError("invalid_trusted_context", "trusted-context token must have two parts", exit_code=1)
+    # Validate the token shape before any cryptographic work. Both parts are
+    # unpadded base64url — the alphabet _decode_base64url already enforces, but
+    # only after the HMAC. Without this, a non-ASCII payload raises
+    # UnicodeEncodeError from .encode("ascii") and a non-ASCII signature raises
+    # TypeError inside compare_digest, turning this exit-1 denial into
+    # internal_error/exit 3 on the channel-facing verification path.
+    if not re.fullmatch(r"[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+", rendered):
+        raise VcopsError("invalid_trusted_context", "trusted-context token must be two base64url parts", exit_code=1)
     encoded, supplied_signature = rendered.split(".", 1)
     try:
         key = TRUSTED_CONTEXT_KEY_FILE.read_bytes()
@@ -337,9 +364,13 @@ def verify_trusted_context(token: str, required_scope: str | None = None) -> dic
         raise VcopsError("invalid_trusted_context", "trusted-context group flag is invalid", exit_code=1)
     paths = payload.get("media_paths")
     scopes = payload.get("scopes")
-    if not isinstance(paths, list) or len(paths) > 10 or len(set(paths)) != len(paths):
+    # The per-item string checks must run before the set() duplicate checks: an
+    # unhashable entry (list/object) in a validly signed token would otherwise
+    # raise TypeError from set() and collapse this exit-1 denial into
+    # internal_error/exit 3 on the verification path.
+    if not isinstance(paths, list) or len(paths) > 10 or any(not isinstance(item, str) for item in paths) or len(set(paths)) != len(paths):
         raise VcopsError("invalid_trusted_context", "trusted-context media path list is invalid", exit_code=1)
-    if not isinstance(scopes, list) or len(scopes) > 40 or len(set(scopes)) != len(scopes) or any(not isinstance(item, str) for item in scopes):
+    if not isinstance(scopes, list) or len(scopes) > 40 or any(not isinstance(item, str) for item in scopes) or len(set(scopes)) != len(scopes):
         raise VcopsError("invalid_trusted_context", "trusted-context scope list is invalid", exit_code=1)
     lexical_media = MEDIA_ROOT.absolute()
     for media_path in paths:
@@ -425,6 +456,10 @@ def _verified_media_context(token: str | None, document_path: str | Path, operat
 
 
 def require_text(value: str | None, name: str, *, maximum: int = 10_000) -> str:
+    # Agent-supplied JSON can put any type here; .strip() on a non-str would
+    # collapse the typed contract into internal_error/exit 3.
+    if value is not None and not isinstance(value, str):
+        raise VcopsError("invalid_text", f"{name} must be a string")
     text = (value or "").strip()
     if not text:
         raise VcopsError("missing_value", f"{name} must not be empty")
@@ -437,7 +472,12 @@ def normalize_domain(value: str | None) -> str | None:
     if not value:
         return None
     candidate = value.strip().lower()
-    parts = urlsplit(candidate if "://" in candidate else f"https://{candidate}")
+    try:
+        parts = urlsplit(candidate if "://" in candidate else f"https://{candidate}")
+    except ValueError as exc:
+        # urlsplit raises on a malformed bracketed netloc; keep the typed
+        # denial instead of collapsing to internal_error/exit 3.
+        raise VcopsError("invalid_domain", "domain is not parseable") from exc
     host = (parts.hostname or "").rstrip(".")
     if host.startswith("www."):
         host = host[4:]
@@ -465,6 +505,21 @@ def _positive_bigint(value: str | int | None, label: str) -> int | None:
     rendered = str(value)
     if not re.fullmatch(r"[1-9][0-9]{0,18}", rendered):
         raise VcopsError("invalid_identifier", f"{label} must be a positive PostgreSQL bigint")
+    parsed = int(rendered)
+    if parsed > 9_223_372_036_854_775_807:
+        raise VcopsError("invalid_identifier", f"{label} exceeds PostgreSQL bigint")
+    return parsed
+
+
+def _nonnegative_bigint(value: str | int | None, label: str) -> int | None:
+    # For counters that legitimately start at zero (Task Flow revisions:
+    # workflow_runs.flow_revision defaults to 0 and migration 014's
+    # orchestration_audit CHECK admits flow_revision >= 0).
+    if value is None:
+        return None
+    rendered = str(value)
+    if not re.fullmatch(r"0|[1-9][0-9]{0,18}", rendered):
+        raise VcopsError("invalid_identifier", f"{label} must be a non-negative PostgreSQL bigint")
     parsed = int(rendered)
     if parsed > 9_223_372_036_854_775_807:
         raise VcopsError("invalid_identifier", f"{label} exceeds PostgreSQL bigint")
@@ -695,7 +750,10 @@ def normalize_uri(value: str | None) -> str | None:
     if not value:
         return None
     text = value.strip()
-    parts = urlsplit(text)
+    try:
+        parts = urlsplit(text)
+    except ValueError as exc:
+        raise VcopsError("invalid_uri", "source URI is not parseable") from exc
     if parts.scheme not in {"http", "https"} or not parts.hostname or parts.username or parts.password:
         raise VcopsError("invalid_uri", "only credential-free http(s) source URIs are accepted")
     host = parts.hostname.lower().rstrip(".")
@@ -705,8 +763,22 @@ def normalize_uri(value: str | None) -> str | None:
             "source URIs must name an external host; loopback, private, link-local, "
             "and container-internal addresses are not research sources",
         )
-    port = f":{parts.port}" if parts.port else ""
-    return urlunsplit((parts.scheme.lower(), f"{host}{port}", parts.path or "/", parts.query, ""))
+    try:
+        # SplitResult.port parses lazily: a non-numeric or out-of-range port
+        # raises ValueError here rather than at urlsplit(), and must stay a
+        # typed denial instead of collapsing to internal_error/exit 3.
+        port = f":{parts.port}" if parts.port else ""
+    except ValueError as exc:
+        raise VcopsError("invalid_uri", "source URI port is invalid") from exc
+    # Dropping the fragment can expose whitespace that preceded the '#' (the
+    # leading strip() above ran before the split), and the stored URI must stay
+    # btrim-clean for the sources.canonical_uri normalization CHECK.
+    normalized = urlunsplit(
+        (parts.scheme.lower(), f"{host}{port}", parts.path or "/", parts.query, "")
+    ).strip()
+    if any(character.isspace() for character in normalized):
+        raise VcopsError("invalid_uri", "source URI must not contain whitespace")
+    return normalized
 
 
 def sha256_file(path: Path) -> str:
@@ -976,6 +1048,62 @@ def _inspect_pptx_archive(path: Path) -> dict[str, Any]:
     }
 
 
+_PDF_INFLATE_CHUNK = 1024 * 1024
+
+
+def _pdf_content_streams(page_object: Any) -> list[Any]:
+    contents = page_object.get("/Contents")
+    if contents is None:
+        return []
+    resolved = contents.get_object() if hasattr(contents, "get_object") else contents
+    if isinstance(resolved, list):
+        return [item.get_object() if hasattr(item, "get_object") else item for item in resolved]
+    return [resolved]
+
+
+def _pdf_stream_decoded_size(stream: Any, budget: int) -> int:
+    """Decoded size of one page content stream, abandoned once it exceeds budget.
+
+    Flate is what both real and hostile page-content streams use, so it is
+    inflated a chunk at a time and given up on the moment the budget is gone —
+    a 2 MB upload must not be able to force a multi-gigabyte allocation before
+    anything measures it. A stream carrying any other filter chain is counted
+    at its encoded length, which MAX_DOCUMENT_BYTES already bounds.
+    """
+    raw = getattr(stream, "_data", None)
+    if not isinstance(raw, bytes):
+        # Not a pypdf encoded stream: its stored bytes are already decoded.
+        try:
+            return len(stream.get_data())
+        except Exception:  # noqa: BLE001 - an unreadable stream contributes nothing
+            return 0
+    declared = stream.get("/Filter")
+    filters = (
+        [str(item) for item in declared]
+        if isinstance(declared, list)
+        else ([] if declared is None else [str(declared)])
+    )
+    if filters != ["/FlateDecode"]:
+        return len(raw)
+    decompressor = zlib.decompressobj()
+    produced = 0
+    pending = raw
+    try:
+        while True:
+            chunk = decompressor.decompress(pending, _PDF_INFLATE_CHUNK)
+            produced += len(chunk)
+            if produced > budget:
+                raise VcopsError(
+                    "pdf_content_limit",
+                    "PDF page content exceeds the decompressed safety limit",
+                )
+            pending = decompressor.unconsumed_tail
+            if not pending:
+                return produced
+    except zlib.error as exc:
+        raise VcopsError("invalid_pdf", "a PDF content stream could not be decoded") from exc
+
+
 def _inspect_pdf(path: Path) -> dict[str, Any]:
     try:
         from pypdf import PdfReader
@@ -1000,10 +1128,21 @@ def _inspect_pdf(path: Path) -> dict[str, Any]:
             raise VcopsError("pdf_active_content", "PDF JavaScript is rejected")
         if root_object and any(root_object.get(key) is not None for key in ("/OpenAction", "/AA")):
             raise VcopsError("pdf_active_content", "PDF automatic actions are rejected")
+        content_budget = MAX_PDF_CONTENT_BYTES
         for page in reader.pages:
             page_object = page.get_object()
             if page_object.get("/AA") is not None:
                 raise VcopsError("pdf_active_content", "PDF page actions are rejected")
+            # Page count and file size bound nothing about decompressed content:
+            # a small flate-bombed content stream would otherwise be inflated
+            # unbounded by the extractor further down the lane.
+            for stream in _pdf_content_streams(page_object):
+                content_budget -= _pdf_stream_decoded_size(stream, content_budget)
+                if content_budget < 0:
+                    raise VcopsError(
+                        "pdf_content_limit",
+                        "PDF page content exceeds the decompressed safety limit",
+                    )
     except VcopsError:
         raise
     except Exception as exc:
@@ -1051,22 +1190,6 @@ def inspect_document(path: Path | str) -> dict[str, Any]:
             "cells": MAX_CELLS,
         },
     }
-
-
-def _bounded_text(parts: Iterator[str]) -> tuple[str, bool]:
-    out: list[str] = []
-    length = 0
-    truncated = False
-    for part in parts:
-        if length + len(part) > MAX_TEXT_CHARS:
-            remaining = max(MAX_TEXT_CHARS - length, 0)
-            if remaining:
-                out.append(part[:remaining])
-            truncated = True
-            break
-        out.append(part)
-        length += len(part)
-    return "".join(out), truncated
 
 
 def _extract_pdf(path: Path) -> dict[str, Any]:
@@ -1253,7 +1376,12 @@ def quarantine_document(raw_path: str | Path, error: VcopsError) -> dict[str, An
     with path.open("rb") as handle:
         payload = handle.read(MAX_DOCUMENT_BYTES + 1)
     if len(payload) > MAX_DOCUMENT_BYTES:
-        raise VcopsError("quarantine_limit", "quarantine copy exceeded the byte limit")
+        # Return, never raise: this runs inside document-extract's error
+        # handler, and raising here would replace the original typed rejection
+        # (document_too_large plus its size/limit details) with a
+        # quarantine-subsystem error, matching none of the other un-copyable
+        # branches of this function.
+        return {"materialized": False, "reason": "exceeds_quarantine_byte_limit"}
     digest = hashlib.sha256(payload).hexdigest()
     target, stored_digest = write_content_addressed(QUARANTINE_ROOT, f"{digest}{path.suffix.lower()}", payload)
     if stored_digest != digest:
@@ -1311,14 +1439,18 @@ def parse_numeric_claim(text: str) -> dict[str, Any]:
     }
 
 
+def _period_bounds(fact: Mapping[str, Any]) -> tuple[str | None, str | None]:
+    start = fact.get("period_start") or fact.get("valid_from") or fact.get("observed_at")
+    end = fact.get("period_end") or fact.get("valid_to") or start
+    return (str(start) if start else None, str(end) if end else None)
+
+
 def _periods_overlap(left: Mapping[str, Any], right: Mapping[str, Any]) -> bool | None:
-    left_start = left.get("period_start") or left.get("valid_from") or left.get("observed_at")
-    left_end = left.get("period_end") or left.get("valid_to") or left_start
-    right_start = right.get("period_start") or right.get("valid_from") or right.get("observed_at")
-    right_end = right.get("period_end") or right.get("valid_to") or right_start
+    left_start, left_end = _period_bounds(left)
+    right_start, right_end = _period_bounds(right)
     if not all((left_start, left_end, right_start, right_end)):
         return None
-    return str(left_start) <= str(right_end) and str(right_start) <= str(left_end)
+    return left_start <= right_end and right_start <= left_end
 
 
 def _comparable_value(fact: Mapping[str, Any]) -> Decimal | str | None:
@@ -1328,7 +1460,9 @@ def _comparable_value(fact: Mapping[str, Any]) -> Decimal | str | None:
             return Decimal(str(value))
         except InvalidOperation:
             return None
-    text = fact.get("value_numeric") or fact.get("value_text") or fact.get("original_value") or fact.get("value")
+    # value_numeric is known absent here: the branch above returned whenever it
+    # held anything, so re-reading it first was dead.
+    text = fact.get("value_text") or fact.get("original_value") or fact.get("value")
     if text is None:
         return None
     parsed = parse_numeric_claim(str(text))
@@ -1455,7 +1589,14 @@ def _evidence_ids(raw: Any, label: str) -> list[int]:
         raise VcopsError("evidence_required", f"{label} evidence_fact_ids must be an array")
     result: list[int] = []
     for value in raw:
-        if isinstance(value, bool) or not isinstance(value, (int, str)) or not re.fullmatch(r"[1-9][0-9]*", str(value)):
+        # Bound the digit count before int(): CPython's int_max_str_digits
+        # limit makes int() raise ValueError on a >=4300-digit string, which
+        # would escape this typed denial. A bigint can never exceed 19 digits.
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, (int, str))
+            or not re.fullmatch(r"[1-9][0-9]{0,18}", str(value))
+        ):
             raise VcopsError("invalid_evidence_id", f"{label} contains an invalid evidence fact id")
         item = int(value)
         if item not in result:
@@ -1523,14 +1664,16 @@ def calculate_score(
             missing_fields = sorted(expected_fields - set(raw))
             if missing_fields:
                 raise VcopsError("invalid_criterion", f"criterion {key} is missing fields: {', '.join(missing_fields)}")
+            # isinstance before membership: `x not in {…}` raises TypeError for
+            # unhashable input (lists/objects), which is expected on this lane.
             evidence_state = raw.get("evidence_state")
-            if evidence_state not in {"positive", "negative", "mixed", "unknown", "not_applicable", "blocked"}:
+            if not isinstance(evidence_state, str) or evidence_state not in {"positive", "negative", "mixed", "unknown", "not_applicable", "blocked"}:
                 raise VcopsError("invalid_criterion", f"criterion {key} has an invalid evidence state")
             coverage_state = raw.get("coverage")
-            if coverage_state not in {"complete", "partial", "none", "not_applicable"}:
+            if not isinstance(coverage_state, str) or coverage_state not in {"complete", "partial", "none", "not_applicable"}:
                 raise VcopsError("invalid_criterion", f"criterion {key} has an invalid coverage state")
             evidence_quality = raw.get("evidence_quality")
-            if evidence_quality not in {"high", "medium", "low", "unusable", "not_applicable"}:
+            if not isinstance(evidence_quality, str) or evidence_quality not in {"high", "medium", "low", "unusable", "not_applicable"}:
                 raise VcopsError("invalid_criterion", f"criterion {key} has an invalid evidence-quality state")
             if evidence_state in {"unknown", "not_applicable", "blocked"}:
                 if raw.get("quality_score") is not None:
@@ -1542,6 +1685,10 @@ def calculate_score(
                     quality_score = Decimal(str(raw.get("quality_score")))
                 except (InvalidOperation, TypeError) as exc:
                     raise VcopsError("invalid_score", f"criterion {key} quality score is invalid") from exc
+                # NaN survives Decimal construction and raises InvalidOperation
+                # on ordered comparison; reject every non-finite value first.
+                if not quality_score.is_finite():
+                    raise VcopsError("invalid_score", f"criterion {key} quality score is invalid")
                 if quality_score < 0 or quality_score > 5:
                     raise VcopsError("score_range", f"criterion {key} quality score must be between 0 and 5")
                 calculation_score = quality_score
@@ -1604,7 +1751,10 @@ def calculate_score(
 
     adjustments: list[dict[str, Any]] = []
     adjustment_total = Decimal(0)
-    for index, adjustment in enumerate(context.get("adjustments", [])):
+    supplied_adjustments = context.get("adjustments", [])
+    if not isinstance(supplied_adjustments, list):
+        raise VcopsError("invalid_adjustment", "decision-context adjustments must be an array")
+    for index, adjustment in enumerate(supplied_adjustments):
         if not isinstance(adjustment, Mapping):
             raise VcopsError("invalid_adjustment", f"adjustment {index + 1} must be an object")
         if set(adjustment) != {"kind", "points", "reason", "evidence_fact_ids"}:
@@ -1614,6 +1764,10 @@ def calculate_score(
             points = Decimal(str(adjustment.get("points")))
         except InvalidOperation as exc:
             raise VcopsError("invalid_adjustment", f"adjustment {index + 1} points are invalid") from exc
+        # A NaN here would sail through the kind-specific equality checks and
+        # only explode later in the min/max clamp; reject non-finite up front.
+        if not points.is_finite():
+            raise VcopsError("invalid_adjustment", f"adjustment {index + 1} points are invalid")
         if kind == "material_unresolved_contradiction":
             if points not in {Decimal(-5), Decimal(-10)}:
                 raise VcopsError("invalid_adjustment", "contradiction adjustment must be exactly -5 or -10")
@@ -1802,6 +1956,15 @@ def cmd_health(args: argparse.Namespace) -> dict[str, Any]:
         database = cmd_db_check(args)
     except VcopsError as exc:
         database = {"ok": False, "error": exc.message}
+    except Exception as exc:
+        # An unreachable server (connection refused, bad credentials) raises
+        # psycopg.OperationalError, not VcopsError. The health probe must
+        # still return its structured report with database.ok=false — the
+        # operator diagnosing an outage needs the filesystem results, not an
+        # internal_error envelope that discards them.
+        if psycopg is None or not isinstance(exc, psycopg.Error):
+            raise
+        database = {"ok": False, "error": type(exc).__name__}
     result["database"] = database
     result["ok"] = bool(result["ok"] and database.get("ok"))
     return result
@@ -1916,15 +2079,16 @@ def cmd_lead_show(args: argparse.Namespace) -> dict[str, Any]:
     In model-facing lanes both the lead and its artifacts are filtered to the
     public/internal confidentiality ceiling.
     """
+    lead_id = _positive_bigint(args.lead_id, "lead_id")
     model_limited = AGENT_MODE or WORKFLOW_MODE
     with connection() as conn, conn.cursor() as cur:
         if model_limited:
             cur.execute(
                 "SELECT * FROM leads WHERE id=%s AND confidentiality IN ('public','internal')",
-                (args.lead_id,),
+                (lead_id,),
             )
         else:
-            cur.execute("SELECT * FROM leads WHERE id=%s", (args.lead_id,))
+            cur.execute("SELECT * FROM leads WHERE id=%s", (lead_id,))
         lead = fetch_one(cur, not_found="lead not found or exceeds the model confidentiality ceiling")
         artifact_filter = " AND ea.confidentiality IN ('public','internal')" if model_limited else ""
         cur.execute(
@@ -1932,7 +2096,7 @@ def cmd_lead_show(args: argparse.Namespace) -> dict[str, Any]:
                       ea.confidentiality
                FROM lead_artifacts la JOIN evidence_artifacts ea ON ea.id=la.artifact_id
                WHERE la.lead_id=%s""" + artifact_filter + " ORDER BY la.created_at,la.id",
-            (args.lead_id,),
+            (lead_id,),
         )
         artifacts = [dict(row) for row in cur.fetchall()]
     return {"ok": True, "lead": lead, "artifacts": artifacts}
@@ -3016,8 +3180,13 @@ def cmd_fact_add(args: argparse.Namespace) -> dict[str, Any]:
         raise VcopsError("invalid_numeric_value", "numeric fact value could not be parsed")
     if args.company_id is None:
         raise VcopsError("company_required", "facts require a canonical company")
-    if args.confidence < 0 or args.confidence > 1:
+    # not(0 <= x <= 1) also rejects NaN, which passes every ordered comparison.
+    if not (0 <= args.confidence <= 1):
         raise VcopsError("invalid_confidence", "fact confidence must be between 0 and 1")
+    # Mirror the facts.currency_code CHECK ('^[A-Z]{3}$') so a malformed code
+    # is a typed denial here instead of a generic constraint_violation.
+    if args.currency is not None and not re.fullmatch(r"[A-Z]{3}", args.currency):
+        raise VcopsError("invalid_currency", "currency must be a three-letter uppercase ISO 4217 code")
     if args.status == "verified_fact" and not (args.source_id or []):
         raise VcopsError(
             "verified_fact_requires_source",
@@ -3078,7 +3247,9 @@ def _evidence_confidence(value: Any) -> float:
         return mapped
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise VcopsError("invalid_confidence", "confidence must be 0..1 or low/medium/high")
-    if value < 0 or value > 1:
+    # not(0 <= x <= 1) also rejects NaN (json.loads accepts a literal NaN
+    # token), which passes every ordered comparison.
+    if not (0 <= value <= 1):
         raise VcopsError("invalid_confidence", "confidence must be between 0 and 1")
     return float(value)
 
@@ -3228,8 +3399,15 @@ def _resolve_document_evidence_source(
     }
     for field in ("page_number", "paragraph_number"):
         value = locators[field]
-        if value is not None and (isinstance(value, bool) or not isinstance(value, int) or value < 1):
-            raise VcopsError("invalid_evidence", f"document.{field} must be a positive integer")
+        # The document_facts columns are INTEGER; bounding here keeps an
+        # oversized locator a typed denial instead of SQLSTATE 22003.
+        if value is not None and (
+            isinstance(value, bool) or not isinstance(value, int) or not 1 <= value <= 2_147_483_647
+        ):
+            raise VcopsError(
+                "invalid_evidence",
+                f"document.{field} must be a positive integer within the 32-bit column range",
+            )
     if not any(value is not None for value in locators.values()):
         raise VcopsError("invalid_evidence", "document evidence requires at least one locator")
     source = _upsert_evidence_source(
@@ -3284,6 +3462,11 @@ def cmd_evidence_record(args: argparse.Namespace) -> dict[str, Any]:
     value_text = None if value_kind == "numeric" else raw_value
     period_start = _optional_text(evidence, "period_start", maximum=50)
     period_end = _optional_text(evidence, "period_end", maximum=50)
+    currency = _optional_text(evidence, "currency", maximum=3) or parsed["currency"]
+    # Mirror the facts.currency_code CHECK ('^[A-Z]{3}$') so a malformed code
+    # is a typed denial here instead of a generic constraint_violation.
+    if currency is not None and not re.fullmatch(r"[A-Z]{3}", currency):
+        raise VcopsError("invalid_evidence", "currency must be a three-letter uppercase ISO 4217 code")
     lead_id = _positive_bigint(args.lead_id, "lead_id")
     workflow_run_id = _positive_bigint(args.workflow_run_id, "workflow_run_id")
     with connection() as conn, conn.cursor() as cur:
@@ -3292,11 +3475,12 @@ def cmd_evidence_record(args: argparse.Namespace) -> dict[str, Any]:
         company_id = lead["company_id"]
         if company_id is None:
             raise VcopsError("company_required", "evidence requires a lead bound to a canonical company", exit_code=1)
-        # Claim dedup is company-scoped (claim_hash spans the company), so
-        # serialize on the company — not the lead — to close the
-        # SELECT-then-INSERT window between concurrent evidence writes for two
-        # leads of one company. A distinct lock key-space avoids collision with
-        # the per-lead advisory locks the other writers take.
+        # claim_hash spans the company even though the dedup lookup below is
+        # lead-scoped, so serialize on the company — not the lead — to close
+        # the SELECT-then-INSERT window between concurrent evidence writes
+        # (including corroboration attaching to a company-wide claim). A
+        # distinct lock key-space avoids collision with the per-lead advisory
+        # locks the other writers take.
         cur.execute("SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))", (f"evidence-company:{company_id}",))
         if source_spec is not None:
             source = _resolve_web_evidence_source(cur, source_spec)
@@ -3318,13 +3502,19 @@ def cmd_evidence_record(args: argparse.Namespace) -> dict[str, Any]:
             "cohort": _optional_text(evidence, "cohort", maximum=200),
             "measurement_basis": _optional_text(evidence, "measurement_basis", maximum=200),
         })
+        # The dedup lookup is lead-scoped: compiled-truth builds each
+        # evaluation ledger from the lead's own facts and evaluation-save
+        # rejects evidence outside that snapshot, so reusing another lead's
+        # fact would silently strand the claim outside this lead's compiled
+        # truth (the insert is suppressed and the source attaches to a fact
+        # this lead can never cite).
         cur.execute(
             """SELECT id,fact_status,confidence,version FROM facts
-               WHERE company_id=%s AND claim_hash=%s
+               WHERE company_id=%s AND lead_id=%s AND claim_hash=%s
                  AND fact_status IN ('submitted_claim','verified_fact')
                  AND NOT EXISTS (SELECT 1 FROM facts superseding WHERE superseding.supersedes_fact_id=facts.id)
                ORDER BY id DESC LIMIT 1""",
-            (company_id, claim_hash),
+            (company_id, lead_id, claim_hash),
         )
         existing = cur.fetchone()
         if existing is not None:
@@ -3343,14 +3533,19 @@ def cmd_evidence_record(args: argparse.Namespace) -> dict[str, Any]:
                              fact_status,confidence,version,claim_hash,created_at""",
                 (company_id, lead_id, fact_type, claim, value_kind, value_numeric, value_text, raw_value,
                  _optional_text(evidence, "unit", maximum=50),
-                 _optional_text(evidence, "currency", maximum=3) or parsed["currency"],
+                 currency,
                  period_start, period_end,
                  _optional_text(evidence, "cohort", maximum=200),
                  _optional_text(evidence, "measurement_basis", maximum=200),
                  confidence,
                  _optional_text(evidence, "observed_at", maximum=100),
                  _optional_text(evidence, "source_date", maximum=50),
-                 workflow_run_id, produced_by, db_json({}), claim_hash),
+                 # created_by is the authenticated lane, never the model's own
+                 # attribution: this column reaches the frozen compiled-truth
+                 # packet, so a prompt-injected lane could otherwise stamp a
+                 # fabricated claim as the operator's. The specialist the model
+                 # names is kept, clearly as untrusted payload.
+                 workflow_run_id, _runtime_actor(), db_json({"produced_by": produced_by}), claim_hash),
             )
             fact = fetch_one(cur)
             reused = False
@@ -3391,7 +3586,17 @@ def cmd_fact_promote(args: argparse.Namespace) -> dict[str, Any]:
         raise VcopsError("invalid_identifier", "fact_id is required")
     actor = _runtime_actor()
     with connection() as conn, conn.cursor() as cur:
-        cur.execute("SELECT id,fact_status FROM facts WHERE id=%s", (fact_id,))
+        # Same model ceiling as _load_fact: the promotion envelope reports the
+        # fact's lead/company identity and status, so a confidential or
+        # restricted lead's facts stay invisible to the model lanes.
+        if AGENT_MODE or WORKFLOW_MODE:
+            cur.execute(
+                """SELECT f.id,f.fact_status FROM facts f LEFT JOIN leads l ON l.id=f.lead_id
+                   WHERE f.id=%s AND (f.lead_id IS NULL OR l.confidentiality IN ('public','internal'))""",
+                (fact_id,),
+            )
+        else:
+            cur.execute("SELECT id,fact_status FROM facts WHERE id=%s", (fact_id,))
         fact = fetch_one(cur, not_found="fact not found")
         if fact["fact_status"] != "submitted_claim":
             return {
@@ -3443,6 +3648,9 @@ SIGNAL_SOURCE_COLUMNS = (
     "id,source_name,canonical_uri,source_class,cadence,thesis_relevance,expected_signal,"
     "rate_constraint,owner,confidentiality,enabled,last_scanned_at,last_scan_status,row_version"
 )
+# The source-watch fields a model lane is allowed to see back: every one is a
+# value that lane just supplied, so the response carries no operator state.
+MODEL_SOURCE_WATCH_FIELDS = ("canonical_uri", "source_name", "source_class", "cadence", "enabled")
 
 
 def cmd_source_watch(args: argparse.Namespace) -> dict[str, Any]:
@@ -3457,7 +3665,8 @@ def cmd_source_watch(args: argparse.Namespace) -> dict[str, Any]:
     metadata = db_json(parse_json(args.metadata, default={}, expected=dict))
     with connection() as conn, conn.cursor() as cur:
         cur.execute(
-            "SELECT enabled,owner,confidentiality FROM signal_sources WHERE canonical_uri=%s FOR UPDATE",
+            "SELECT enabled,owner,confidentiality,rate_constraint FROM signal_sources"
+            " WHERE canonical_uri=%s FOR UPDATE",
             (uri,),
         )
         existing = cur.fetchone()
@@ -3493,7 +3702,13 @@ def cmd_source_watch(args: argparse.Namespace) -> dict[str, Any]:
             if OPERATOR_MODE:
                 effective_owner = owner
                 effective_confidentiality = args.confidentiality
+                effective_rate_constraint = _clean_optional(args.rate_constraint)
             else:
+                # The model lanes have no --rate-constraint to send (it is
+                # absent from the packaged workflow and from vcrun's argument
+                # contract), so writing the unset default here would erase an
+                # operator's scan throttle on every re-watch.
+                effective_rate_constraint = existing["rate_constraint"]
                 effective_owner = existing["owner"]
                 effective_confidentiality = (
                     args.confidentiality
@@ -3517,10 +3732,19 @@ def cmd_source_watch(args: argparse.Namespace) -> dict[str, Any]:
                     RETURNING {SIGNAL_SOURCE_COLUMNS},created_at""",
                 (name, args.source_class, args.cadence,
                  _clean_optional(args.thesis_relevance), _clean_optional(args.expected_signal),
-                 _clean_optional(args.rate_constraint), effective_owner,
+                 effective_rate_constraint, effective_owner,
                  effective_confidentiality, metadata, uri),
             )
             source = fetch_one(cur)
+    if AGENT_MODE or WORKFLOW_MODE:
+        # Model lanes get back only what they submitted. Returning the stored
+        # row would disclose an above-ceiling entry's classification, owner and
+        # scan history, and — because the URI is caller-supplied — would turn
+        # every re-watch into a probe for whether this fund already watches a
+        # given URL. The projection is uniform across insert and update and
+        # across classifications, so a confidential entry is indistinguishable
+        # from a fresh registration.
+        source = {key: source[key] for key in MODEL_SOURCE_WATCH_FIELDS}
     return {"ok": True, "source": source}
 
 
@@ -3530,15 +3754,21 @@ def cmd_source_unwatch(args: argparse.Namespace) -> dict[str, Any]:
     uri = normalize_uri(args.uri) if args.uri else None
     if (source_id is None) == (uri is None):
         raise VcopsError("invalid_arguments", "exactly one of --source-id or --uri is required")
+    # Model lanes are confidentiality-capped like source-list/source-scan:
+    # without the cap, a workflow-lane call could both read the full row of a
+    # confidential/restricted source (RETURNING discloses thesis_relevance,
+    # expected_signal, owner) and disable operator monitoring of it.
+    model_limited = AGENT_MODE or WORKFLOW_MODE
+    cap = " AND confidentiality IN ('public','internal')" if model_limited else ""
     with connection() as conn, conn.cursor() as cur:
         if source_id is not None:
             cur.execute(
-                f"UPDATE signal_sources SET enabled=FALSE WHERE id=%s RETURNING {SIGNAL_SOURCE_COLUMNS}",
+                f"UPDATE signal_sources SET enabled=FALSE WHERE id=%s{cap} RETURNING {SIGNAL_SOURCE_COLUMNS}",
                 (source_id,),
             )
         else:
             cur.execute(
-                f"UPDATE signal_sources SET enabled=FALSE WHERE canonical_uri=%s RETURNING {SIGNAL_SOURCE_COLUMNS}",
+                f"UPDATE signal_sources SET enabled=FALSE WHERE canonical_uri=%s{cap} RETURNING {SIGNAL_SOURCE_COLUMNS}",
                 (uri,),
             )
         source = fetch_one(cur, not_found="watched source not found")
@@ -3629,11 +3859,17 @@ def cmd_compiled_truth(args: argparse.Namespace) -> dict[str, Any]:
     guards (identity_reliable, blocking_contradiction) are a consistent basis
     for downstream evaluation.
     """
-    if args.min_confidence < 0 or args.min_confidence > 1:
+    args.lead_id = _positive_bigint(args.lead_id, "lead_id")
+    # not(0 <= x <= 1) also rejects NaN, which passes every ordered comparison.
+    if not (0 <= args.min_confidence <= 1):
         raise VcopsError("invalid_confidence", "minimum confidence must be between 0 and 1")
     with connection() as conn, conn.cursor() as cur:
-        cur.execute("SELECT id,company_id FROM leads WHERE id=%s FOR SHARE", (args.lead_id,))
-        lead = fetch_one(cur, not_found="lead not found")
+        # Capped like lead-show: the compiled packet carries the lead's facts,
+        # contradictions and decision guards, so an uncapped read here would
+        # hand a model lane the substance of a lead it may not open directly.
+        cap = " AND confidentiality IN ('public','internal')" if AGENT_MODE or WORKFLOW_MODE else ""
+        cur.execute(f"SELECT id,company_id FROM leads WHERE id=%s{cap} FOR SHARE", (args.lead_id,))
+        lead = fetch_one(cur, not_found="lead not found or exceeds the model confidentiality ceiling")
         if lead["company_id"] is None:
             raise VcopsError("company_required", "compiled truth requires a canonical lead company", exit_code=1)
         cur.execute("SELECT pg_advisory_xact_lock(%s)", (int(args.lead_id),))
@@ -3887,7 +4123,20 @@ def cmd_compiled_truth(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def _load_fact(cur: Any, fact_id: str) -> dict[str, Any]:
-    cur.execute("SELECT * FROM facts WHERE id=%s", (fact_id,))
+    # Model lanes are capped at the 'internal' ceiling like every sibling read:
+    # the loaded pair feeds contradiction/trajectory rows whose RETURNING
+    # payload carries the facts' values, definitions, and periods, so an
+    # uncapped load would disclose a confidential or restricted lead's evidence
+    # to the workflow lane. A lead-less (company-scoped) fact has no lead
+    # confidentiality to exceed and stays readable.
+    if AGENT_MODE or WORKFLOW_MODE:
+        cur.execute(
+            """SELECT f.* FROM facts f LEFT JOIN leads l ON l.id=f.lead_id
+               WHERE f.id=%s AND (f.lead_id IS NULL OR l.confidentiality IN ('public','internal'))""",
+            (fact_id,),
+        )
+    else:
+        cur.execute("SELECT * FROM facts WHERE id=%s", (fact_id,))
     return fetch_one(cur, not_found=f"fact not found: {fact_id}")
 
 
@@ -3956,9 +4205,19 @@ def cmd_trajectory_check(args: argparse.Namespace) -> dict[str, Any]:
         left_value, right_value = _comparable_value(left), _comparable_value(right)
         if not isinstance(left_value, Decimal) or not isinstance(right_value, Decimal):
             raise VcopsError("not_numeric", "trajectory persistence requires numeric facts")
-        delta = right_value - left_value
+        # Direction is chronological, never argument-order: the model-facing
+        # workflow imposes no left/right ordering convention, so a caller
+        # passing the later fact first must not invert the persisted up/down.
+        # classification == "trajectory" guarantees both periods exist and are
+        # disjoint under _period_bounds, so one bound comparison orders them.
+        if _period_bounds(left)[1] < _period_bounds(right)[0]:
+            first, second = left, right
+        else:
+            first, second = right, left
+        first_value, second_value = _comparable_value(first), _comparable_value(second)
+        delta = second_value - first_value
         direction = "up" if delta > 0 else "down" if delta < 0 else "flat"
-        calculation = {"left": left_value, "right": right_value, "delta": delta, "percent": None if left_value == 0 else delta / abs(left_value) * 100}
+        calculation = {"left": first_value, "right": second_value, "delta": delta, "percent": None if first_value == 0 else delta / abs(first_value) * 100}
         cur.execute(
             """INSERT INTO trajectory_events
                  (lead_id,company_id,fact_type,definition,direction,status,normalized_unit,normalized_currency_code,
@@ -3970,7 +4229,7 @@ def cmd_trajectory_check(args: argparse.Namespace) -> dict[str, Any]:
              left.get("measurement_basis"), left.get("cohort"), db_json(calculation), args.policy_version, args.calculated_by),
         )
         event = fetch_one(cur)
-        for position, fact in enumerate((left, right), start=1):
+        for position, fact in enumerate((first, second), start=1):
             effective_at = fact.get("period_end") or fact.get("period_start") or fact.get("source_date")
             if not effective_at:
                 raise VcopsError("missing_period", "trajectory points require a dated period")
@@ -3997,13 +4256,15 @@ def cmd_evaluation_save(args: argparse.Namespace) -> dict[str, Any]:
     complete decision guards, unchanged live contradiction state, and evidence
     drawn only from that snapshot's ledger; idempotent on the request hash.
     """
+    args.lead_id = _positive_bigint(args.lead_id, "lead_id")
     criteria = parse_json(args.criteria, default={}, expected=dict)
     weights = parse_json(args.weights, default=None, expected=dict) if args.weights else None
     caller_decision_context = parse_json(args.decision_context, default={}, expected=dict)
     for field in ("identity_reliable", "blocking_contradiction"):
         if field in caller_decision_context and not isinstance(caller_decision_context[field], bool):
             raise VcopsError("invalid_decision_context", f"decision-context {field} must be boolean")
-    if args.confidence < 0 or args.confidence > 1:
+    # not(0 <= x <= 1) also rejects NaN, which passes every ordered comparison.
+    if not (0 <= args.confidence <= 1):
         raise VcopsError("invalid_confidence", "evaluation confidence must be between 0 and 1")
     caller_blockers = parse_json(args.blockers, default=[], expected=list)
     evidence_hash = require_text(args.evidence_hash, "evidence_hash", maximum=64)
@@ -4178,6 +4439,7 @@ def cmd_memo_save(args: argparse.Namespace) -> dict[str, Any]:
     marker present in the body; content is keyed by its SHA-256 and the write is
     replay-safe under a per-lead advisory lock.
     """
+    args.lead_id = _positive_bigint(args.lead_id, "lead_id")
     content = require_text(args.content, "content", maximum=2_000_000)
     title = require_text(args.title, "title", maximum=500)
     generated_by = require_text(args.generated_by, "generated_by", maximum=300)
@@ -4324,8 +4586,9 @@ def _approval_token_hash(token: str) -> str:
     CSPRNG values, so there was no reachable attack — this makes the primitive
     match its stated purpose.
 
-    Rotating VCOPS_APPROVAL_PEPPER changes every digest, so approvals still
-    pending at rotation can no longer be matched and must be re-issued. That is
+    Rotating VCOPS_APPROVAL_PEPPER changes every digest, so any approval not yet
+    consumed at rotation — pending or approved — can no longer be matched and must
+    be re-issued. That is
     inherent to peppering, not to this change; docs/OPERATIONS.md states it.
     """
     pepper = _read_secret(APPROVAL_PEPPER_FILE, "approval pepper") if FIXED_RUNTIME else os.environ.get("VCOPS_APPROVAL_PEPPER", "")
@@ -4385,13 +4648,28 @@ def cmd_approval_decide(args: argparse.Namespace) -> dict[str, Any]:
     Delegates to the governed decide_approval function, which fails if the
     approval is absent, expired, or already decided.
     """
-    operator_id = os.environ.get("VCOPS_OPERATOR_ID")
-    if AGENT_MODE or os.environ.get("VCOPS_OPERATOR_MODE") != "1" or not operator_id or not secrets.compare_digest(operator_id, args.approver):
+    # Validate the approver before the digest comparison: compare_digest on
+    # str operands raises TypeError for non-ASCII input, which would collapse
+    # this denial into internal_error/exit 3. The shape mirrors what main()
+    # enforces on VCOPS_OPERATOR_ID, and the comparison runs on bytes so no
+    # approver value can make it raise.
+    approver = require_text(args.approver, "approver", maximum=300)
+    # Strip the operator id the way the module-level OPERATOR_ID main()
+    # validates does, so a padded environment value cannot compare unequal
+    # against the (stripped) approver.
+    operator_id = (os.environ.get("VCOPS_OPERATOR_ID") or "").strip()
+    if (
+        AGENT_MODE
+        or os.environ.get("VCOPS_OPERATOR_MODE") != "1"
+        or not operator_id
+        or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:@/-]{2,199}", approver)
+        or not secrets.compare_digest(operator_id.encode("utf-8"), approver.encode("utf-8"))
+    ):
         raise VcopsError("operator_context_required", "approval decisions require an authenticated operator-only runtime", exit_code=1)
     status = "approved" if args.decision == "approve" else "rejected"
     with connection() as conn, conn.cursor() as cur:
         cur.execute("SELECT * FROM decide_approval(%s,%s,%s,%s,%s,%s)",
-                    (args.request_id, status, require_text(args.approver, "approver", maximum=300),
+                    (args.request_id, status, approver,
                      require_text(args.approval_channel, "approval_channel", maximum=300),
                      require_text(args.reason, "reason", maximum=2000), "vcops"))
         approval = fetch_one(cur, not_found="approval is absent, expired, or already decided")
@@ -4465,8 +4743,14 @@ def cmd_notification_enqueue(args: argparse.Namespace) -> dict[str, Any]:
             "this release supports durable internal logging only; proactive provider delivery is unavailable",
             exit_code=1,
         )
-    if args.hold or args.deliver_after or args.category or args.approval_id:
-        raise VcopsError("invalid_internal_log", "internal log records cannot request delivery, hold, urgency, or approval")
+    # max_attempts joins the list rather than being silently ignored: the
+    # INSERT below fixes it at 1, so accepting the flag would promise an
+    # attempt budget this release cannot honour.
+    if args.hold or args.deliver_after or args.category or args.approval_id or args.max_attempts != 1:
+        raise VcopsError(
+            "invalid_internal_log",
+            "internal log records cannot request delivery, hold, urgency, approval, or a retry budget",
+        )
     payload = parse_json(args.payload, default={}, expected=dict)
     subject = require_text(args.subject, "subject", maximum=500)
     idempotency_key = require_text(args.idempotency_key, "idempotency_key", maximum=300)
@@ -4803,7 +5087,7 @@ def cmd_orchestration_record(args: argparse.Namespace) -> dict[str, Any]:
     specialist = _clean_optional(args.specialist)
     if args.kind != "chief_output" and specialist is None:
         raise VcopsError("specialist_required", f"{args.kind} must name the specialist agent")
-    flow_revision = _positive_bigint(args.flow_revision, "flow_revision") if args.flow_revision else None
+    flow_revision = _nonnegative_bigint(args.flow_revision, "flow_revision") if args.flow_revision else None
     with connection() as conn, conn.cursor() as cur:
         cur.execute("SELECT 1 FROM leads WHERE id=%s", (lead_id,))
         fetch_one(cur, not_found="lead not found")
@@ -4907,12 +5191,17 @@ def cmd_proposal_decide(args: argparse.Namespace) -> dict[str, Any]:
     audited SECURITY DEFINER decide_proposal function, and decided proposals
     are immutable to the runtime role.
     """
-    operator_id = os.environ.get("VCOPS_OPERATOR_ID")
+    # Same contract as cmd_approval_decide: validate before comparing, and
+    # compare bytes so a non-ASCII reviewer cannot raise TypeError out of this
+    # typed denial into internal_error/exit 3.
+    reviewer = require_text(args.reviewer, "reviewer", maximum=300)
+    operator_id = (os.environ.get("VCOPS_OPERATOR_ID") or "").strip()
     if (
         AGENT_MODE
         or os.environ.get("VCOPS_OPERATOR_MODE") != "1"
         or not operator_id
-        or not secrets.compare_digest(operator_id, args.reviewer)
+        or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:@/-]{2,199}", reviewer)
+        or not secrets.compare_digest(operator_id.encode("utf-8"), reviewer.encode("utf-8"))
     ):
         raise VcopsError(
             "operator_context_required",
@@ -4926,7 +5215,7 @@ def cmd_proposal_decide(args: argparse.Namespace) -> dict[str, Any]:
     with connection() as conn, conn.cursor() as cur:
         cur.execute(
             "SELECT * FROM decide_proposal(%s,%s,%s,%s,%s)",
-            (proposal_id, status, require_text(args.reviewer, "reviewer", maximum=300),
+            (proposal_id, status, reviewer,
              require_text(args.note, "note", maximum=2000), "vcops"),
         )
         proposal = fetch_one(cur, not_found="proposal is absent or already decided")
@@ -4938,7 +5227,21 @@ def cmd_document_preview(args: argparse.Namespace) -> dict[str, Any]:
     no database write or extraction (agent lane).
     """
     _verified_media_context(getattr(args, "trusted_context", None), args.path, "read")
-    document = inspect_document(args.path)
+    try:
+        document = inspect_document(args.path)
+    except VcopsError:
+        raise
+    except Exception as exc:
+        # Malformed OOXML/CSV payloads that pass the signature checks can
+        # escape the typed inspectors with library-level exceptions (BadZipFile,
+        # zlib.error, UnicodeDecodeError past the detection window). This is a
+        # read-only agent-lane command: it must deny with a typed error, never
+        # collapse into internal_error/exit 3. No quarantine copy here — the
+        # read lane performs no mutation; the extract lane quarantines.
+        raise VcopsError(
+            "document_parse_failed",
+            f"document parsing failed: {type(exc).__name__}",
+        ) from exc
     return {"ok": True, "supported": True, "document": document, **document}
 
 
@@ -5225,7 +5528,13 @@ def cmd_document_extraction_show(args: argparse.Namespace) -> dict[str, Any]:
     if not re.fullmatch(r"[0-9a-f]{64}\.json", filename):
         raise VcopsError("invalid_extraction_uri", "extraction output filename is invalid", exit_code=3)
     path_value = _secure_directory(EXTRACT_ROOT, create=False) / filename
-    payload = path_value.read_bytes()
+    try:
+        payload = path_value.read_bytes()
+    except OSError as exc:
+        # A succeeded extraction row can outlive its state-root file
+        # (restore/cleanup divergence). Mirror memo-show's memo_unavailable:
+        # a typed envelope, never a raw FileNotFoundError as internal_error.
+        raise VcopsError("extraction_unavailable", "extraction output is missing from the state root", exit_code=3) from exc
     if len(payload) > MAX_TEXT_CHARS + 2 * 1024 * 1024 or hashlib.sha256(payload).hexdigest() != row["extracted_sha256"]:
         raise VcopsError("extraction_integrity_failure", "extraction output failed its integrity/size check", exit_code=3)
     extracted = json.loads(payload, object_pairs_hook=_unique_json_object)
@@ -5505,10 +5814,10 @@ def build_parser() -> argparse.ArgumentParser:
     child.add_argument("--idempotency-key", required=True)
     child.set_defaults(handler=cmd_document_associate_lead)
 
-    for name in ("workflow-start", "create-run"):
-        child = sub.add_parser(name); child.add_argument("--workflow", required=True); add_common_lead_id(child)
-        child.add_argument("--external-flow-id"); child.add_argument("--idempotency-key", required=True); child.add_argument("--metadata")
-        child.set_defaults(handler=cmd_workflow_start)
+    child = sub.add_parser("workflow-start")
+    child.add_argument("--workflow", required=True); add_common_lead_id(child)
+    child.add_argument("--external-flow-id"); child.add_argument("--idempotency-key", required=True); child.add_argument("--metadata")
+    child.set_defaults(handler=cmd_workflow_start)
     child = sub.add_parser("workflow-transition"); child.add_argument("--run-id", required=True)
     child.add_argument("--status", required=True, choices=sorted(set().union(*RUN_TRANSITIONS.values())))
     child.add_argument("--expected-revision", type=int, required=True); child.add_argument("--error"); child.add_argument("--result")
@@ -5597,7 +5906,11 @@ def build_parser() -> argparse.ArgumentParser:
     child.set_defaults(handler=cmd_evaluation_save)
 
     child = sub.add_parser("memo-save"); child.add_argument("--lead-id", required=True); child.add_argument("--evaluation-id", required=True)
-    child.add_argument("--compiled-truth-id", required=True); child.add_argument("--workflow-run-id"); child.add_argument("--status", default="draft", choices=("draft", "review", "approved", "superseded", "invalid"))
+    # "approved" is deliberately absent: memo-save never writes reviewed_by/
+    # reviewed_at, so the memos CHECK (status <> 'approved' OR reviewed_* set)
+    # rejects it unconditionally — approval is a reviewer-side transition, not
+    # a save-time status.
+    child.add_argument("--compiled-truth-id", required=True); child.add_argument("--workflow-run-id"); child.add_argument("--status", default="draft", choices=("draft", "review", "superseded", "invalid"))
     content_group = child.add_mutually_exclusive_group(required=True); content_group.add_argument("--content"); content_group.add_argument("--content-file")
     child.add_argument("--title", required=True); child.add_argument("--citations", required=True)
     child.add_argument("--evidence-hash", required=True); child.add_argument("--generated-by", default="vcops")
@@ -5623,7 +5936,7 @@ def build_parser() -> argparse.ArgumentParser:
     child.add_argument("--destination", required=True); add_common_lead_id(child); child.add_argument("--workflow-run-id"); child.add_argument("--approval-id")
     child.add_argument("--severity", default="normal", choices=("silent_log", "batched", "normal", "urgent")); child.add_argument("--category")
     child.add_argument("--subject", required=True); child.add_argument("--policy-version", default="3.0")
-    child.add_argument("--deliver-after"); child.add_argument("--max-attempts", type=int, default=5); child.add_argument("--hold", action="store_true")
+    child.add_argument("--deliver-after"); child.add_argument("--max-attempts", type=int, default=1); child.add_argument("--hold", action="store_true")
     child.add_argument("--payload", required=True); child.set_defaults(handler=cmd_notification_enqueue)
     child = sub.add_parser("notification-claim"); child.add_argument("--worker", required=True)
     child.add_argument("--lease-seconds", type=int, default=60); child.set_defaults(handler=cmd_notification_claim)

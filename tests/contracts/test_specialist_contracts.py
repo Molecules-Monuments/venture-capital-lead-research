@@ -84,10 +84,13 @@ class SpecialistSchemaTests(unittest.TestCase):
             self.validator("traction-analyst").validate(payload)
 
     def test_market_requires_wedge_distribution_incumbent_response_and_ranges(self) -> None:
-        payload = copy.deepcopy(self.fixtures["market-mapper"])
-        del payload["result"]["incumbent_responses"]
-        with self.assertRaises(ValidationError):
-            self.validator("market-mapper").validate(payload)
+        for required_field in ("initial_wedge", "distribution_motions", "incumbent_responses"):
+            payload = copy.deepcopy(self.fixtures["market-mapper"])
+            del payload["result"][required_field]
+            with self.assertRaises(ValidationError, msg=required_field):
+                self.validator("market-mapper").validate(payload)
+        # The schema leaves scenario-range internals free-form, so the ordering
+        # checks below pin the reviewed fixture's sanity, not validator behavior.
         scenario = self.fixtures["market-mapper"]["result"]["scenario_ranges"][0]
         self.assertLessEqual(scenario["low"], scenario["base"])
         self.assertLessEqual(scenario["base"], scenario["high"])

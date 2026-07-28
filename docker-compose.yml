@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: 0BSD
 name: openclaw-lead-research-v3
 
 services:
@@ -21,7 +22,14 @@ services:
       - postgres-data:/var/lib/postgresql/data
       - ./migrations/000_roles.sh:/docker-entrypoint-initdb.d/000_roles.sh:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U openclaw_owner -d openclaw"]
+      # Probe over TCP, not the Unix socket. The official entrypoint runs
+      # /docker-entrypoint-initdb.d (including 000_roles.sh, which creates the
+      # runtime role) against a temporary server started with
+      # `listen_addresses=''` — socket-reachable but with no TCP listener. A
+      # socket probe therefore reports healthy mid-initialisation, so
+      # `service_healthy` and `up --wait` release the gateway and
+      # rotate_runtime_role.sh before the role exists and before TCP is up.
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U openclaw_owner -d openclaw"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -56,15 +64,29 @@ services:
         test ! -L /runtime-config/openclaw.json
         cmp -s /run/openclaw-source/openclaw.json /runtime-config/openclaw.json
         stat -c '%U:%G:%a' /runtime-config/openclaw.json | grep -qx 'node:node:400'
+        # Symlink check precedes the copy: -e follows links, so a dangling one
+        # planted in the writable state volume would read as "absent" and have
+        # this root-lane cp write the seed through it to an arbitrary path.
+        test ! -L /home/node/.openclaw/exec-approvals.json
         if [ ! -e /home/node/.openclaw/exec-approvals.json ]; then
           cp /opt/openclaw-seed/exec-approvals.json /home/node/.openclaw/exec-approvals.json
         fi
         install -d -m 0700 -o node -g node /home/node/.openclaw/media /home/node/.openclaw/media/inbound
+        # install -d is satisfied by a symlink to an existing directory, which
+        # would silently relocate every inbound attachment.
+        test ! -L /home/node/.openclaw/media
+        test ! -L /home/node/.openclaw/media/inbound
         test -f /home/node/.openclaw/exec-approvals.json
         test ! -L /home/node/.openclaw/exec-approvals.json
         chown node:node /home/node/.openclaw/exec-approvals.json
         chmod 0600 /home/node/.openclaw/exec-approvals.json
-        cmp -s /opt/openclaw-seed/exec-approvals.json /home/node/.openclaw/exec-approvals.json
+        # No byte-compare against the seed here: the file is deliberately left
+        # writable because OpenClaw may maintain its own socket token in it
+        # (docs/RUNBOOK.md, docs/OPERATIONS.md), and restore.sh preserves it
+        # across state wipes for the same reason. The jq assertion below pins
+        # every reviewed key (version, defaults, agents, exact allowlist), so
+        # a tampered policy still fails this init while a runtime-added token
+        # key does not.
         jq -e '.version == 1 and .defaults.security == "deny" and .defaults.ask == "off" and .defaults.askFallback == "deny" and .defaults.autoAllowSkills == false and (.agents | keys == ["data-steward"]) and .agents["data-steward"].security == "allowlist" and .agents["data-steward"].ask == "off" and .agents["data-steward"].askFallback == "deny" and .agents["data-steward"].autoAllowSkills == false and (.agents["data-steward"].allowlist | length == 2) and ([.agents["data-steward"].allowlist[] | {id,pattern,source}] | sort_by(.id) == ([{"id":"2DC7C1B8-73D4-42D3-9B6F-CA3FAE54E070","pattern":"/workspaces/vc-chief/vc/bin/agent/vcops","source":"version-3-package"},{"id":"C62E453F-6D6C-4E78-85CE-BB139A57978D","pattern":"/workspaces/vc-chief/vc/bin/agent/vcrun","source":"version-3-fixed-workflows"}] | sort_by(.id)))' /home/node/.openclaw/exec-approvals.json >/dev/null
     volumes:
       - openclaw-state:/home/node/.openclaw

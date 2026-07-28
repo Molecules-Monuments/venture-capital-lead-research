@@ -3,9 +3,10 @@
 --
 -- This file is NOT a migration and is applied by nothing: migrate.sh only reads
 -- migrations/NNN_*.sql, and this file lives under docs/. It is a schema-only
--- snapshot of the database after migrations/000_roles.sh (roles) and the
--- seventeen forward migrations 001-017 are applied in order, provided as a
--- single-file view so the whole schema can be read and audited in one place.
+-- snapshot of the database after the 17 forward migrations 001-017 are
+-- applied in order (against a cluster with the openclaw_runtime role the
+-- migrations' grants reference), provided as a single-file view so the whole
+-- schema can be read and audited in one place.
 --
 -- The authoritative, reviewed source of the schema is the migrations/ directory.
 -- This snapshot is generated from it and can lag if the migrations change; it is
@@ -1367,6 +1368,10 @@ BEGIN
   END IF;
 
   -- Independence keying:
+  --   * The scheme match is case-insensitive (~*) and the normalization CHECK
+  --     on sources.canonical_uri enforces a lowercase scheme/authority, so a
+  --     case-varied scheme cannot reclassify a web source into the
+  --     provider-keyed branch below.
   --   * Web/URI sources corroborate ONLY by verified content identity
   --     (sources.content_sha256, the hash of the fetched page bytes the steward
   --     records). A bare model-supplied URL with no content hash contributes no
@@ -1385,7 +1390,7 @@ BEGIN
   SELECT
     count(DISTINCT
       CASE
-        WHEN s.canonical_uri ~ '^https?://' THEN
+        WHEN s.canonical_uri ~* '^https?://' THEN
           CASE WHEN s.content_sha256 IS NOT NULL THEN 'web-content:' || s.content_sha256 END
         ELSE
           COALESCE(
@@ -2425,7 +2430,7 @@ CREATE TABLE public.evaluations (
     CONSTRAINT evaluations_recommendation_band_check CHECK ((recommendation_band = ANY (ARRAY['pass'::text, 'watch'::text, 'research_deeper'::text, 'high_priority'::text, 'insufficient_evidence'::text, 'needs_human_review'::text]))),
     CONSTRAINT evaluations_request_hash_check CHECK (((request_hash IS NULL) OR (request_hash ~ '^[0-9a-f]{64}$'::text))),
     CONSTRAINT evaluations_rubric_version_check CHECK ((btrim(rubric_version) <> ''::text)),
-    CONSTRAINT evaluations_score_band_check CHECK (((recommendation_band = ANY (ARRAY['insufficient_evidence'::text, 'needs_human_review'::text])) OR ((total_score >= (0)::numeric) AND (total_score < (50)::numeric) AND (recommendation_band = 'pass'::text)) OR ((total_score >= (50)::numeric) AND (total_score < (66)::numeric) AND (recommendation_band = 'watch'::text)) OR ((total_score >= (66)::numeric) AND (total_score < (82)::numeric) AND (recommendation_band = 'research_deeper'::text)) OR ((total_score >= (82)::numeric) AND (total_score <= (100)::numeric) AND (recommendation_band = 'high_priority'::text)) OR ((total_score >= (82)::numeric) AND (total_score <= (100)::numeric) AND (recommendation_band = 'research_deeper'::text) AND ((scoring_details ->> 'override'::text) = 'high_priority_prerequisites_missing'::text)))),
+    CONSTRAINT evaluations_score_band_check CHECK (((recommendation_band = ANY (ARRAY['insufficient_evidence'::text, 'needs_human_review'::text])) OR ((total_score >= (0)::numeric) AND (total_score < (50)::numeric) AND (recommendation_band = 'pass'::text)) OR ((total_score >= (50)::numeric) AND (total_score < (66)::numeric) AND (recommendation_band = 'watch'::text)) OR ((total_score >= (66)::numeric) AND (total_score < (82)::numeric) AND (recommendation_band = 'research_deeper'::text)) OR ((total_score >= (82)::numeric) AND (total_score <= (100)::numeric) AND (recommendation_band = 'high_priority'::text)) OR ((total_score >= (82)::numeric) AND (total_score <= (100)::numeric) AND (recommendation_band = 'research_deeper'::text) AND ((scoring_details ->> 'override'::text) = 'high_priority_prerequisites_missing'::text)) OR ((total_score >= (0)::numeric) AND (total_score <= (100)::numeric) AND (recommendation_band = 'pass'::text) AND ((scoring_details ->> 'override'::text) = 'hard_exclusion'::text)))),
     CONSTRAINT evaluations_scoring_details_check CHECK ((jsonb_typeof(scoring_details) = 'object'::text)),
     CONSTRAINT evaluations_status_check CHECK ((status = ANY (ARRAY['draft'::text, 'final'::text, 'superseded'::text, 'invalid'::text]))),
     CONSTRAINT evaluations_total_score_check CHECK (((total_score >= (0)::numeric) AND (total_score <= (100)::numeric)))
@@ -2935,7 +2940,7 @@ CREATE TABLE public.signal_sources (
     created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
     updated_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
     CONSTRAINT signal_sources_cadence_check CHECK ((cadence = ANY (ARRAY['daily'::text, 'weekly'::text, 'monthly'::text]))),
-    CONSTRAINT signal_sources_canonical_uri_check CHECK (((canonical_uri = lower(btrim(canonical_uri))) AND (canonical_uri ~ '^https?://'::text))),
+    CONSTRAINT signal_sources_canonical_uri_normalized_check CHECK (((canonical_uri = btrim(canonical_uri)) AND (canonical_uri ~ '^https?://'::text) AND ("substring"(canonical_uri, '^https?://[^/?#]*'::text) = lower("substring"(canonical_uri, '^https?://[^/?#]*'::text))))),
     CONSTRAINT signal_sources_confidentiality_check CHECK ((confidentiality = ANY (ARRAY['public'::text, 'internal'::text, 'confidential'::text, 'restricted'::text]))),
     CONSTRAINT signal_sources_created_by_check CHECK ((btrim(created_by) <> ''::text)),
     CONSTRAINT signal_sources_last_scan_status_check CHECK (((last_scan_status IS NULL) OR (last_scan_status = ANY (ARRAY['claimed'::text, 'succeeded'::text, 'no_new_signals'::text, 'failed'::text])))),
@@ -2983,6 +2988,7 @@ CREATE TABLE public.sources (
     metadata jsonb DEFAULT '{}'::jsonb NOT NULL,
     created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
     updated_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
+    CONSTRAINT sources_canonical_uri_normalized_check CHECK (((canonical_uri IS NULL) OR ((canonical_uri = btrim(canonical_uri)) AND (canonical_uri ~ '^https?://'::text) AND ("substring"(canonical_uri, '^https?://[^/?#]*'::text) = lower("substring"(canonical_uri, '^https?://[^/?#]*'::text)))))),
     CONSTRAINT sources_check CHECK (((canonical_uri IS NOT NULL) OR (stable_source_id IS NOT NULL))),
     CONSTRAINT sources_check1 CHECK (((stable_source_id IS NULL) OR (provider IS NOT NULL))),
     CONSTRAINT sources_confidentiality_check CHECK ((confidentiality = ANY (ARRAY['public'::text, 'internal'::text, 'confidential'::text, 'restricted'::text]))),

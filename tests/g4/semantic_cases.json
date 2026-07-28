@@ -1,33 +1,105 @@
 {
   "numeric": [
-    {"input": "1.2m EUR", "value": "1200000", "currency": "EUR"},
-    {"input": "$900k", "value": "900000", "currency": "USD"},
-    {"input": "2,450,000 GBP", "value": "2450000", "currency": "GBP"},
-    {"input": "1.5b JPY", "value": "1500000000", "currency": "JPY"}
+    {
+      "input": "1.2m EUR",
+      "value": "1200000",
+      "currency": "EUR"
+    },
+    {
+      "input": "$900k",
+      "value": "900000",
+      "currency": "USD"
+    },
+    {
+      "input": "2,450,000 GBP",
+      "value": "2450000",
+      "currency": "GBP"
+    },
+    {
+      "input": "1.5b JPY",
+      "value": "1500000000",
+      "currency": "JPY"
+    }
   ],
   "fact_pairs": [
     {
       "name": "overlapping_incompatible_arr",
-      "left": {"fact_type": "arr", "definition": "annual recurring revenue", "value_numeric": "1200000", "currency": "EUR", "period_start": "2026-05-01", "period_end": "2026-06-30"},
-      "right": {"fact_type": "arr", "definition": "annual recurring revenue", "value_numeric": "900000", "currency": "EUR", "period_start": "2026-06-01", "period_end": "2026-06-30"},
+      "left": {
+        "fact_type": "arr",
+        "definition": "annual recurring revenue",
+        "value_numeric": "1200000",
+        "currency": "EUR",
+        "period_start": "2026-05-01",
+        "period_end": "2026-06-30"
+      },
+      "right": {
+        "fact_type": "arr",
+        "definition": "annual recurring revenue",
+        "value_numeric": "900000",
+        "currency": "EUR",
+        "period_start": "2026-06-01",
+        "period_end": "2026-06-30"
+      },
       "classification": "contradiction"
     },
     {
       "name": "dated_arr_change",
-      "left": {"fact_type": "arr", "definition": "annual recurring revenue", "value_numeric": "900000", "currency": "EUR", "period_start": "2025-01-01", "period_end": "2025-12-31"},
-      "right": {"fact_type": "arr", "definition": "annual recurring revenue", "value_numeric": "1200000", "currency": "EUR", "period_start": "2026-01-01", "period_end": "2026-06-30"},
+      "left": {
+        "fact_type": "arr",
+        "definition": "annual recurring revenue",
+        "value_numeric": "900000",
+        "currency": "EUR",
+        "period_start": "2025-01-01",
+        "period_end": "2025-12-31"
+      },
+      "right": {
+        "fact_type": "arr",
+        "definition": "annual recurring revenue",
+        "value_numeric": "1200000",
+        "currency": "EUR",
+        "period_start": "2026-01-01",
+        "period_end": "2026-06-30"
+      },
       "classification": "trajectory"
     },
     {
       "name": "different_currency_not_directly_comparable",
-      "left": {"fact_type": "arr", "definition": "annual recurring revenue", "value_numeric": "900000", "currency": "EUR", "period_start": "2026-01-01", "period_end": "2026-06-30"},
-      "right": {"fact_type": "arr", "definition": "annual recurring revenue", "value_numeric": "900000", "currency": "USD", "period_start": "2026-01-01", "period_end": "2026-06-30"},
+      "left": {
+        "fact_type": "arr",
+        "definition": "annual recurring revenue",
+        "value_numeric": "900000",
+        "currency": "EUR",
+        "period_start": "2026-01-01",
+        "period_end": "2026-06-30"
+      },
+      "right": {
+        "fact_type": "arr",
+        "definition": "annual recurring revenue",
+        "value_numeric": "900000",
+        "currency": "USD",
+        "period_start": "2026-01-01",
+        "period_end": "2026-06-30"
+      },
       "classification": "not_comparable"
     },
     {
       "name": "different_definition_not_directly_comparable",
-      "left": {"fact_type": "revenue", "definition": "booked annual recurring revenue", "value_numeric": "900000", "currency": "EUR", "period_start": "2026-01-01", "period_end": "2026-06-30"},
-      "right": {"fact_type": "revenue", "definition": "gross merchandise value", "value_numeric": "1200000", "currency": "EUR", "period_start": "2026-01-01", "period_end": "2026-06-30"},
+      "left": {
+        "fact_type": "revenue",
+        "definition": "booked annual recurring revenue",
+        "value_numeric": "900000",
+        "currency": "EUR",
+        "period_start": "2026-01-01",
+        "period_end": "2026-06-30"
+      },
+      "right": {
+        "fact_type": "revenue",
+        "definition": "gross merchandise value",
+        "value_numeric": "1200000",
+        "currency": "EUR",
+        "period_start": "2026-01-01",
+        "period_end": "2026-06-30"
+      },
       "classification": "not_comparable"
     }
   ],
@@ -46,7 +118,9 @@
     },
     {
       "name": "missing_does_not_redistribute",
-      "criteria": {"founder_team_signal": 5},
+      "criteria": {
+        "founder_team_signal": 5
+      },
       "expected_score": 15,
       "expected_recommendation": "insufficient_evidence"
     },
@@ -87,11 +161,14 @@
       "expected_recommendation": "high_priority"
     }
   ],
-  "weights": {"thesis_stage_geography_fit": 15, "founder_team_signal": 15, "problem_product_depth": 15, "technical_differentiation": 10, "traction_adoption": 15, "market_buyer_timing": 10, "business_commercial_evidence": 10, "risk_decision_readiness": 10},
-  "recommendation_thresholds": [
-    {"minimum": 0, "maximum_exclusive": 50, "name": "pass"},
-    {"minimum": 50, "maximum_exclusive": 66, "name": "watch"},
-    {"minimum": 66, "maximum_exclusive": 82, "name": "research_deeper"},
-    {"minimum": 82, "maximum_inclusive": 100, "name": "high_priority"}
-  ]
+  "weights": {
+    "thesis_stage_geography_fit": 15,
+    "founder_team_signal": 15,
+    "problem_product_depth": 15,
+    "technical_differentiation": 10,
+    "traction_adoption": 15,
+    "market_buyer_timing": 10,
+    "business_commercial_evidence": 10,
+    "risk_decision_readiness": 10
+  }
 }

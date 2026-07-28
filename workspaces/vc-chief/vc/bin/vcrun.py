@@ -195,6 +195,11 @@ def _wait_after_kill(process: subprocess.Popen[bytes]) -> None:
         process.wait(timeout=10)
     except subprocess.TimeoutExpired:
         pass
+    # Drop the tracked PGID now that the group is killed (and normally reaped):
+    # the failure paths still run an up-to-30s reconciliation subprocess before
+    # returning, and a signal arriving in that window must not re-kill a PID
+    # the kernel may have recycled after the reap.
+    _CURRENT_CHILD_PGID.clear()
 
 
 def _unique_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
@@ -212,8 +217,10 @@ def _emit(payload: dict[str, Any], *, stream: Any = sys.stdout) -> None:
 
 # Track the currently-supervised Lobster child (its own session, pgid == pid) so
 # a SIGINT/SIGTERM to vcrun never orphans it and never escapes as a raw Python
-# traceback. Cleared once the child is reaped on the normal path; the failure
-# paths reap-then-return, so a suppressed kill of an already-dead group is safe.
+# traceback. Cleared at reap time on every path — the normal exit and, via
+# _wait_after_kill, all three kill paths — because the failure paths run an
+# up-to-30s reconciliation subprocess before returning and a stale entry would
+# let the signal handler SIGKILL a recycled PID's process group.
 _CURRENT_CHILD_PGID: list[int] = []
 
 
@@ -260,9 +267,21 @@ def _error(code: str, message: str, *, details: Any = None) -> int:
     return 2
 
 
+def _reject_non_standard_literal(name: str) -> None:
+    """`json` accepts NaN/Infinity/-Infinity by default; strict JSON does not.
+
+    Anything re-emitted here reaches Node's JSON.parse and PostgreSQL's jsonb
+    parser, both of which reject those literals — so refuse them at ingest
+    rather than shipping a payload the next hop cannot read.
+    """
+    raise VCRunError(f"JSON contains the non-standard literal {name}")
+
+
 def _validate_json_object_string(name: str, value: str) -> str:
     try:
-        parsed = json.loads(value, object_pairs_hook=_unique_object)
+        parsed = json.loads(
+            value, object_pairs_hook=_unique_object, parse_constant=_reject_non_standard_literal
+        )
     except json.JSONDecodeError as exc:
         raise VCRunError(f"{name} must contain valid JSON: {exc.msg}") from exc
     if not isinstance(parsed, dict):
@@ -276,7 +295,9 @@ def validate_workflow_args(workflow: str, raw: str) -> str:
     if len(raw.encode("utf-8")) > MAX_ARGS_BYTES:
         raise VCRunError(f"args JSON exceeds {MAX_ARGS_BYTES} bytes")
     try:
-        parsed = json.loads(raw, object_pairs_hook=_unique_object)
+        parsed = json.loads(
+            raw, object_pairs_hook=_unique_object, parse_constant=_reject_non_standard_literal
+        )
     except json.JSONDecodeError as exc:
         raise VCRunError(f"args JSON is invalid: {exc.msg}") from exc
     if not isinstance(parsed, dict):
@@ -318,8 +339,10 @@ def validate_workflow_args(workflow: str, raw: str) -> str:
     }:
         raise VCRunError("record_kind must be delegation_eval, return_assessment, or chief_output")
     if workflow == "orchestration-record" and "flow_revision" in parsed:
-        if not re.fullmatch(r"[1-9][0-9]{0,18}", parsed["flow_revision"]):
-            raise VCRunError("flow_revision must be a positive integer string")
+        # Revision 0 is legitimate: workflow_runs.flow_revision defaults to 0
+        # and migration 014's orchestration_audit CHECK admits >= 0.
+        if not re.fullmatch(r"0|[1-9][0-9]{0,18}", parsed["flow_revision"]):
+            raise VCRunError("flow_revision must be a non-negative integer string")
     if workflow == "proposal-record" and parsed["proposal_kind"] not in {
         "schema_change", "source_policy", "skill_candidate", "other",
     }:
@@ -331,8 +354,12 @@ def validate_workflow_args(workflow: str, raw: str) -> str:
     if workflow == "contradiction-record" and parsed["severity"] not in {"low", "medium", "high", "blocking"}:
         raise VCRunError("severity must be low, medium, high, or blocking")
     if workflow in {"source-watch", "source-unwatch"}:
-        source_uri = parsed["source_uri"].strip().lower()
-        if not re.match(r"^https?://[^\s/]+", source_uri):
+        # Shape pre-check only, case preserved: vcops normalize_uri is the
+        # normalization authority and lowercases just the scheme/authority, so
+        # lowercasing the whole value here would corrupt case-sensitive paths
+        # and queries and desynchronize the workflow lane from the operator lane.
+        source_uri = parsed["source_uri"].strip()
+        if not re.match(r"^https?://[^\s/]+", source_uri, re.IGNORECASE):
             raise VCRunError("source_uri must be an http(s) URL")
         parsed["source_uri"] = source_uri
     if workflow == "source-watch":

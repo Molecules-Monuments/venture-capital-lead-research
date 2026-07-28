@@ -33,9 +33,10 @@ function prune(now = Date.now()) {
     if (!oldest) break;
     pending.delete(oldest);
   }
-  for (const [runId, entry] of blockedRuns) {
-    if (now - entry.capturedAt > CACHE_TTL_MS) blockedRuns.delete(runId);
-  }
+  // Deliberately not age-pruned, unlike `pending` above: a block is consumed
+  // exactly once by before_agent_run, and a run queued behind a long-running
+  // one must still be blocked when it finally starts. Only the size cap
+  // remains, as a backstop against unbounded growth for runs that never start.
   while (blockedRuns.size > MAX_CACHE_ENTRIES) {
     const oldest = blockedRuns.keys().next().value;
     if (!oldest) break;
@@ -54,17 +55,38 @@ function normalizeMediaPath(value) {
   return normalized;
 }
 
+// Lenient containment test used only to decide whether a value still deserves
+// a suffix inspection. A path the strict rules reject is never signed, but it
+// must not therefore escape the unsupported-attachment block.
+function mediaRootCandidate(value) {
+  const candidate = text(value, 4096);
+  if (!candidate || !path.posix.isAbsolute(candidate) || candidate.includes("\0")) return null;
+  const normalized = path.posix.normalize(candidate);
+  if (normalized === MEDIA_ROOT || !normalized.startsWith(`${MEDIA_ROOT}/`)) return null;
+  return normalized;
+}
+
 function mediaPaths(metadata) {
   const values = [];
   if (Array.isArray(metadata?.mediaPaths)) values.push(...metadata.mediaPaths);
   if (metadata?.mediaPath) values.push(metadata.mediaPath);
-  const result = [];
+  const paths = [];
+  let hasUnsupported = false;
+  // Every value is suffix-checked before the count cap is applied: only the
+  // returned list is truncated. Capping first would let an 11th attachment
+  // with a disallowed suffix slip past the documented block by never being
+  // inspected at all. The suffix check runs on every value inside the media
+  // root, including the ones too irregular to sign, so an unsupported
+  // attachment cannot buy passage by carrying an unparseable name.
   for (const value of values) {
+    const candidate = mediaRootCandidate(value);
+    if (!candidate) continue;
+    if (!isSupportedDocumentPath(candidate)) hasUnsupported = true;
     const normalized = normalizeMediaPath(value);
-    if (normalized && !result.includes(normalized)) result.push(normalized);
-    if (result.length >= MAX_MEDIA_PATHS) break;
+    if (!normalized) continue;
+    if (!paths.includes(normalized) && paths.length < MAX_MEDIA_PATHS) paths.push(normalized);
   }
-  return result;
+  return { paths, hasUnsupported };
 }
 
 function isSupportedDocumentPath(mediaPath) {
@@ -143,11 +165,8 @@ export default {
       // Register the unsupported-attachment block before the identifier
       // completeness gate: a message with a valid runId but missing sender or
       // session metadata must still fail closed rather than skip enforcement.
-      const normalizedMediaPaths = mediaPaths(event.metadata);
-      const hasUnsupported = normalizedMediaPaths.some(
-        (item) => !isSupportedDocumentPath(item),
-      );
-      if (runId && hasUnsupported) blockRun(runId, "unsupported_attachment_type");
+      const media = mediaPaths(event.metadata);
+      if (runId && media.hasUnsupported) blockRun(runId, "unsupported_attachment_type");
       if (!runId || !senderId || !channel || !sessionKey || !messageId) return;
       pending.set(runId, {
         capturedAt: Date.now(),
@@ -159,7 +178,7 @@ export default {
         sessionKey,
         messageId,
         isGroup: isGroupSession(sessionKey, channel),
-        mediaPaths: normalizedMediaPaths.filter(isSupportedDocumentPath),
+        mediaPaths: media.paths.filter(isSupportedDocumentPath),
       });
       prune();
     });

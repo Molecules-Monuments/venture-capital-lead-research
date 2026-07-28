@@ -527,6 +527,16 @@ class FailureReasonParityTests(unittest.TestCase):
     def _vcrun_emitted_reasons(self) -> set[str]:
         import ast
 
+        def branch_constants(expr: "ast.expr"):
+            # Only the result branches of a conditional expression are emitted
+            # values; its test condition compares unrelated strings (error
+            # codes) that must not be mistaken for reasons.
+            if isinstance(expr, ast.IfExp):
+                yield from branch_constants(expr.body)
+                yield from branch_constants(expr.orelse)
+            elif isinstance(expr, ast.Constant) and isinstance(expr.value, str):
+                yield expr.value
+
         source = (PACKAGE / "workspaces/vc-chief/vc/bin/vcrun.py").read_text(encoding="utf-8")
         tree = ast.parse(source)
         reasons: set[str] = set()
@@ -534,12 +544,25 @@ class FailureReasonParityTests(unittest.TestCase):
             if isinstance(node, ast.keyword) and node.arg == "reason" and isinstance(node.value, ast.Constant):
                 if isinstance(node.value.value, str):
                     reasons.add(node.value.value)
+            # vcrun also computes a reason through a conditional expression
+            # bound to a local named `reason` before passing reason=reason.
+            # Walk those assignments too — without this, half the emitted
+            # reasons hide behind the variable and this parity gate could not
+            # fail on their drift.
+            if isinstance(node, ast.Assign) and any(
+                isinstance(t, ast.Name) and t.id == "reason" for t in node.targets
+            ):
+                reasons.update(branch_constants(node.value))
         return reasons
 
     def test_every_vcrun_reason_is_accepted_by_vcops(self) -> None:
         accepted = self._vcops_failure_classes()
         emitted = self._vcrun_emitted_reasons()
         self.assertIn("lobster_no_exit", emitted, "expected vcrun to emit the no-exit reason")
+        self.assertIn(
+            "lobster_step_failure", emitted,
+            "expected discovery to see through the reason-variable indirection",
+        )
         self.assertTrue(emitted, "expected to discover at least one vcrun failure reason")
         self.assertLessEqual(
             emitted,

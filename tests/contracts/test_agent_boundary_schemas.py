@@ -439,10 +439,13 @@ class AgentBoundarySchemaTests(unittest.TestCase):
         packet = copy.deepcopy(self.packets["lead-signal-detector"])
         packet["result"]["proposed_action"] = "capture_lead"
         self.assertTrue(validate("lead-signal-detector", packet))
-        packet = copy.deepcopy(self.packets["lead-signal-detector"])
-        del packet["result"]["materiality"]
-        del packet["result"]["urgency"]
-        self.assertTrue(validate("lead-signal-detector", packet))
+        # One field at a time: deleting both and asserting once would stay green
+        # if the schema stopped requiring either one of them.
+        for field in ("materiality", "urgency"):
+            with self.subTest(missing=field):
+                packet = copy.deepcopy(self.packets["lead-signal-detector"])
+                del packet["result"][field]
+                self.assertTrue(validate("lead-signal-detector", packet))
 
         packet = copy.deepcopy(self.packets["lead-signal-detector"])
         packet["evidence"][0]["source_ref"] = "message:missing"
@@ -484,10 +487,12 @@ class AgentBoundarySchemaTests(unittest.TestCase):
             assert_outbound_consistency(packet)
 
     def test_inbound_requires_governance_and_typed_missingness(self) -> None:
-        packet = copy.deepcopy(self.packets["inbound-intake-analyst"])
-        del packet["result"]["consent"]
-        del packet["result"]["lawful_basis"]
-        self.assertTrue(validate("inbound-intake-analyst", packet))
+        # One field at a time, for the same reason as the signal packet above.
+        for field in ("consent", "lawful_basis"):
+            with self.subTest(missing=field):
+                packet = copy.deepcopy(self.packets["inbound-intake-analyst"])
+                del packet["result"][field]
+                self.assertTrue(validate("inbound-intake-analyst", packet))
 
         packet = copy.deepcopy(self.packets["inbound-intake-analyst"])
         packet["missing_data"][0]["status"] = "unknown"
@@ -544,7 +549,12 @@ class AgentBoundarySchemaTests(unittest.TestCase):
         for role, packet in self.packets.items():
             with self.subTest(role=role):
                 request = packet["persistence_request"]
-                self.assertTrue(request["steward_required"])
+                # Assert the schema, not this test's own fixture: the flag is
+                # `"const": true`, so flipping it must be rejected. Reading it
+                # back off base_packet() proved only that the fixture is intact.
+                denied = copy.deepcopy(packet)
+                denied["persistence_request"]["steward_required"] = False
+                self.assertTrue(validate(role, denied))
                 request["operation"] = next(
                     operation
                     for operation in load_schema(role)["$defs"]["persistenceRequest"]["properties"]["operation"]["enum"]

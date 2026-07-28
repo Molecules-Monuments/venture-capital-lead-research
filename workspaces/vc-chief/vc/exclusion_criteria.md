@@ -72,4 +72,4 @@ Soft excludes usually produce `pass` or `watch`, not automatic deletion.
 | Strong founder but no product evidence | `watch` or `research_deeper` depending on thesis. |
 | Sparse outbound lead in perfect category | `watch` unless at least one strong signal exists. |
 | Confidential inbound material | Process locally only; no external upload or forwarding. |
-| Conflicting sources | Mark `conflicting` and escalate if decision-relevant. |
+| Conflicting sources | Record a contradiction (the evidence layer, not missing data) and escalate if decision-relevant. |

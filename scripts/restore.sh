@@ -11,6 +11,10 @@ ENV_FILE="$PACKAGE_DIR/.env"
 COMPOSE_FILE="$PACKAGE_DIR/docker-compose.yml"
 COMPOSE_PROJECT="openclaw-lead-research-v3"
 LOCK_DIR="/tmp/openclaw-lead-research-v3-lifecycle.lock"
+# The state archive bound is operator-tunable because intake snapshots
+# accumulate in that tier; check_env.py validates the range.
+STATE_ARCHIVE_MAX_BYTES="$(sed -n 's/^OPENCLAW_STATE_ARCHIVE_MAX_BYTES=//p' "$ENV_FILE" 2>/dev/null | head -n 1)"
+[ -n "$STATE_ARCHIVE_MAX_BYTES" ] || STATE_ARCHIVE_MAX_BYTES=2147483648
 BACKUP_INPUT="${1:-}"
 CONFIRM="${2:-}"
 VALIDATION_DIR=""
@@ -81,11 +85,12 @@ sha256_path() {
 write_db_artifact_inventory() {
   database="$1"
   output="$2"
-  unsafe_rows="$(compose exec -T postgres psql -X -w \
+  # Kept out of a pipeline so psql's own failure status survives; see backup.sh.
+  unsafe_rows_raw="$(compose exec -T postgres psql -X -w \
     --username openclaw_owner --dbname "$database" --tuples-only --no-align \
     --set=ON_ERROR_STOP=1 \
-    --command "SELECT count(*) FROM evidence_artifacts WHERE storage_tier IN ('workspace_file','quarantine') AND (storage_uri IS NULL OR storage_uri ~ E'[\\t\\r\\n]')" \
-    | tr -d '[:space:]')"
+    --command "SELECT count(*) FROM evidence_artifacts WHERE storage_tier IN ('workspace_file','quarantine') AND (storage_uri IS NULL OR storage_uri ~ E'[\\t\\r\\n]')")"
+  unsafe_rows="$(printf '%s' "$unsafe_rows_raw" | tr -d '[:space:]')"
   [ "$unsafe_rows" = "0" ] || fail "database contains an unsafe local artifact URI"
   tab="$(printf '\t')"
   compose exec -T postgres psql -X -w --username openclaw_owner \
@@ -99,6 +104,11 @@ verify_local_artifacts() {
   inventory="$1"
   inbox_root="$2"
   quarantine_root="$3"
+  # vcops writes exactly one artifact URI form into evidence_artifacts:
+  # `state://intake-snapshots/<sha>.<ext>` under VCOPS_STATE_ROOT
+  # (/home/node/.openclaw/vcops). The state archive is tarred from
+  # /home/node/.openclaw, so inside the extracted copy that is vcops/... .
+  state_root="$4"
   tab="$(printf '\t')"
   while IFS="$tab" read -r digest tier uri extra; do
     [ -n "$digest" ] || continue
@@ -108,6 +118,7 @@ verify_local_artifacts() {
     esac
     [ "${#digest}" -eq 64 ] || fail "invalid artifact digest length"
     case "$tier:$uri" in
+      workspace_file:state://*) root="$state_root/vcops"; relative="${uri#state://}" ;;
       workspace_file:inbox://*) root="$inbox_root"; relative="${uri#inbox://}" ;;
       workspace_file:/inbox/*) root="$inbox_root"; relative="${uri#/inbox/}" ;;
       quarantine:quarantine://*) root="$quarantine_root"; relative="${uri#quarantine://}" ;;
@@ -160,7 +171,7 @@ validate_archive() {
   label="$2"
   list_file="$VALIDATION_DIR/$label.list"
   case "$label" in
-    state) max_total=2147483648 ;;
+    state|active-state) max_total="$STATE_ARCHIVE_MAX_BYTES" ;;
     inbox|quarantine|active-quarantine) max_total=21474836480 ;;
     *) fail "unknown recovery archive class: $label" ;;
   esac
@@ -226,7 +237,7 @@ cd "$PACKAGE_DIR"
 ./scripts/check_env.sh "$ENV_FILE" >/dev/null
 # The restore target must satisfy the reviewed profile<->environment binding
 # before its rendered config is used to bring the deployment back up.
-python3 scripts/check_customization.py config/customization-profile.json "$ENV_FILE" >/dev/null
+python3 scripts/check_customization.py config/customization-profile.json "$ENV_FILE"
 if ! mkdir "$LOCK_DIR"; then
   fail "another lifecycle operation is running or left a stale lock: $LOCK_DIR"
 fi
@@ -279,7 +290,7 @@ python3 scripts/record_images.py --validate-lock "$VALIDATION_DIR/deployment-loc
 # staged archive is removed right after extraction to bound peak staging space.
 validate_archive "$VALIDATION_DIR/openclaw-state.tar.gz" state
 rm -f -- "$VALIDATION_DIR/openclaw-state.tar.gz"
-if grep -Eq '(^|/)(openclaw\.json|exec-approvals\.(json|sock))$' "$VALIDATION_DIR/state.list"; then
+if grep -Eq '^(openclaw\.json|exec-approvals\.(json|sock))$' "$VALIDATION_DIR/state.list"; then
   fail "state archive contains generated runtime config or exec approvals"
 fi
 validate_archive "$VALIDATION_DIR/inbox-artifacts.tar.gz" inbox
@@ -287,7 +298,7 @@ rm -f -- "$VALIDATION_DIR/inbox-artifacts.tar.gz"
 validate_archive "$VALIDATION_DIR/quarantine-artifacts.tar.gz" quarantine
 rm -f -- "$VALIDATION_DIR/quarantine-artifacts.tar.gz"
 verify_local_artifacts "$VALIDATION_DIR/LOCAL_ARTIFACTS.tsv" \
-  "$VALIDATION_DIR/inbox" "$VALIDATION_DIR/quarantine"
+  "$VALIDATION_DIR/inbox" "$VALIDATION_DIR/quarantine" "$VALIDATION_DIR/state"
 python3 scripts/render_channel_config.py "$ENV_FILE" >/dev/null
 compose config --quiet
 compose exec -T postgres pg_restore --list \
@@ -315,6 +326,16 @@ compose exec -T postgres dropdb --username openclaw_owner --if-exists \
 compose exec -T postgres createdb --username openclaw_owner openclaw
 compose exec -T postgres pg_restore --username openclaw_owner \
   --dbname openclaw --exit-on-error <"$VALIDATION_DIR/postgres.dump"
+# pg_dump without --create never emits database-level (pg_database) ACLs, and
+# the restored schema_migrations ledger already records 002, so migrate.sh
+# below treats that migration as applied and never reapplies it. Re-execute its
+# idempotent database-level hardening so PUBLIC does not silently regain
+# TEMPORARY on the restored database.
+compose exec -T postgres psql -X -w --username openclaw_owner \
+  --dbname openclaw --set=ON_ERROR_STOP=1 \
+  --command "REVOKE TEMPORARY ON DATABASE openclaw FROM PUBLIC" \
+  --command "REVOKE CREATE ON DATABASE openclaw FROM PUBLIC" \
+  --command "GRANT CONNECT ON DATABASE openclaw TO openclaw_runtime"
 
 (cd "$VALIDATION_DIR/state" && tar -cf - .) | \
   compose --profile tools run --rm --no-deps --entrypoint sh openclaw-cli -c \
@@ -324,11 +345,18 @@ restore_host_tree "$VALIDATION_DIR/inbox" "$PACKAGE_DIR/inbox"
   compose --profile tools run --rm --no-deps --entrypoint sh openclaw-cli -c \
     'set -eu; find /quarantine -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +; tar -C /quarantine -xf -'
 
+# Read all three artifact roots back from where the restore actually put them.
+# Hashing the archive's own copy of the state tree would compare the archive
+# against itself and prove nothing about the restored deployment, unlike the
+# inbox and quarantine lanes beside it.
 compose --profile tools run --rm --no-deps --entrypoint tar openclaw-cli \
   -C /quarantine -czf - . >"$VALIDATION_DIR/active-quarantine.tar.gz"
 validate_archive "$VALIDATION_DIR/active-quarantine.tar.gz" active-quarantine
+compose --profile tools run --rm --no-deps --entrypoint tar openclaw-cli \
+  -C /home/node/.openclaw -czf - . >"$VALIDATION_DIR/active-state.tar.gz"
+validate_archive "$VALIDATION_DIR/active-state.tar.gz" active-state
 verify_local_artifacts "$VALIDATION_DIR/LOCAL_ARTIFACTS.tsv" \
-  "$PACKAGE_DIR/inbox" "$VALIDATION_DIR/active-quarantine"
+  "$PACKAGE_DIR/inbox" "$VALIDATION_DIR/active-quarantine" "$VALIDATION_DIR/active-state"
 
 ./scripts/migrate.sh "$ENV_FILE"
 compose exec -T -e OPENCLAW_VERIFY_TCP_AUTH=1 postgres \

@@ -32,8 +32,12 @@ SUITES = (
 def run(command: list[str], *, timeout: int = 300) -> subprocess.CompletedProcess[str]:
     environment = os.environ.copy()
     environment["PYTHONDONTWRITEBYTECODE"] = "1"
-    environment.setdefault(
-        "VCOPS_HELPER", str(PACKAGE / "workspaces/vc-chief/vc/bin/vcops.py")
+    # Unconditional pin: an inherited VCOPS_HELPER (e.g. a stale export from a
+    # documented per-suite invocation or another checkout) would silently point
+    # the g4 semantics/document-security suites at foreign helper code and let
+    # this gate certify a helper it never ran.
+    environment["VCOPS_HELPER"] = str(
+        PACKAGE / "workspaces/vc-chief/vc/bin/vcops.py"
     )
     return subprocess.run(
         command,

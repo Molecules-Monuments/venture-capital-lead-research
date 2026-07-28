@@ -21,10 +21,6 @@
     "high_priority_minimum_weighted_coverage": 0.75,
     "high_priority_required_checks": ["contradiction_check_complete", "trajectory_check_complete"]
   },
-  "adjustments": {
-    "material_unresolved_contradiction": [-10, -5],
-    "trajectory": {"maximum": 5, "minimum": -5}
-  },
   "recommendation_intervals": [
     {"maximum_exclusive": 50, "minimum": 0, "name": "pass"},
     {"maximum_exclusive": 66, "minimum": 50, "name": "watch"},

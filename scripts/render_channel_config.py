@@ -14,7 +14,13 @@ from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from check_env import parse_dotenv, validate_channel_selection
+# The sibling import below byte-compiles check_env into scripts/__pycache__,
+# which then makes `verify_release.py --pristine` report an undeclared file and
+# tells the operator their package is untrustworthy. Suppress it here so the
+# renderer stays safe to run even when someone omits `-B`.
+sys.dont_write_bytecode = True
+
+from check_env import parse_dotenv, validate_channel_selection  # noqa: E402
 
 
 PACKAGE_DIR = Path(__file__).resolve().parent.parent
@@ -169,7 +175,7 @@ def _model_entry(model_id: str, env: dict[str, str]) -> dict[str, Any]:
 def apply_runtime_selection(config: dict[str, Any], selected_channel: str, env: dict[str, str]) -> None:
     plugins = config.setdefault("plugins", {})
     allow = ["vc-trusted-context"]
-    paths = ["/app/extensions/vc-trusted-context"]
+    paths = ["/opt/openclaw-extensions/vc-trusted-context"]
     entries: dict[str, Any] = {"vc-trusted-context": {"enabled": True}}
 
     model_mode = env["VC_MODEL_PROVIDER"]
@@ -193,6 +199,12 @@ def apply_runtime_selection(config: dict[str, Any], selected_channel: str, env: 
             base_url = env["VC_CUSTOM_BASE_URL"]
             api = env["VC_CUSTOM_API"]
             api_key = _secret_ref("VC_CUSTOM_API_KEY")
+        # check_env.py already requires the provider-qualified form on every
+        # lifecycle path; guard it here too so a standalone render reports the
+        # reason instead of an IndexError traceback.
+        for key in ("VC_PRIMARY_MODEL", "VC_FAST_MODEL"):
+            if "/" not in env[key]:
+                raise SystemExit(f"{key} must be provider-qualified as <provider>/<model-id>")
         local_ids = [env["VC_PRIMARY_MODEL"].split("/", 1)[1], env["VC_FAST_MODEL"].split("/", 1)[1]]
         models = []
         for model_id in local_ids:

@@ -7,10 +7,16 @@ import sys
 import tempfile
 import unittest
 import zipfile
+import zlib
 from pathlib import Path
 
 
 HERE = Path(__file__).resolve().parent
+# document_cases.json carries only the environment bounds this suite injects.
+# The accepted/rejected inventory lives in the tests themselves as executable
+# assertions — a passive filename list here once drifted from the executed
+# contract (it classified too-many-rows.xlsx as rejected while the suite
+# asserts accepted-with-truncation) precisely because nothing consumed it.
 CASES = json.loads((HERE / "document_cases.json").read_text(encoding="utf-8"))
 HELPER = Path(os.environ.get("VCOPS_HELPER", ""))
 PYTHON = os.environ.get("G4_PYTHON", sys.executable)
@@ -105,6 +111,34 @@ def sheet(rows: int = 1, formula: bool = False):
     return '<?xml version="1.0"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>' + "".join(row_xml) + "</sheetData></worksheet>"
 
 
+def write_pdf(path: Path, content_stream: bytes):
+    """Write a minimal one-page PDF whose content stream is Flate-encoded."""
+    compressed = zlib.compress(content_stream, 9)
+    objects = [
+        b"<< /Type /Catalog /Pages 2 0 R >>",
+        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "
+        b"/Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>",
+        b"<< /Length " + str(len(compressed)).encode() + b" /Filter /FlateDecode >>\nstream\n"
+        + compressed + b"\nendstream",
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+    ]
+    out = bytearray(b"%PDF-1.7\n")
+    offsets = []
+    for index, body in enumerate(objects, start=1):
+        offsets.append(len(out))
+        out += str(index).encode() + b" 0 obj\n" + body + b"\nendobj\n"
+    xref_at = len(out)
+    out += b"xref\n0 " + str(len(objects) + 1).encode() + b"\n0000000000 65535 f \n"
+    for offset in offsets:
+        out += ("%010d 00000 n \n" % offset).encode()
+    out += (
+        b"trailer\n<< /Size " + str(len(objects) + 1).encode() + b" /Root 1 0 R >>\n"
+        b"startxref\n" + str(xref_at).encode() + b"\n%%EOF\n"
+    )
+    path.write_bytes(bytes(out))
+
+
 def digest(path: Path):
     value = hashlib.sha256()
     with path.open("rb") as stream:
@@ -150,6 +184,13 @@ class DocumentSecurityTests(unittest.TestCase):
         for index in range(marker, marker + 12):
             blob[index] ^= 0xFF
         corrupt.write_bytes(bytes(blob))
+        write_pdf(cls.inbox / "valid.pdf", b"BT /F1 12 Tf 72 720 Td (Acme deck ARR 1.2M) Tj ET\n")
+        # Tiny on disk, enormous once inflated: nothing about page count or file
+        # size bounds a PDF's decompressed content stream.
+        write_pdf(
+            cls.inbox / "flate-bomb.pdf",
+            b"BT /F1 12 Tf 72 720 Td (A) Tj ET\n" * 8_000,
+        )
         write_pptx(cls.inbox / "valid.pptx")
         write_pptx(cls.inbox / "macro-payload.pptx", macro=True)
         write_pptx(cls.inbox / "external-link.pptx", external=True)
@@ -256,6 +297,29 @@ class DocumentSecurityTests(unittest.TestCase):
             or payload.get("extraction", {}).get("extraction_summary", {}).get("truncated")
         )
         self.assertTrue(truncated, payload)
+        # The flag alone cannot prove the bound held: an extractor that kept
+        # every row and computed truncated afterwards would still set it. The
+        # persisted extraction must not exceed VCOPS_MAX_ROWS rows per sheet.
+        max_rows = int(CASES["environment"]["VCOPS_MAX_ROWS"])
+        extracted = json.loads(Path(payload["extracted_json_path"]).read_text(encoding="utf-8"))
+        for sheet in extracted["extraction"]["sheets"]:
+            self.assertLessEqual(len(sheet["rows"]), max_rows, sheet)
+
+    def test_pdf_flate_bomb_is_quarantined_before_extraction(self):
+        # The bomb is a few hundred bytes, so no page/size bound sees it: only
+        # a decompressed-content bound keeps the extractor from inflating it.
+        self.assertLess(
+            (self.inbox / "flate-bomb.pdf").stat().st_size,
+            int(CASES["environment"]["VCOPS_MAX_PDF_CONTENT_BYTES"]),
+        )
+        self.assert_rejected(self.inbox / "flate-bomb.pdf", "pdf_content_limit", must_quarantine=True)
+
+    def test_valid_pdf_extracts_text(self):
+        proc, payload = self.invoke("document-extract", self.inbox / "valid.pdf")
+        self.assertEqual(proc.returncode, 0, (payload, proc.stderr))
+        self.assertEqual("application/pdf", payload["detected_mime"])
+        extracted = json.loads(Path(payload["extracted_json_path"]).read_text(encoding="utf-8"))
+        self.assertIn("Acme deck", extracted["extraction"]["pages"][0]["text"])
 
     def test_xlsx_formula_is_flagged_and_not_evaluated(self):
         proc, payload = self.invoke("document-extract", self.inbox / "formula.xlsx")

@@ -40,7 +40,11 @@ def inventory() -> list[dict[str, object]]:
             or path.is_symlink()
             or relative in EXCLUDED_FILES
             or relative.split("/", 1)[0] in EXCLUDED_PREFIXES
-            or any(part in EXCLUDED_PARTS for part in path.parts)
+            # Match on the package-relative path. `path.parts` is absolute, so a
+            # package that merely *lives* under a directory named .git,
+            # __pycache__, .pytest_cache or .ruff_cache would exclude every file
+            # and silently produce a 0-file manifest.
+            or any(part in EXCLUDED_PARTS for part in Path(relative).parts)
             or path.suffix in EXCLUDED_SUFFIXES
             or path.name == ".DS_Store"
         ):

@@ -80,6 +80,15 @@ contain packages under multiple permissive licenses, including MIT, Apache-2.0,
 BSD variants, ISC, 0BSD, the Python Software Foundation License, and the
 PostgreSQL License.
 
+The derived image also inherits the `debian:bookworm` base layer that the
+pinned OpenClaw image is built on, plus the Debian packages
+`Dockerfile.openclaw` installs. That layer is **not** permissive-only: it
+contains substantial GPL/LGPL material — `poppler-utils` (used for PDF
+extraction) is GPL-2/GPL-3, and the majority of the shipped Debian packages
+declare a GPL, LGPL, or MPL licence. Redistributing the built image therefore
+carries copyleft source-offer obligations that the permissive list above does
+not cover.
+
 Lockfiles identify versions and integrity hashes; they are not a substitute
 for preserving required copyright notices or license texts in a distributed
 binary/image. Before redistributing a derived image or commercial product,

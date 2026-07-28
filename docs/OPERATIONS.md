@@ -56,7 +56,7 @@ Bootstrap and every update take the package-wide lifecycle lock and run `scripts
 
 The reconciler proves both new credentials over TCP and proves that an invalid password is rejected, then force-recreates the gateway and stopped CLI container. Final `vcops db-check` probes run from both consumer images. Any failure after rotation starts stops the gateway and CLI. Changing either database password without this complete reconciliation is not a valid rotation. Do not run long-lived Compose one-offs or independent backend clients during this maintenance operation; runtime sessions are deliberately terminated. If a host crash leaves `/tmp/openclaw-lead-research-v3-rotation.lock`, confirm that no rotation process is active before removing the stale lock and retrying.
 
-Both database passwords must be independent 24-128 character base64url-safe values (`A-Z`, `a-z`, `0-9`, `_`, `-`); this keeps Compose, `psql`, passfiles, and recovery handling unambiguous. This package requires Docker Compose, not `docker stack deploy`: its file-backed secret sources are Compose-only. `docker compose -f docker-compose.yml -p openclaw-lead-research-v3 --env-file .env config --quiet` is a mandatory compatibility preflight and the lifecycle commands require support for `up --wait`, `--force-recreate`, `--no-deps`, `--no-start`, `run --rm`, and GNU `mv -T -n` on the Linux host.
+Both database passwords must be independent 24-128 character base64url-safe values (`A-Z`, `a-z`, `0-9`, `_`, `-`); this keeps Compose, `psql`, passfiles, and recovery handling unambiguous. This package requires Docker Compose, not `docker stack deploy`: its file-backed secret sources are Compose-only. `docker compose -f docker-compose.yml -p openclaw-lead-research-v3 --env-file .env config --quiet` is a mandatory compatibility preflight and the lifecycle commands require support for `up --wait`, `--force-recreate`, `--no-deps`, `--no-start`, and `run --rm`.
 
 Backup, restore, update, bootstrap, and direct role rotation share `/tmp/openclaw-lead-research-v3-lifecycle.lock`. Nested update/bootstrap operations pass a private owner token that is checked against the mode-`0700` lock directory; setting a boolean environment flag cannot bypass the lock. If a host crash leaves the directory, confirm no lifecycle process is active before removing it. Every script pins both the absolute Compose file and project name, so invoking it from a different current directory cannot select another stack.
 
@@ -122,8 +122,10 @@ docker compose -f docker-compose.yml -p openclaw-lead-research-v3 \
 
 A trusted-context rotation invalidates outstanding capabilities; after the
 force-recreate, prove a new document/preference operation. Note that rotating
-`VCOPS_APPROVAL_PEPPER` also invalidates every `status='pending'` approval —
-issue those again after rotation.
+`VCOPS_APPROVAL_PEPPER` also invalidates every approval that has not yet been
+consumed — `pending` *and* `approved`-but-unconsumed alike, because the pepper
+HMACs the approval token and rotation changes every stored digest. Issue those
+again after rotation.
 Rotate both database values together through `scripts/rotate_runtime_role.sh`.
 The Teams profile withholds Graph permissions, `sharePointSiteId`, delegated
 auth, and SSO. All profiles disable config writes, chat exec approvals,

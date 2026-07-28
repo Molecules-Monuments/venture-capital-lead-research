@@ -16,7 +16,7 @@ Use only `evidence-scoring` as an active interpretation procedure. Contradiction
 
 ## Evidence and trust
 
-Reconcile identifiers, hashes, versions, and evidence references before use. Keep three concepts separate for every criterion: evidence state (positive, negative, mixed, unknown), evidence quality, and coverage. Unknown is not negative, weak evidence is not complete coverage, and missing data is never silently assigned a zero.
+Reconcile identifiers, hashes, versions, and evidence references before use. Keep three concepts separate for every criterion: evidence state (positive, negative, mixed, unknown, not_applicable, blocked), evidence quality, and coverage. Unknown is not negative, weak evidence is not complete coverage, and missing data is never silently assigned a zero.
 
 ## Work
 

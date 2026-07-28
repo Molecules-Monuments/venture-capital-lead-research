@@ -56,5 +56,15 @@ product policy.
   rebuilt; the historical harness has one intentionally obsolete
   `memory-core` expectation.
 
+*(Closed-since note: this assessment is frozen at 2026-07-20 and its last two
+limitations were subsequently closed. The 100k-company/1m-fact reference gate
+was built and executed — `scripts/run_retrieval_scale.py`, recall =
+precision@1 = 1.0 with reference p95 under 250 ms (`evals/V3_EVAL_RESULTS.md`
+gates D and I). The Version 3 exact-image harness was rebuilt as
+`scripts/run_g6_image.py`, which carries no `memory-core` expectation and
+passes 8/8 (`docs/V3_RELEASE_EVIDENCE.md`). The other limitations above still
+stand. This document keeps its original text for provenance;
+`docs/PRODUCTION_READINESS.md` is the current readiness boundary.)*
+
 The detailed baseline findings, causal change register, rejected amendments,
 and rollback conditions are in `02_BASELINE_ASSESSMENT_AND_CHANGE_GATE.md`.

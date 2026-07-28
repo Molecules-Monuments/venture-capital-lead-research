@@ -28,10 +28,13 @@ RUNTIME_ALLOWED = {
 REVIEW_ONLY_ROOTS = {"_internal"}
 # Operator working directories. Their contents are deliberately undeclared —
 # `inbox` is the documented document drop point (bind-mounted read-only into the
-# gateway) and `quarantine` receives rejected uploads — so a system that is
-# actually processing documents would otherwise fail --pristine for doing its
-# job. The directories themselves, and their tracked .gitkeep, stay declared;
-# only the operator's own files inside them are tolerated.
+# gateway) and `quarantine` is a runtime quarantine placeholder (the deployed
+# stack mounts the named volume `vc-quarantine` at `/quarantine`, so rejected
+# uploads never land in this directory; it stays tolerated as an operator
+# working area) — so a system that is actually processing documents would
+# otherwise fail --pristine for doing its job. The directories themselves, and
+# their tracked .gitkeep, stay declared; only the operator's own files inside
+# them are tolerated.
 OPERATOR_DATA_ROOTS = {"inbox", "quarantine"}
 
 
@@ -70,6 +73,13 @@ def main() -> int:
     entries = manifest.get("files")
     if not isinstance(entries, list) or manifest.get("file_count") != len(entries):
         fail("manifest file inventory is malformed")
+    # Fail closed on an empty inventory. A zero-file list is internally consistent,
+    # so every check below would vacuously pass and the gate would report PASS while
+    # verifying nothing — which is precisely what a manifest built from a package
+    # whose path defeats the builder's exclusion rules looks like. Only zero is
+    # rejected: a small package is a legitimate shape, an empty one never is.
+    if not entries:
+        fail("manifest declares no files; refusing to certify an empty inventory")
 
     declared: set[str] = set()
     errors: list[str] = []

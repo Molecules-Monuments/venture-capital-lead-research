@@ -96,7 +96,14 @@ class SourceSurveillanceTests(unittest.TestCase):
         source = state["source_watch"]["json"]["source"]
         self.assertTrue(source["enabled"])
         self.assertEqual(source["cadence"], "daily")
-        type(self).source_id = source["id"]
+        # Through the real workflow the lane sees back only what it submitted:
+        # no row id, classification, owner or scan history. The surrogate id
+        # would otherwise let a caller tell a fresh registration from a
+        # re-watch of a source it is not cleared to know about.
+        self.assertEqual(
+            sorted(source),
+            ["cadence", "canonical_uri", "enabled", "source_class", "source_name"],
+        )
         self.assertEqual(
             self.query("SELECT count(*) FROM signal_sources WHERE canonical_uri=%s", (self.uri("news"),)), 1,
         )
@@ -113,6 +120,29 @@ class SourceSurveillanceTests(unittest.TestCase):
         self.assertEqual(state["source_watch"]["json"]["source"]["cadence"], "weekly")
         self.assertEqual(
             self.query("SELECT count(*) FROM signal_sources WHERE canonical_uri=%s", (self.uri("news"),)), 1,
+        )
+
+    def test_01b_watch_accepts_a_meaningful_uppercase_path(self):
+        """A URL path is case-sensitive, so an uppercase segment is ordinary.
+
+        The registry's normalization rule lowercases only scheme and authority
+        (matching normalize_uri and sources.canonical_uri); an earlier
+        whole-URI-lowercase rule rejected every such URL at the constraint.
+        """
+        cased = f"https://Cased-{self.prefix}.INVALID/Feed/Latest"
+        state = self.execute("source-watch.lobster", {
+            "idempotency_key": self.prefix + "-cased",
+            "source_name": "G4SS Cased",
+            "source_uri": cased,
+            "source_class": "news_rss",
+            "cadence": "daily",
+            "thesis_relevance": "case handling",
+            "expected_signal": "launch signals",
+        })
+        stored = state["source_watch"]["json"]["source"]["canonical_uri"]
+        self.assertEqual(f"https://cased-{self.prefix}.invalid/Feed/Latest", stored)
+        self.assertEqual(
+            self.query("SELECT count(*) FROM signal_sources WHERE canonical_uri=%s", (stored,)), 1,
         )
 
     def test_02_scan_claims_due_sources_and_cadence_gates_reclaim(self):
@@ -237,8 +267,24 @@ class SourceSurveillanceTests(unittest.TestCase):
             "--owner", "rogue-agent", "--confidentiality", "internal",
         ], env_extra={"VCOPS_WORKFLOW_MODE": "1"})["source"]
         self.assertEqual(updated["cadence"], "weekly")
-        self.assertEqual(updated["confidentiality"], "confidential")
-        self.assertEqual(updated["owner"], "operator")
+        # The descriptive write lands, but the response carries only values the
+        # lane itself submitted. Echoing the stored row would disclose an
+        # above-ceiling entry's classification, owner and scan history, and
+        # make any caller-supplied URI a probe for whether it is watched.
+        self.assertEqual(
+            sorted(updated),
+            ["cadence", "canonical_uri", "enabled", "source_class", "source_name"],
+        )
+        # The withheld operator state is still intact in the row itself.
+        self.assertEqual(self.query(
+            "SELECT confidentiality FROM signal_sources WHERE canonical_uri=%s", (uri,), owner=True,
+        ), "confidential")
+        self.assertEqual(self.query(
+            "SELECT owner FROM signal_sources WHERE canonical_uri=%s", (uri,), owner=True,
+        ), "operator")
+        self.assertEqual(self.query(
+            "SELECT cadence FROM signal_sources WHERE canonical_uri=%s", (uri,), owner=True,
+        ), "weekly")
         # The operator lane may deliberately reclassify and reassign.
         reclassified = self.invoke([
             "source-watch", "--name", "G4SS Guarded", "--uri", uri,

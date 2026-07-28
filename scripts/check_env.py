@@ -116,12 +116,24 @@ ALLOWED_KEYS = REQUIRED | DEPLOYMENT_FIELDS | {
     "CRUNCHBASE_API_KEY",
     "PITCHBOOK_API_KEY",
     "DEALROOM_API_KEY",
+    # Optional: raises the bound backup.sh/restore.sh apply to the state
+    # recovery archive. Document intake snapshots accumulate in that tier, so a
+    # deployment with sustained attachment volume outgrows the shipped default.
+    "OPENCLAW_STATE_ARCHIVE_MAX_BYTES",
 }
+STATE_ARCHIVE_DEFAULT_BYTES = 2 * 1024 * 1024 * 1024
+STATE_ARCHIVE_MAX_BYTES = 100 * 1024 * 1024 * 1024
 FORBIDDEN_AMBIENT_COMPOSE_KEYS = {
     "COMPOSE_FILE",
     "COMPOSE_PROJECT_NAME",
     "COMPOSE_PROFILES",
     "COMPOSE_ENV_FILES",
+    # Rebases the relative paths Compose resolves (build contexts, bind mounts)
+    # and has no legitimate use here, since every lifecycle script passes an
+    # explicit -f/-p/--env-file. DOCKER_HOST and DOCKER_CONTEXT are deliberately
+    # absent: they are how an operator legitimately targets a rootless socket or
+    # a remote engine, so failing on them would block a supported deployment.
+    "COMPOSE_PROJECT_DIR",
 }
 
 UUID_RE = re.compile(
@@ -300,8 +312,12 @@ def validate_channel_selection(values: dict[str, str]) -> list[str]:
             errors.append("MSTEAMS_ALLOWED_TEAM_ID must be a stable Teams conversation ID")
         if not conversation_id.fullmatch(values["MSTEAMS_ALLOWED_CHANNEL_ID"]):
             errors.append("MSTEAMS_ALLOWED_CHANNEL_ID must be a stable Teams conversation ID")
-        if not re.fullmatch(r"https://[^\s/?#]+(?::[0-9]+)?/api/messages", values["MSTEAMS_PUBLIC_WEBHOOK_URL"]):
-            errors.append("MSTEAMS_PUBLIC_WEBHOOK_URL must be a public HTTPS URL ending in /api/messages")
+        webhook = values["MSTEAMS_PUBLIC_WEBHOOK_URL"]
+        if not _valid_custom_base_url(webhook) or urlsplit(webhook).path != "/api/messages":
+            errors.append(
+                "MSTEAMS_PUBLIC_WEBHOOK_URL must be a credential-free public HTTPS "
+                "URL ending in /api/messages"
+            )
 
     if selected == "discord" and complete[selected]:
         snowflake = re.compile(r"[1-9][0-9]{14,21}")
@@ -342,6 +358,16 @@ def _comma_list(value: str, name: str, errors: list[str]) -> list[str]:
     return items
 
 
+def _ascii_int(raw: str) -> int | None:
+    """Parse an ASCII-only integer, or None.
+
+    str.isdigit() is true for superscripts and other Unicode digit forms:
+    int('²') raises (a traceback instead of this validator's FAIL envelope) and
+    int('٣') succeeds on a value Compose cannot read back.
+    """
+    return int(raw) if re.fullmatch(r"[0-9]+", raw) else None
+
+
 def _valid_ollama_origin(value: str) -> bool:
     """Accept only a path-free HTTP origin on a private/local deployment host."""
     try:
@@ -372,6 +398,29 @@ def _valid_ollama_origin(value: str) -> bool:
     return address.is_private or address.is_link_local
 
 
+def _valid_custom_base_url(value: str) -> bool:
+    """Accept only a credential-free HTTPS base URL with an optional path."""
+    if not value or any(character.isspace() for character in value):
+        return False
+    try:
+        parsed = urlsplit(value)
+        # SplitResult.port parses lazily and raises here on a non-numeric or
+        # out-of-range port, which the character-class regex this replaces
+        # silently accepted.
+        port = parsed.port
+    except ValueError:
+        return False
+    return (
+        parsed.scheme == "https"
+        and bool(parsed.hostname)
+        and parsed.username is None
+        and parsed.password is None
+        and not parsed.query
+        and not parsed.fragment
+        and (port is None or 1 <= port <= 65_535)
+    )
+
+
 def validate_runtime_selection(values: dict[str, str]) -> list[str]:
     errors: list[str] = []
     mode = values.get("VC_MODEL_PROVIDER", "")
@@ -399,7 +448,8 @@ def validate_runtime_selection(values: dict[str, str]) -> list[str]:
         ("VC_MODEL_TIMEOUT_SECONDS", 30, 900),
     ):
         raw = values.get(key, "")
-        if not raw.isdigit() or not minimum <= int(raw) <= maximum:
+        parsed = _ascii_int(raw)
+        if parsed is None or not minimum <= parsed <= maximum:
             errors.append(f"{key} must be an integer from {minimum} through {maximum}")
     if mode == "openai":
         if not values.get("OPENAI_API_KEY"):
@@ -423,7 +473,7 @@ def validate_runtime_selection(values: dict[str, str]) -> list[str]:
         }
         if values.get("VC_CUSTOM_API") not in allowed_apis:
             errors.append(f"VC_CUSTOM_API must be one of {sorted(allowed_apis)}")
-        if not re.fullmatch(r"https://[^/?#\s]+(?::[0-9]{1,5})?(?:/[^?#\s]*)?", values.get("VC_CUSTOM_BASE_URL", "")):
+        if not _valid_custom_base_url(values.get("VC_CUSTOM_BASE_URL", "")):
             errors.append("VC_CUSTOM_BASE_URL must be an HTTPS URL without credentials, query, or fragment")
         if not values.get("VC_CUSTOM_API_KEY"):
             errors.append("VC_CUSTOM_API_KEY is required in custom model mode")
@@ -461,6 +511,26 @@ def validate_runtime_selection(values: dict[str, str]) -> list[str]:
     for provider, credential in search_credential.items():
         if (search == provider) != bool(values.get(credential)):
             errors.append(f"{credential} must be set exactly when the {provider} search provider is selected")
+    searxng = values.get("SEARXNG_BASE_URL", "")
+    # A self-hosted SearXNG is reached either over public HTTPS or, more often,
+    # as a plain-HTTP origin on the deployment's own private network — accept
+    # exactly the two shapes the sibling endpoint validators already define.
+    if searxng and not (_valid_custom_base_url(searxng) or _valid_ollama_origin(searxng)):
+        errors.append(
+            "SEARXNG_BASE_URL must be a credential-free HTTPS URL or a private/local HTTP origin"
+        )
+    state_cap = values.get("OPENCLAW_STATE_ARCHIVE_MAX_BYTES", "")
+    if state_cap:
+        # A bound that is not a plain positive integer would reach
+        # validate_recovery_archive.py as a malformed --max-total-bytes and fail
+        # the backup mid-run instead of here.
+        if not re.fullmatch(r"[1-9][0-9]{0,14}", state_cap) or not (
+            1024 * 1024 * 1024 <= int(state_cap) <= STATE_ARCHIVE_MAX_BYTES
+        ):
+            errors.append(
+                "OPENCLAW_STATE_ARCHIVE_MAX_BYTES must be an integer number of bytes "
+                f"from {1024 * 1024 * 1024} through {STATE_ARCHIVE_MAX_BYTES}"
+            )
     media = values.get("VC_CHANNEL_MEDIA_MAX_MB", "")
     try:
         parsed_media = float(media)
@@ -506,6 +576,20 @@ def main() -> int:
             f"{shadowed}; unset them or make them byte-identical"
         )
 
+    # Compose gives the OS environment precedence even over ${VAR:-default}
+    # defaults, so an ambient variable for an allowed key whose line was
+    # removed from .env would steer the deployment without ever passing
+    # through this validator.
+    ambient_only = sorted(
+        key for key in ALLOWED_KEYS - set(values) if key in os.environ
+    )
+    if ambient_only:
+        errors.append(
+            "ambient environment supplies deployment variables absent from the "
+            f"reviewed .env: {ambient_only}; unset them or add the reviewed "
+            "values to .env"
+        )
+
     if values.get("OPENCLAW_IMAGE") != OPENCLAW_IMAGE:
         errors.append(f"OPENCLAW_IMAGE must be {OPENCLAW_IMAGE}")
     if values.get("POSTGRES_IMAGE") != POSTGRES_IMAGE:
@@ -536,7 +620,7 @@ def main() -> int:
     # Check all pairings, keeping the two specific legacy messages intact.
     if values.get("POSTGRES_PASSWORD") == values.get("OPENCLAW_DB_PASSWORD") and values.get("POSTGRES_PASSWORD"):
         errors.append("owner and runtime database passwords must differ")
-    if values.get("BACKUP_HMAC_KEY") in {
+    if values.get("BACKUP_HMAC_KEY") and values.get("BACKUP_HMAC_KEY") in {
         values.get("OPENCLAW_GATEWAY_TOKEN"),
         values.get("VCOPS_APPROVAL_PEPPER"),
         values.get("VC_TRUSTED_CONTEXT_KEY"),
@@ -582,10 +666,11 @@ def main() -> int:
             # below already folds in VOLUME_DEFAULTS.
             ports[key] = default
             continue
-        if not value.isdigit() or not 1 <= int(value) <= 65535:
+        parsed_port = _ascii_int(value)
+        if parsed_port is None or not 1 <= parsed_port <= 65535:
             errors.append(f"{key} must be an integer from 1 through 65535")
         else:
-            ports[key] = int(value)
+            ports[key] = parsed_port
     if len(ports) == 2 and len(set(ports.values())) != 2:
         errors.append(
             "OPENCLAW_GATEWAY_PORT and MSTEAMS_WEBHOOK_PORT must bind different host "
@@ -655,7 +740,8 @@ def main() -> int:
         "OPENCLAW_CLI_LOG_MAX_FILES",
     ):
         value = values.get(key, "")
-        if value and (not value.isdigit() or int(value) < 1):
+        parsed_files = _ascii_int(value)
+        if value and (parsed_files is None or parsed_files < 1):
             errors.append(f"{key} must be a positive integer")
 
     errors.extend(validate_channel_selection(values))

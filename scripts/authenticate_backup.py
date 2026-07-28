@@ -20,6 +20,12 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
+# The sibling import below byte-compiles check_env into scripts/__pycache__,
+# which then makes `verify_release.py --pristine` report an undeclared file and
+# tells the operator their package is untrustworthy. Suppress it here so backup
+# authentication stays safe to run even when someone omits `-B`.
+sys.dont_write_bytecode = True
+
 from check_env import parse_dotenv  # noqa: E402
 
 
@@ -93,8 +99,13 @@ def verify_authentication(key: bytes, manifest: bytes, authentication: bytes) ->
     for field in ("format_version", "algorithm", "key_id", "manifest_sha256"):
         if parsed.get(field) != expected[field]:
             raise ValueError(f"backup authentication {field} mismatch")
+    # compare_digest on str operands raises TypeError for non-ASCII input,
+    # which would escape the designed FAIL envelope; require the exact digest
+    # shape first and compare bytes so no attacker-supplied value can raise.
     mac = parsed.get("mac")
-    if not isinstance(mac, str) or not hmac.compare_digest(mac, expected["mac"]):
+    if not isinstance(mac, str) or not re.fullmatch(r"[0-9a-f]{64}", mac):
+        raise ValueError("backup authentication MAC mismatch")
+    if not hmac.compare_digest(mac.encode("ascii"), expected["mac"].encode("ascii")):
         raise ValueError("backup authentication MAC mismatch")
 
 

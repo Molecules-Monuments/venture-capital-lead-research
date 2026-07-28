@@ -28,7 +28,9 @@ Package readiness never fabricates deployment evidence. Keep
 `PRIMARY_CHANNEL=none`, cron disabled, and external production traffic blocked
 until the chosen deployment's applicable commissioning items pass.
 Install the complete hash-locked `requirements-dev.lock` into a disposable
-virtual environment, then run `python3 -B scripts/verify_offline.py` as the single
+virtual environment (Python **3.11 or newer** — the lock is compiled for
+3.11+, and `--require-hashes` refuses the unhashed backports older
+interpreters need), then run `python3 -B scripts/verify_offline.py` as the single
 deterministic entry point. The complete package-release proof adds
 `--with-g4-database`, `--with-schema-reference`, `--with-retrieval-scale`, and
 `--with-g6-image <built-image>` when local PostgreSQL 17 and Docker are
@@ -59,10 +61,12 @@ Use a dedicated Linux host inside one organizational trust boundary. Require:
   research endpoints, and only the selected channel provider;
 - loopback or private access to the gateway; a hardened TLS reverse proxy that
   exposes only `/api/messages` if Teams is selected; and
-- a POSIX shell plus host `python3` **3.9 or newer** — every lifecycle script
-  (`bootstrap.sh`, `update.sh`, `backup.sh`, `restore.sh`,
-  `rotate_runtime_role.sh`, `migrate.sh`) shells out to it, and
-  `check_customization.py` imports `zoneinfo`, which is 3.9+;
+- a POSIX shell plus host `python3` **3.9 or newer** — the lifecycle scripts
+  `bootstrap.sh`, `update.sh`, `backup.sh`, `restore.sh`, and
+  `rotate_runtime_role.sh` shell out to it, and `check_customization.py`
+  imports `zoneinfo`, which is 3.9+ (`migrate.sh` needs no python3; it uses
+  POSIX utilities — `awk`, `sed`, `grep`, `cmp`, `command`, and
+  `sha256sum`/`shasum`);
 - `openssl`, used to generate the six deployment secrets; and
 - a non-root deployment operator with exclusive control of the package and
   `.env`.
@@ -132,7 +136,10 @@ files as well as changed declared files. It stays correct after installation and
 during normal operation, so prefer it always: `.env`, the rendered runtime config
 under `config/runtime/`, and `deployment-lock.json` are on the verifier's
 allowed-runtime list, and operator payload inside `./inbox` and `./quarantine` is
-tolerated because those are working directories rather than package content. A
+tolerated because those are operator working directories rather than package
+content (`./inbox` is the document drop point; `./quarantine` is a runtime
+quarantine placeholder — the deployed stack quarantines rejected uploads into
+the `vc-quarantine` named volume, not into this directory). A
 *symlink* in either of those directories is still reported — the gateway would
 follow it out of the intended tree. This is a
 self-consistency check, not an external authenticity root: first verify the
@@ -306,8 +313,10 @@ counts. Secrets and approval tokens must never appear in evidence.
   `./scripts/rotate_runtime_role.sh` (never by editing `.env` alone). The other
   secrets need a re-render and a force-recreate, not a restart — see
   `docs/OPERATIONS.md` "Secrets" for the exact sequence. Rotating
-  `VCOPS_APPROVAL_PEPPER` invalidates every approval still `pending`; re-issue
-  them afterwards.
+  `VCOPS_APPROVAL_PEPPER` invalidates every approval not yet consumed —
+  `pending` *and* `approved`-but-unconsumed — because the pepper HMACs the
+  approval token and rotation changes every stored digest; re-issue them
+  afterwards.
 
 ### 5.5 Channel
 
@@ -429,8 +438,9 @@ For an accepted pending proposal:
 2. Add the rendered `SKILL.md` and reviewed support files to
    `workspaces/shared-skills/<skill-name>/` in a new repository revision.
 3. Update `config/openclaw.json`, the owning agent's `AGENTS.md` and `TOOLS.md`,
-   `vc-chief/vc/RESOLVER.md`, any canonical schemas/helpers/workflows, public
-   documentation, and positive, negative, adversarial, and routing fixtures.
+   `workspaces/vc-chief/vc/RESOLVER.md`, any canonical schemas/helpers/workflows,
+   public documentation, and positive, negative, adversarial, and routing
+   fixtures.
 4. Deliberately update the exact inventory in
    `scripts/validate_skill_system.py`; an unexplained count change is a release
    failure.

@@ -307,6 +307,90 @@ console.log(JSON.stringify({{direct: direct.prependContext, group: group.prepend
         self.assertEqual("block", rendered["blocked"]["outcome"])
         self.assertEqual("unsupported_attachment_type", rendered["blocked"]["reason"])
 
+    def test_plugin_blocks_unsupported_attachment_beyond_path_cap(self) -> None:
+        # The 11th attachment exceeds MAX_MEDIA_PATHS; a disallowed suffix
+        # there must still block the run instead of being truncated out of the
+        # suffix check. The singular mediaPath variant lands last in the same
+        # inspection list, so it is the natural over-cap probe.
+        with tempfile.TemporaryDirectory(prefix="trusted-plugin-") as raw:
+            key_path = Path(raw) / "key"
+            key_path.write_bytes(b"k" * 64)
+            supported = [
+                f"/home/node/.openclaw/media/inbound/deck{index}.pdf" for index in range(10)
+            ]
+            script = f"""
+import plugin from {json.dumps(PLUGIN_PATH.as_uri())};
+const hooks = {{}};
+plugin.register({{on: (name, handler) => {{ hooks[name] = handler; }}}});
+hooks.message_received(
+  {{messageId: 'event-1', senderId: 'U12345678', runId: 'run-cap', sessionKey: 'agent:vc-chief:slack:direct:u12345678', metadata: {{mediaPaths: {json.dumps(supported)}, mediaPath: '/home/node/.openclaw/media/inbound/macro.xlsm'}}}},
+  {{channelId: 'slack', accountId: 'default', conversationId: 'D123', messageId: 'event-1', senderId: 'U12345678', runId: 'run-cap', sessionKey: 'agent:vc-chief:slack:direct:u12345678'}}
+);
+const blocked = hooks.before_agent_run({{}}, {{runId: 'run-cap'}});
+console.log(JSON.stringify({{blocked}}));
+"""
+            process = subprocess.run(
+                ["node", "--input-type=module", "-e", script],
+                text=True,
+                capture_output=True,
+                check=False,
+                env={**os.environ, "VC_TRUSTED_CONTEXT_KEY_FILE": str(key_path)},
+            )
+            self.assertEqual(0, process.returncode, process.stderr)
+            rendered = json.loads(process.stdout)
+        self.assertEqual("block", rendered["blocked"]["outcome"])
+        self.assertEqual("unsupported_attachment_type", rendered["blocked"]["reason"])
+
+    def test_plugin_blocks_unsupported_attachment_with_an_irregular_name(self) -> None:
+        # A path too irregular to sign (spaces, parentheses, a directory
+        # segment) must still be suffix-inspected. Skipping it entirely would
+        # let an unsupported attachment buy passage with an unparseable name,
+        # while a supported document with the same irregularity must stay
+        # unblocked — it is simply never signed.
+        with tempfile.TemporaryDirectory(prefix="trusted-plugin-") as raw:
+            key_path = Path(raw) / "key"
+            key_path.write_bytes(b"k" * 64)
+            root = "/home/node/.openclaw/media/inbound"
+            probes = {
+                "spaced_macro": f"{root}/board deck.xlsm",
+                "parens_macro": f"{root}/Board Deck (1).xlsm",
+                "nested_macro": f"{root}/nested/evil.xlsm",
+                "spaced_pdf": f"{root}/Q3 Board Deck.pdf",
+                "nested_pdf": f"{root}/nested/ignored.pdf",
+            }
+            statements = "\n".join(
+                f"""hooks.message_received(
+  {{messageId: 'event-{name}', senderId: 'U12345678', runId: 'run-{name}', sessionKey: 'agent:vc-chief:slack:direct:u12345678', metadata: {{mediaPaths: [{json.dumps(value)}]}}}},
+  {{channelId: 'slack', accountId: 'default', conversationId: 'D123', messageId: 'event-{name}', senderId: 'U12345678', runId: 'run-{name}', sessionKey: 'agent:vc-chief:slack:direct:u12345678'}}
+);
+results[{json.dumps(name)}] = hooks.before_agent_run({{}}, {{runId: 'run-{name}'}}) ?? null;"""
+                for name, value in probes.items()
+            )
+            script = f"""
+import plugin from {json.dumps(PLUGIN_PATH.as_uri())};
+const hooks = {{}};
+plugin.register({{on: (name, handler) => {{ hooks[name] = handler; }}}});
+const results = {{}};
+{statements}
+console.log(JSON.stringify(results));
+"""
+            process = subprocess.run(
+                ["node", "--input-type=module", "-e", script],
+                text=True,
+                capture_output=True,
+                check=False,
+                env={**os.environ, "VC_TRUSTED_CONTEXT_KEY_FILE": str(key_path)},
+            )
+            self.assertEqual(0, process.returncode, process.stderr)
+            rendered = json.loads(process.stdout)
+        for name in ("spaced_macro", "parens_macro", "nested_macro"):
+            with self.subTest(attachment=name):
+                self.assertEqual("block", (rendered[name] or {}).get("outcome"))
+                self.assertEqual("unsupported_attachment_type", rendered[name]["reason"])
+        for name in ("spaced_pdf", "nested_pdf"):
+            with self.subTest(attachment=name):
+                self.assertIsNone(rendered[name])
+
     def signed_token(self, key: bytes, *, exp_offset: int = 600) -> str:
         now = int(time.time())
         media_path = "/home/node/.openclaw/media/inbound/deck.pptx"

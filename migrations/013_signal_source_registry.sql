@@ -12,8 +12,7 @@ SET LOCAL statement_timeout = '120s';
 CREATE TABLE IF NOT EXISTS signal_sources (
   id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   source_name TEXT NOT NULL CHECK (btrim(source_name) <> ''),
-  canonical_uri TEXT NOT NULL
-    CHECK (canonical_uri = lower(btrim(canonical_uri)) AND canonical_uri ~ '^https?://'),
+  canonical_uri TEXT NOT NULL,
   source_class TEXT NOT NULL CHECK (source_class IN (
     'company_blog', 'vc_portfolio', 'news_rss', 'press_release',
     'research_report', 'open_source', 'job_board', 'other'
@@ -41,6 +40,31 @@ CREATE TABLE IF NOT EXISTS signal_sources (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
   UNIQUE (canonical_uri)
 );
+
+-- Same normalization rule as sources.canonical_uri (012): trimmed, lowercase
+-- scheme and authority, path and query case preserved because they are
+-- meaningful. The earlier inline rule lowercased the WHOLE URI, which rejected
+-- every legitimate watchlist URL carrying an uppercase path segment — the
+-- helper feeds this column normalize_uri() output, which preserves path case,
+-- so `source-watch https://news.example/Feed` failed at the constraint.
+-- Stated as a named constraint (not inline) so re-running this migration
+-- against a database created by the earlier rule converges on the new one.
+ALTER TABLE signal_sources DROP CONSTRAINT IF EXISTS signal_sources_canonical_uri_check;
+DO $block$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'signal_sources_canonical_uri_normalized_check'
+  ) THEN
+    ALTER TABLE signal_sources ADD CONSTRAINT signal_sources_canonical_uri_normalized_check
+      CHECK (
+        canonical_uri = btrim(canonical_uri)
+        AND canonical_uri ~ '^https?://'
+        AND substring(canonical_uri from '^https?://[^/?#]*') =
+            lower(substring(canonical_uri from '^https?://[^/?#]*'))
+      );
+  END IF;
+END;
+$block$;
 
 CREATE INDEX IF NOT EXISTS signal_sources_due_idx
   ON signal_sources (cadence, last_scanned_at) WHERE enabled;

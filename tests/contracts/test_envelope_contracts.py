@@ -184,6 +184,23 @@ class ChiefEnvelopeTests(unittest.TestCase):
         p["delegations"][0]["disposition"] = "maybe"
         self.assertTrue(errors(self.schema, p))
 
+    def test_self_delegation_is_rejected(self):
+        # The chief can delegate only to the 11 specialists; recording a
+        # delegation to itself contradicts delegation-eval and AGENTS.md.
+        p = chief_packet()
+        p["delegations"][0]["agent"] = "vc-chief"
+        self.assertTrue(errors(self.schema, p))
+
+    def test_missing_data_items_are_typed(self):
+        typed = chief_packet(missing_data=[{
+            "field": "retention",
+            "state": "missing",
+            "reason": "No cohort evidence.",
+            "evidence_needed": "Dated cohort retention table.",
+        }])
+        self.assertEqual(errors(self.schema, typed), [])
+        self.assertTrue(errors(self.schema, chief_packet(missing_data=["retention"])))
+
 
 class ReturnAssessmentTests(unittest.TestCase):
     def setUp(self):
@@ -214,9 +231,13 @@ class ReturnAssessmentTests(unittest.TestCase):
 
 
 class CrossSchemaConsistencyTests(unittest.TestCase):
-    """Every agent-boundary schema must agree on the shared representations so a
-    packet cannot silently change an id type, confidence scale, or error shape as
-    it crosses a stage the chief aggregates."""
+    """Every specialist output schema must agree on the shared representations so
+    a packet cannot silently change an id type, confidence scale, or error shape
+    as it crosses a stage the chief aggregates.
+
+    Scope is the ten `*.output.schema.json` specialists; the chief and steward
+    envelopes are covered by their own tests, not by these equality checks.
+    """
 
     CANONICAL_ERROR = {
         "oneOf": [

@@ -98,6 +98,7 @@
       "config/openclaw.json": "<SHA256>",
       "tests/g3/routing_cases.jsonl": "<SHA256>",
       "tests/g3/scoring_boundary_cases.jsonl": "<SHA256>",
+      "workspaces/outbound-scout/USER.md": "<SHA256>",
       "workspaces/vc-chief/USER.md": "<SHA256>",
       "workspaces/vc-chief/vc/approval-policy.md": "<SHA256>",
       "workspaces/vc-chief/vc/channel_policy.md": "<SHA256>",

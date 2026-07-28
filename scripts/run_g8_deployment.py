@@ -24,9 +24,11 @@ import base64
 import hashlib
 import hmac
 import json
+import os
 import secrets
 import shutil
 import subprocess
+import sys
 import time
 import uuid
 from datetime import datetime, timezone
@@ -63,6 +65,7 @@ REVIEWED_ARTIFACTS = (
     "config/openclaw.json",
     "tests/g3/routing_cases.jsonl",
     "tests/g3/scoring_boundary_cases.jsonl",
+    "workspaces/outbound-scout/USER.md",
     "workspaces/vc-chief/USER.md",
     "workspaces/vc-chief/vc/approval-policy.md",
     "workspaces/vc-chief/vc/channel_policy.md",
@@ -160,8 +163,13 @@ def generate_runtime_files() -> dict[str, str]:
             lines.append(f"OPENAI_API_KEY=sk-g8-throwaway-{secrets.token_hex(8)}")
         else:
             lines.append(line)
-    (PACKAGE / ".env").write_text("\n".join(lines) + "\n", encoding="utf-8")
-    (PACKAGE / ".env").chmod(0o600)
+    # Create at 0600 rather than write-then-chmod: this file carries six live
+    # credentials, and a caller umask of 022 would leave it world-readable for
+    # the window between the two calls. O_EXCL matches the gate's own
+    # precondition that no .env exists (preflight refuses otherwise).
+    descriptor = os.open(PACKAGE / ".env", os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+        handle.write("\n".join(lines) + "\n")
 
     env = dict(
         item.split("=", 1) for item in lines if "=" in item and not item.lstrip().startswith("#")
@@ -280,10 +288,23 @@ def vcrun(workflow: str, arguments: dict[str, str]) -> dict:
         timeout=420,
         check=False,
     )
-    payload = last_json_object(process.stdout)
+    # vcrun routes its usage_error/vcrun_error/runtime_error/interrupted
+    # envelopes exclusively to stderr; scan it as well so those failures
+    # surface as themselves instead of as "no JSON object found in output: ''".
+    try:
+        payload = last_json_object(process.stdout)
+    except GateError:
+        try:
+            payload = last_json_object(process.stderr)
+        except GateError:
+            raise GateError(
+                f"vcrun {workflow} produced no JSON envelope: rc={process.returncode} "
+                f"stderr tail={process.stderr[-2000:]!r}"
+            ) from None
     if process.returncode != 0 or payload.get("ok") is not True:
         raise GateError(
-            f"vcrun {workflow} failed: rc={process.returncode} payload={json.dumps(payload)[:4000]}"
+            f"vcrun {workflow} failed: rc={process.returncode} payload={json.dumps(payload)[:4000]} "
+            f"stderr tail={process.stderr[-1000:]!r}"
         )
     return payload
 
@@ -300,13 +321,21 @@ def negative_auth_proof() -> str:
     probe = (
         "set -eu; passfile=$(mktemp /dev/shm/g8-invalid-pgpass.XXXXXX); chmod 0600 \"$passfile\"; "
         "printf '127.0.0.1:5432:openclaw:openclaw_owner:%s\\n' 'G8InvalidCredentialProbe_0000000000000000' > \"$passfile\"; "
-        "if PGPASSFILE=\"$passfile\" psql -X -w --host=127.0.0.1 --username openclaw_owner "
-        "--dbname openclaw --command 'SELECT 1' >/dev/null 2>&1; then rm -f \"$passfile\"; "
-        "echo INVALID_PASSWORD_ACCEPTED; exit 1; fi; rm -f \"$passfile\"; echo invalid-password-rejected"
+        "if err=$(PGPASSFILE=\"$passfile\" psql -X -w --host=127.0.0.1 --username openclaw_owner "
+        "--dbname openclaw --command 'SELECT 1' 2>&1); then rm -f \"$passfile\"; "
+        "echo INVALID_PASSWORD_ACCEPTED; exit 1; fi; rm -f \"$passfile\"; "
+        "printf 'invalid-password-rejected %s\\n' \"$err\""
     )
     process = run(compose("exec", "-T", "postgres", "sh", "-c", probe), timeout=60)
     if "invalid-password-rejected" not in process.stdout:
         raise GateError(f"negative proof did not observe a rejection: {process.stdout!r}")
+    # A refused password and an unreachable server both make psql exit
+    # non-zero; only the first proves anything about authentication.
+    if "authentication failed" not in process.stdout:
+        raise GateError(
+            "negative proof did not observe an authentication failure — the server may "
+            f"simply have been unreachable: {process.stdout!r}"
+        )
     trust_lines = run(
         compose(
             "exec", "-T", "postgres", "sh", "-c",
@@ -415,8 +444,23 @@ def teardown() -> None:
         run(["docker", "volume", "rm", "-f", *stale], timeout=120, check=False)
     for relative in GENERATED_FILES:
         (PACKAGE / relative).unlink(missing_ok=True)
+    # precheck() proved the lock absent at start, so anything here appeared
+    # during the run. Only a lock this gate's own bootstrap.sh could have left
+    # is ours to clear: a backup/restore/update/rotate token belongs to a real
+    # operator lifecycle operation and removing it would defeat the mutual
+    # exclusion the lock exists to provide.
     if LIFECYCLE_LOCK.exists():
-        shutil.rmtree(LIFECYCLE_LOCK, ignore_errors=True)
+        try:
+            owner = (LIFECYCLE_LOCK / "owner").read_text(encoding="utf-8").strip()
+        except OSError:
+            owner = ""
+        if owner.startswith("bootstrap:"):
+            shutil.rmtree(LIFECYCLE_LOCK, ignore_errors=True)
+        else:
+            print(
+                f"leaving lifecycle lock {LIFECYCLE_LOCK} held by {owner or 'an unidentified owner'}",
+                file=sys.stderr,
+            )
 
 
 def main() -> int:

@@ -25,6 +25,12 @@ import psycopg
 from psycopg.rows import dict_row
 
 
+# This gate loads scripts/run_g4.py (and through it scripts/check_env.py) by
+# path, which would byte-compile both into scripts/__pycache__ and make
+# `verify_release.py --pristine` report undeclared files. Suppress it so the
+# gate stays safe to run even when someone omits `-B`.
+sys.dont_write_bytecode = True
+
 PACKAGE = Path(__file__).resolve().parent.parent
 COMPANY_COUNT = 100_000
 FACT_COUNT = 1_000_000

@@ -39,13 +39,13 @@ provenance and workflow, never hidden score weight.
 
 | Stable key | Criterion | Weight |
 |---|---|---:|
-| `thesis_stage_geography_fit` | Thesis/stage/geography fit | 15 |
-| `founder_team_signal` | Founder/team signal | 15 |
+| `thesis_stage_geography_fit` | Thesis, stage, and geography fit | 15 |
+| `founder_team_signal` | Founder and team evidence | 15 |
 | `problem_product_depth` | Problem and product depth | 15 |
 | `technical_differentiation` | Technical differentiation | 10 |
-| `traction_adoption` | Traction/adoption | 15 |
-| `market_buyer_timing` | Market/buyer/timing | 10 |
-| `business_commercial_evidence` | Business/commercial evidence | 10 |
+| `traction_adoption` | Traction and adoption | 15 |
+| `market_buyer_timing` | Market, buyer, and timing | 10 |
+| `business_commercial_evidence` | Business and commercial evidence | 10 |
 | `risk_decision_readiness` | Risk and decision readiness | 10 |
 
 `scoring-rubric.v3.json` is the machine authority. Callers never define or
@@ -69,6 +69,11 @@ adjustments:
 - no other implicit confidence/origin bonus.
 
 `final_100 = clamp(raw_100 + adjustments, 0, 100)`.
+
+The adjustment limits above are fixed in the vcops helper (`calculate_score`)
+and are not configurable through `scoring-rubric.v3.json`; the rubric file's
+configuration surface is its criteria weights, decision-readiness gates, and
+recommendation intervals.
 
 `display_5 = round(final_100 / 20, 1)` for display only; recommendations use unrounded `final_100`.
 

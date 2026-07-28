@@ -115,6 +115,10 @@ class SearchProviderRenderTests(unittest.TestCase):
         self.assertNotIn("apiKey", web)
 
     def test_env_validator_accepts_new_provider_with_its_key(self):
+        # Assert against the shipped validator itself, never a local copy of
+        # its logic: a re-implementation stays green when check_env regresses.
+        # The assertions target exact search-block error strings, so unrelated
+        # validation errors from the padded values cannot flip them.
         base = {k: "x" for k in check_env.REQUIRED}
         base.update({
             "VC_MODEL_PROVIDER": "openai", "OPENAI_API_KEY": "sk-x",
@@ -122,36 +126,23 @@ class SearchProviderRenderTests(unittest.TestCase):
             "VC_WEB_FETCH_PROVIDER": "default", "VC_CHANNEL_MEDIA_MAX_MB": "25",
             "VC_PRIMARY_MODEL": "openai/gpt-5.6", "VC_FAST_MODEL": "openai/gpt-5.6",
         })
+        with_key = check_env.validate_runtime_selection(base)
         self.assertNotIn(
             "VC_WEB_SEARCH_PROVIDER must be one of auto, duckduckgo, firecrawl, tavily, "
             "brave, perplexity, exa, searxng, parallel-free",
-            _search_errors(base),
+            with_key,
+        )
+        self.assertNotIn(
+            "BRAVE_API_KEY must be set exactly when the brave search provider is selected",
+            with_key,
         )
         # brave selected without its key must error
         no_key = dict(base)
         no_key["BRAVE_API_KEY"] = ""
         self.assertIn(
             "BRAVE_API_KEY must be set exactly when the brave search provider is selected",
-            _search_errors(no_key),
+            check_env.validate_runtime_selection(no_key),
         )
-
-
-def _search_errors(values):
-    """Re-run just the search-block validation logic against a values dict."""
-    errors = []
-    search_credential = {"brave": "BRAVE_API_KEY", "perplexity": "PERPLEXITY_API_KEY",
-                         "exa": "EXA_API_KEY", "searxng": "SEARXNG_BASE_URL"}
-    keyless = {"auto", "duckduckgo", "parallel-free"}
-    search = values.get("VC_WEB_SEARCH_PROVIDER", "")
-    if search not in keyless | {"firecrawl", "tavily"} | set(search_credential):
-        errors.append(
-            "VC_WEB_SEARCH_PROVIDER must be one of auto, duckduckgo, firecrawl, tavily, "
-            "brave, perplexity, exa, searxng, parallel-free"
-        )
-    for provider, credential in search_credential.items():
-        if (search == provider) != bool(values.get(credential)):
-            errors.append(f"{credential} must be set exactly when the {provider} search provider is selected")
-    return errors
 
 
 if __name__ == "__main__":

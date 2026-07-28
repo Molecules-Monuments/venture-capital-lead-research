@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: 0BSD
 from __future__ import annotations
 
+import ast
 import hashlib
 import json
 import re
@@ -235,6 +236,7 @@ class Version3ContractTests(unittest.TestCase):
     def test_required_customization_markers_resolve_to_real_files(self) -> None:
         required = [
             ROOT / ".env.example",
+            ROOT / "workspaces/outbound-scout/USER.md",
             ROOT / "workspaces/vc-chief/USER.md",
             ROOT / "workspaces/vc-chief/vc/thesis.md",
             ROOT / "workspaces/vc-chief/vc/exclusion_criteria.md",
@@ -393,6 +395,40 @@ class Version3ContractTests(unittest.TestCase):
             )
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("duplicate JSON key", result.stdout)
+
+    def test_reviewed_artifact_inventories_cannot_drift(self) -> None:
+        """The reviewed-artifact set is written down in three places.
+
+        `check_customization.py` demands it, the example profile carries a hash
+        slot per entry, and the G8 gate builds the profile it bootstraps with
+        from its own copy. If they disagree, the offline suites still pass and
+        only a full deployment run fails, so pin them to each other here.
+        """
+        required = self.reviewed_artifact_set(
+            ROOT / "scripts/check_customization.py", "REQUIRED_REVIEWED_ARTIFACTS"
+        )
+        gate = self.reviewed_artifact_set(
+            ROOT / "scripts/run_g8_deployment.py", "REVIEWED_ARTIFACTS"
+        )
+        example = set(
+            json.loads(
+                (ROOT / "config/customization-profile.example.json").read_text(encoding="utf-8")
+            )["review"]["reviewed_artifacts"]
+        )
+        self.assertEqual(required, gate)
+        self.assertEqual(required, example)
+        for relative in sorted(required):
+            with self.subTest(path=relative):
+                self.assertTrue((ROOT / relative).is_file())
+
+    @staticmethod
+    def reviewed_artifact_set(path: Path, name: str) -> set[str]:
+        module = ast.parse(path.read_text(encoding="utf-8"))
+        for node in module.body:
+            targets = getattr(node, "targets", [])
+            if any(isinstance(t, ast.Name) and t.id == name for t in targets):
+                return {element.value for element in node.value.elts}
+        raise AssertionError(f"{name} not found in {path}")
 
     def test_workflow_state_is_bound_to_v3_package_and_policy(self) -> None:
         helper = (ROOT / "workspaces/vc-chief/vc/bin/vcops.py").read_text(encoding="utf-8")

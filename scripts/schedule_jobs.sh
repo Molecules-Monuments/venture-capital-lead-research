@@ -1,6 +1,9 @@
 #!/bin/sh
 # SPDX-License-Identifier: 0BSD
 set -eu
+# Word-splitting of the delivery value below is deliberate; pathname expansion
+# is not — set -f keeps glob characters in operator-supplied values literal.
+set -f
 umask 077
 # Deliberate opt-in: seed the autonomous scheduled jobs (source surveillance and
 # an optional health heartbeat) using OpenClaw's NATIVE cron. Jobs live in the

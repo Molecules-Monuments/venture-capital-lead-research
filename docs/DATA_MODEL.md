@@ -31,8 +31,10 @@ Workspace memory is operational convenience only. It may point to Postgres IDs b
 Migration files are immutable after release. The installer computes each file's lowercase SHA-256 outside Postgres, applies it in a transaction, and then calls:
 
 ```sql
-SELECT register_schema_migration('001', 'initial_v2', '<64-character-file-sha256>');
+SELECT register_schema_migration('001', '001_initial_v2', '<64-character-file-sha256>');
 ```
+
+The registered name is the full migration file stem, version prefix included, matching `scripts/migrate.sh` (`name="${migration_file%.sql}"`).
 
 `schema_migrations` stores the supplied checksum, is append-only, and rejects a repeated version whose name or checksum differs. The registration function intentionally does not claim it can hash the client-side SQL file. The install/update script or release manifest must supply and verify the real file digest. Missing registration, a checksum mismatch, an unexpected migration, or a migration row without a matching release-manifest entry is a hard deployment failure.
 
@@ -172,11 +174,16 @@ An actual contradiction requires incompatible assertions about the same entity a
 
 Two bands sit outside that mapping and are valid at **any** score, because they
 record that the score is not decision-usable rather than what it was:
-`insufficient_evidence` and `needs_human_review`. There is also one deliberate
-override — a `[82, 100]` evaluation may be stored as `research_deeper` when
-`scoring_details ->> 'override' = 'high_priority_prerequisites_missing'`.
-`evaluations_score_band_check` (migration `007`) is the authority; an
-integration reading this table must handle all six band values, not four.
+`insufficient_evidence` and `needs_human_review`. There are also two deliberate
+overrides. A `[82, 100]` evaluation may be stored as `research_deeper` when
+`scoring_details ->> 'override' = 'high_priority_prerequisites_missing'`. A
+hard exclusion is stored as `pass` at **any** `total_score` in `[0, 100]` when
+`scoring_details ->> 'override' = 'hard_exclusion'`: the criteria score is
+preserved rather than zeroed (`scoring-rubric.md` documents `pass` as the
+hard-exclusion outcome), so an integration must not assume a `pass` band
+implies a sub-50 score. `evaluations_score_band_check` (migration `007`) is the
+authority; an integration reading this table must handle all six band values,
+not four.
 
 `evaluation_criteria` stores each criterion's 0–5 score, fixed point weight, weighted points, evidence IDs, and rationale. A missing criterion is constrained to zero score and zero weighted points. Application validation must also prove criterion weights sum to 100 and stored weighted points sum to `total_score` before an evaluation becomes final.
 
@@ -301,12 +308,12 @@ README but not previously named here. They complete the 42-table inventory:
 | Table | Role |
 |---|---|
 | `company_aliases` | Alternate names for one company (trading names, former names, transliterations). Feeds trigram-indexed fuzzy matching. |
-| `company_domains` | Registrable domains bound to one company. The primary exact-match key during resolution, and the basis for the content-addressed web-independence rule. |
+| `company_domains` | Registrable domains bound to one company. The primary exact-match key during resolution. |
 | `entity_resolution_runs` | One resolution attempt: its input, threshold configuration, and outcome summary. |
-| `entity_resolution_decisions` | Per-candidate scoring within a run, so a match can be re-read and audited rather than re-derived. |
+| `entity_resolution_decisions` | Exactly one decision row per resolution run (`resolution_run_id` is UNIQUE), recording the outcome, matched company, method and confidence, with the per-candidate set and rationale carried in `candidate_company_ids` and `reasons`, so a match can be re-read and audited rather than re-derived. |
 | `entity_resolution_consumptions` | Binds a resolution decision to the workflow run that consumed it, so a downstream write can be traced to the exact match that justified it. |
 | `memo_citations` | The claim-to-evidence edges of one memo. Append-only, and lineage-guarded so a memo cannot cite outside its frozen evidence snapshot. |
-| `signal_sources` | The operator-governed source watchlist driving `source-watch`/`source-scan`, including cadence, trust level, confidentiality, and last-scan state. |
+| `signal_sources` | The operator-governed source watchlist driving `source-watch`/`source-scan`, including cadence, owner, confidentiality, enabled state, and last-scan state. |
 
 `memo_citations`, like the other history tables, is append-only. `signal_sources`
 is confidentiality-gated: model lanes are capped at the `internal` ceiling and

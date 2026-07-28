@@ -126,6 +126,24 @@ class EnvironmentFileSecurityTests(unittest.TestCase):
             finally:
                 sys.argv = previous_argv
 
+    def test_blank_secrets_do_not_trigger_reuse_error(self) -> None:
+        # A fresh `cp .env.example .env` leaves every deployment secret empty.
+        # That run must fail for the real reason (unset secrets), never with the
+        # secret-reuse accusation, which only applies to populated values.
+        with tempfile.TemporaryDirectory(prefix="env-contract-") as raw:
+            body = (PACKAGE / ".env.example").read_text(encoding="utf-8")
+            path = self.make_env(Path(raw), body)
+            previous_argv = sys.argv
+            try:
+                sys.argv = [str(CHECK_ENV_PATH), str(path)]
+                output = io.StringIO()
+                with self.clean_deployment_environment(), redirect_stdout(output):
+                    self.assertEqual(1, check_env.main())
+                self.assertNotIn("must not be reused", output.getvalue())
+                self.assertNotIn("must not reuse", output.getvalue())
+            finally:
+                sys.argv = previous_argv
+
     def test_unknown_compose_steering_key_fails(self) -> None:
         with tempfile.TemporaryDirectory(prefix="env-contract-") as raw:
             path = self.make_env(
@@ -208,7 +226,6 @@ class RuntimeInfrastructureTests(unittest.TestCase):
             "jq=1.6-2.1+deb12u2",
             "libmagic1=1:5.44-3",
             "poppler-utils=22.12.0-2+deb12u2",
-            "postgresql-client=15+248+deb12u1",
             "python3=3.11.2-1+b1",
             "python3-pip=23.0.1+dfsg-1",
             "python3-venv=3.11.2-1+b1",
@@ -282,7 +299,11 @@ class RuntimeInfrastructureTests(unittest.TestCase):
         )
         init_command = "\n".join(initializer["command"])
         self.assertIn("install -m 0400 -o node -g node", init_command)
-        self.assertIn("cmp -s", init_command)
+        self.assertIn("cmp -s /run/openclaw-source/openclaw.json /runtime-config/openclaw.json", init_command)
+        # exec-approvals.json is deliberately runtime-writable (OpenClaw may
+        # maintain its socket token in it), so init must never byte-compare it
+        # against the seed — the jq reviewed-key assertion is the guard.
+        self.assertNotIn("cmp -s /opt/openclaw-seed/exec-approvals.json", init_command)
         self.assertIn("node:node:400", init_command)
         self.assertIn('.defaults.askFallback == "deny"', init_command)
         self.assertIn('.agents["data-steward"].security == "allowlist"', init_command)
@@ -324,6 +345,24 @@ class RuntimeInfrastructureTests(unittest.TestCase):
                 self.assertIn("max-size", service["logging"]["options"])
                 self.assertIn("max-file", service["logging"]["options"])
 
+    def test_services_drop_privileges_and_the_data_network_stays_internal(self) -> None:
+        """Pin the container-hardening directives themselves.
+
+        The resource bounds above are asserted but the privilege posture was
+        not, so dropping `read_only`, `cap_drop` or `no-new-privileges` from a
+        service — or giving the database network egress — was a silent edit.
+        Postgres is the one writable root filesystem: its data directory is a
+        mount the entrypoint must initialize.
+        """
+        for name, service in self.compose["services"].items():
+            with self.subTest(service=name):
+                self.assertEqual(["ALL"], service.get("cap_drop"))
+                self.assertEqual(["no-new-privileges:true"], service.get("security_opt"))
+                if name != "postgres":
+                    self.assertIs(True, service.get("read_only"))
+        self.assertIs(True, self.compose["networks"]["backend"].get("internal"))
+        self.assertNotIn("egress", self.compose["services"]["postgres"].get("networks", []))
+
     def test_migrations_and_portable_named_volumes_are_fail_closed(self) -> None:
         postgres_mounts = json.dumps(self.compose["services"]["postgres"]["volumes"])
         self.assertIn("migrations/000_roles.sh", postgres_mounts)
@@ -351,6 +390,50 @@ class LifecycleScriptContractTests(unittest.TestCase):
                     f"{name} renders/deploys config without validating the customization profile",
                 )
 
+    def test_no_lifecycle_path_can_shed_bytecode_into_the_pristine_package(self) -> None:
+        """`verify_release.py --pristine` rejects undeclared caches by design, so any
+        packaged script that byte-compiles a module into the tree makes a working
+        deployment report itself as tampered. Two independent guards must hold, and
+        both are derived here rather than listed, so a new script or a new sibling
+        import cannot reintroduce the defect silently.
+        """
+        # A module run as __main__ is never byte-compiled, so only modules that LOAD
+        # another packaged module — by sibling import or importlib-by-path — can shed
+        # a .pyc. Derive that set instead of listing it.
+        loader = re.compile(r"^\s*(?:from\s+(?:check_env|vcrun)\s+import|.*spec_from_file_location)", re.M)
+        roots = (PACKAGE / "scripts", PACKAGE / "workspaces/vc-chief/vc/bin")
+        modules = sorted(p for root in roots for p in root.glob("*.py"))
+        self.assertTrue(modules, "no packaged python modules discovered")
+        loaders = {p.name for p in modules if loader.search(p.read_text(encoding="utf-8"))}
+        self.assertTrue(loaders, "loader detection found nothing; the regex has drifted")
+
+        # 1. Each loader module must set sys.dont_write_bytecode, so it is safe
+        #    however it is invoked — including directly, without `-B`.
+        for module in modules:
+            if module.name not in loaders:
+                continue
+            with self.subTest(module=module.name):
+                self.assertIn(
+                    "sys.dont_write_bytecode = True", module.read_text(encoding="utf-8"),
+                    f"{module.name} loads another packaged module but does not set "
+                    "sys.dont_write_bytecode; running it without -B pollutes the package",
+                )
+
+        # 2. Defence in depth: a shell script that invokes a loader module must also
+        #    export PYTHONDONTWRITEBYTECODE, so the guarantee does not rest on a
+        #    single line inside the module.
+        for script in sorted(PACKAGE.glob("scripts/*.sh")):
+            body = script.read_text(encoding="utf-8")
+            invoked = sorted(name for name in loaders if name in body)
+            if not invoked:
+                continue
+            with self.subTest(script=script.name):
+                self.assertIn(
+                    "PYTHONDONTWRITEBYTECODE", body,
+                    f"{script.name} invokes {invoked} without suppressing bytecode; a run "
+                    "would leave scripts/__pycache__ and fail verify_release.py --pristine",
+                )
+
     def test_agent_exec_allowlist_cannot_prefix_a_privileged_entrypoint(self) -> None:
         # The two agent-reachable launchers must live in an isolated bin/agent/
         # directory so no allowlisted path is a string prefix of a privileged
@@ -370,10 +453,23 @@ class LifecycleScriptContractTests(unittest.TestCase):
             str(p) for p in bin_dir.iterdir()
             if p.is_file()  # the *.py impls and privileged wrappers all sit in bin/, not bin/agent/
         ]
+        # Pin the agent-lane inventory itself: a later sibling added inside
+        # bin/agent/ (e.g. agent/vcops-admin) would be prefix-matched by the
+        # allowlisted agent/vcops pattern, so its absence must be asserted, not
+        # assumed.
+        self.assertEqual(
+            sorted(p.name for p in (bin_dir / "agent").iterdir()),
+            ["vcops", "vcrun"],
+            "bin/agent/ must contain exactly the two agent-reachable launchers",
+        )
         image_bin = "/workspaces/vc-chief/vc/bin"
+        siblings = [
+            f"{image_bin}/{p.relative_to(bin_dir).as_posix()}"
+            for p in bin_dir.rglob("*")
+            if p.is_file()  # includes bin/agent/, so prefix-matched additions there fail too
+        ]
         for allowed in patterns:
-            for name in (p.name for p in bin_dir.iterdir() if p.is_file()):
-                sibling = f"{image_bin}/{name}"
+            for sibling in siblings:
                 with self.subTest(allowed=allowed, sibling=sibling):
                     self.assertFalse(
                         sibling.startswith(allowed) and sibling != allowed,

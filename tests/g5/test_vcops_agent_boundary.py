@@ -5,6 +5,7 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -127,6 +128,123 @@ class AgentVcopsBoundaryTests(unittest.TestCase):
                 returncode, payload = self.invoke_agent(command)
                 self.assertEqual(1, returncode)
                 self.assertEqual("confidentiality_denied", payload["error"]["code"])
+
+    def test_evaluation_preview_returns_typed_errors_for_malformed_agent_json(self) -> None:
+        # Malformed agent JSON is expected input on this lane: every probe must
+        # produce a typed validation error at exit 2, never internal_error/3.
+        valid_criterion = {
+            "evidence_state": "positive",
+            "quality_score": 4,
+            "coverage": "partial",
+            "evidence_quality": "medium",
+            "evidence_fact_ids": [1],
+            "counterevidence_fact_ids": [],
+            "rationale": "sample rationale",
+            "what_would_change": "sample falsifier",
+        }
+        probes = (
+            ({"quality_score": "NaN"}, {}, "invalid_score"),
+            ({"evidence_state": []}, {}, "invalid_criterion"),
+            ({"coverage": {}}, {}, "invalid_criterion"),
+            ({"rationale": True}, {}, "invalid_text"),
+            ({}, {"adjustments": [{"kind": "trajectory", "points": "NaN",
+                                   "reason": "r", "evidence_fact_ids": [1]}]}, "invalid_adjustment"),
+            ({}, {"adjustments": {}}, "invalid_adjustment"),
+        )
+        for override, context, expected_code in probes:
+            with self.subTest(code=expected_code, override=override, context=context):
+                criteria = {"thesis_stage_geography_fit": {**valid_criterion, **override}}
+                returncode, payload = self.invoke_agent(
+                    [
+                        "evaluation-preview",
+                        "--criteria", json.dumps(criteria),
+                        "--decision-context", json.dumps(context),
+                    ]
+                )
+                self.assertEqual(2, returncode, payload)
+                self.assertEqual(expected_code, payload["error"]["code"])
+
+    def test_malformed_trusted_context_tokens_stay_typed(self) -> None:
+        """A hostile token must be denied, never crash the helper.
+
+        `compare_digest` raises TypeError on non-ASCII str operands and
+        `.encode("ascii")` raises UnicodeEncodeError, so the token's shape has
+        to be checked before any cryptographic work — this is the
+        channel-facing verification path.
+        """
+        with tempfile.TemporaryDirectory(prefix="g5-tc-") as raw:
+            key = Path(raw) / "trusted-context.key"
+            key.write_bytes(b"g5-test-trusted-context-key-000000000000000000")
+            probes = ("abc.dëf", "ä.def", "abc", "a.b.c", "eyJhIjoxfQ==.YWJj", "abc.")
+            for token in probes:
+                with self.subTest(token=token):
+                    process = subprocess.run(
+                        [
+                            sys.executable, str(VCOPS), "preference-lookup",
+                            "--trusted-context", token,
+                        ],
+                        env={
+                            "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+                            "VCOPS_AGENT_MODE": "1",
+                            "VC_TRUSTED_CONTEXT_KEY_FILE": str(key),
+                        },
+                        text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=10,
+                    )
+                    payload = json.loads(process.stdout)
+                    self.assertEqual("invalid_trusted_context", payload["error"]["code"])
+                    self.assertEqual(1, process.returncode)
+
+    def test_oversized_and_deeply_nested_agent_json_stay_typed(self) -> None:
+        # int() raises ValueError past CPython's digit limit, and json.loads
+        # raises RecursionError, neither of which is a validation error type.
+        criterion = {
+            "evidence_state": "positive", "quality_score": 4, "coverage": "partial",
+            "evidence_quality": "medium", "evidence_fact_ids": ["9" * 4301],
+            "counterevidence_fact_ids": [], "rationale": "r", "what_would_change": "w",
+        }
+        returncode, payload = self.invoke_agent([
+            "evaluation-preview",
+            "--criteria", json.dumps({"founder_team_signal": criterion}),
+            "--decision-context", "{}",
+        ])
+        self.assertEqual(2, returncode)
+        self.assertEqual("invalid_evidence_id", payload["error"]["code"])
+
+        depth = 200_000
+        returncode, payload = self.invoke_agent([
+            "evaluation-preview",
+            "--criteria", "[" * depth + "]" * depth,
+            "--decision-context", "{}",
+        ])
+        self.assertEqual(2, returncode)
+        self.assertEqual("invalid_json", payload["error"]["code"])
+
+    def test_operator_decision_lanes_reject_non_ascii_principals(self) -> None:
+        """approval-decide and proposal-decide share one authority contract.
+
+        Both must answer a non-ASCII principal with the typed denial rather
+        than a TypeError out of `compare_digest`.
+        """
+        commands = (
+            ["approval-decide", "--request-id", "r", "--decision", "approve",
+             "--approver", "appröver", "--approval-channel", "session", "--reason", "x"],
+            ["proposal-decide", "--proposal-id", "1", "--decision", "accept",
+             "--reviewer", "reviöwer", "--note", "x"],
+        )
+        for command in commands:
+            with self.subTest(command=command[0]):
+                process = subprocess.run(
+                    [sys.executable, str(VCOPS), *command],
+                    env={
+                        "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+                        "VCOPS_OPERATOR_MODE": "1",
+                        "VCOPS_OPERATOR_ID": "operator-1",
+                    },
+                    text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=10,
+                )
+                payload = json.loads(process.stdout)
+                self.assertEqual("operator_context_required", payload["error"]["code"])
+                self.assertEqual(1, process.returncode)
 
     def test_agent_json_rejects_duplicate_object_keys(self) -> None:
         returncode, payload = self.invoke_agent(

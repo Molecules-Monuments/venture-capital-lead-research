@@ -239,6 +239,13 @@ class RecoveryLifecycleContractTests(unittest.TestCase):
         self.assertIn("--exclude=./openclaw.json", script)
         self.assertIn("--exclude=./exec-approvals.json", script)
         self.assertIn("--exclude=./exec-approvals.sock", script)
+        # Those tar excludes are top-level-only, so restore.sh's contamination
+        # check must anchor on the same depth: a nested archive member that
+        # merely shares one of these names is legitimate backup payload.
+        self.assertIn(
+            r"grep -Eq '^(openclaw\.json|exec-approvals\.(json|sock))$'",
+            body("restore.sh"),
+        )
         self.assertIn("-C /inbox -czf - .", script)
         self.assertIn("-C /quarantine -czf - .", script)
         self.assertIn("LOCAL_ARTIFACTS.tsv", script)
@@ -533,8 +540,10 @@ class RecoveryLifecycleContractTests(unittest.TestCase):
     def test_pristine_tolerates_operator_payload_but_not_symlinks_in_it(self) -> None:
         """`--pristine` must stay usable on a system that is doing its job.
 
-        `inbox/` is the documented document drop point and `quarantine/` receives
-        rejected uploads, so both accumulate operator payload that is deliberately
+        `inbox/` is the documented document drop point and `quarantine/` is a
+        runtime quarantine placeholder (the deployed stack quarantines rejected
+        uploads into the `vc-quarantine` named volume, not this directory); both
+        are operator working directories whose payload is deliberately
         undeclared. If those files failed the check, the RUNBOOK's pre-deployment
         verification would report a false integrity failure on every running
         deployment. A symlink is different: the gateway bind-mounts `inbox` and

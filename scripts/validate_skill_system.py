@@ -17,6 +17,13 @@ from typing import Any
 import yaml
 
 
+# This validator loads vcrun.py by path, which would byte-compile it into
+# workspaces/vc-chief/vc/bin/__pycache__ and make `verify_release.py --pristine`
+# report an undeclared file. Suppress it so the validator stays safe to run even
+# when someone omits `-B`. (validate_workflows.py, which this runs as a child
+# process, carries the same guard for its own load of vcops.py.)
+sys.dont_write_bytecode = True
+
 PACKAGE = Path(__file__).resolve().parent.parent
 CONFIG_PATH = PACKAGE / "config/openclaw.json"
 SKILLS_ROOT = PACKAGE / "workspaces/shared-skills"
@@ -496,12 +503,20 @@ def validate_workflows(findings: list[Finding]) -> None:
         actual_steps = [item.get("id") for item in steps if isinstance(item, dict)]
         if actual_steps != expected_steps:
             add(findings, "workflow_steps", path, f"expected={expected_steps} actual={actual_steps}")
-        if expected_steps[-1] != "workflow_succeeded":
+        # Test the parsed workflow, not the constant it was compared against:
+        # keyed on expected_steps this finding could never fire.
+        if actual_steps[-1] != "workflow_succeeded":
             add(findings, "workflow_terminal", path, "workflow inventory lacks a terminal success step")
         contract = contracts.get(workflow, {})
         contract_args = set(contract.get("keys", set())) | set(contract.get("optional_keys", set()))
-        if isinstance(body.get("args"), dict) and set(body["args"]) != contract_args:
-            add(findings, "workflow_args", path, "workflow args differ from vcrun's exact contract")
+        workflow_args = body.get("args")
+        if isinstance(workflow_args, dict):
+            if set(workflow_args) != contract_args:
+                add(findings, "workflow_args", path, "workflow args differ from vcrun's exact contract")
+        elif contract_args:
+            # A dropped args mapping is the likeliest drift; failing open here
+            # would let it pass the only offline check of this contract.
+            add(findings, "workflow_args", path, "workflow args mapping is missing while vcrun's contract expects args")
 
     process = subprocess.run(
         [sys.executable, "-B", str(PACKAGE / "scripts/validate_workflows.py")],
@@ -509,6 +524,7 @@ def validate_workflows(findings: list[Finding]) -> None:
         text=True,
         capture_output=True,
         check=False,
+        timeout=300,
     )
     if process.returncode != 0:
         add(findings, "workflow_static", PACKAGE / "scripts/validate_workflows.py", (process.stdout + process.stderr)[-4000:])
@@ -537,7 +553,15 @@ def validate_agent_exec_paths(findings: list[Finding]) -> None:
         return
 
     token = re.compile(r"/workspaces/vc-chief/vc/bin/[A-Za-z0-9_./-]+")
-    for path in sorted(WORKSPACES_ROOT.glob("*/*.md")):
+    # rglob (not */*.md, which missed taskflow.md and every shared skill), but
+    # skip hidden directories and operator runtime staging: their contents are
+    # not reviewed package prose and must not fail the release gate.
+    markdown = (
+        path
+        for path in WORKSPACES_ROOT.rglob("*.md")
+        if not any(part.startswith(".") for part in path.relative_to(WORKSPACES_ROOT).parts)
+    )
+    for path in sorted(markdown):
         for reference in sorted(set(token.findall(path.read_text(encoding="utf-8")))):
             target = PACKAGE / reference.lstrip("/")
             if not target.is_file():

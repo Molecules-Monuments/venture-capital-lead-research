@@ -50,7 +50,8 @@ launcher uses fixed runtime mode and Docker secret files.
 
 ## Inventory
 
-All values are strings and every listed field is required.
+All values are strings and every listed field is required unless explicitly
+marked optional.
 
 | Selector | Purpose | Exact fields |
 | --- | --- | --- |
@@ -70,7 +71,7 @@ All values are strings and every listed field is required.
 | `source-watch` | Register or re-enable one watched surveillance source (the "monitor this website" path); the workflow lane cannot re-enable an operator-disabled entry, lower a stored confidentiality, or change ownership | `idempotency_key`, `source_name`, `source_uri`, `source_class`, `cadence`, `thesis_relevance`, `expected_signal` |
 | `source-unwatch` | Disable one watched source without deleting its history | `idempotency_key`, `source_uri` |
 | `proposal-record` | Persist one governance proposal (schema change / source policy / skill candidate) for operator review; applies nothing | `idempotency_key`, `proposal_kind`, `title`, `summary`, `content_json` |
-| `orchestration-record` | Persist one orchestration/delegation audit entry (delegation_eval / return_assessment / chief_output) for a lead's research run | `idempotency_key`, `lead_id`, `record_kind`, `specialist`, `payload_json` |
+| `orchestration-record` | Persist one orchestration/delegation audit entry (delegation_eval / return_assessment / chief_output) for a lead's research run | `idempotency_key`, `lead_id`, `record_kind`, `specialist`, `payload_json`; optional Task Flow correlation handles `flow_id`, `task_id`, `flow_revision` (empty string persists as NULL) |
 | `source-scan` | Atomically claim the enabled sources due this cycle (by cadence) and return the worklist for research | `idempotency_key`, `limit` (1–500) |
 
 The outer runner cap is 360 seconds and 512 KiB output. Individual helper

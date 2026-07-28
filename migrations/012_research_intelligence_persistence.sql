@@ -28,6 +28,35 @@ $block$;
 CREATE INDEX IF NOT EXISTS facts_claim_hash_idx
   ON facts (company_id, claim_hash) WHERE claim_hash IS NOT NULL;
 
+-- DB-layer normalization for web source identity, mirroring the helper's
+-- normalize_uri guarantee: a stored web URI is trimmed with a lowercase scheme
+-- and authority, while path and query case is meaningful and preserved.
+-- (signal_sources' CHECK in 013 now applies the same normalization rule as
+-- this one: trimmed, lowercase scheme and authority, path/query case kept.)
+-- Without this, byte-distinct spellings of one web source ('HTTPS://x.com'
+-- vs 'https://x.com') would register as distinct canonical identities,
+-- splitting dedup and canonical_uri index lookups. The independence keying
+-- below guards against case-varied schemes on its own via its
+-- case-insensitive match (~*), so this CHECK is normalization and
+-- defense-in-depth for identity, not the promotion predicate's only guard.
+DO $block$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'sources_canonical_uri_normalized_check'
+  ) THEN
+    ALTER TABLE sources ADD CONSTRAINT sources_canonical_uri_normalized_check
+      CHECK (
+        canonical_uri IS NULL OR (
+          canonical_uri = btrim(canonical_uri)
+          AND canonical_uri ~ '^https?://'
+          AND substring(canonical_uri from '^https?://[^/?#]*') =
+              lower(substring(canonical_uri from '^https?://[^/?#]*'))
+        )
+      );
+  END IF;
+END;
+$block$;
+
 -- The promotion-strictness knob as reviewed data, not code. Owner-lane only;
 -- the runtime role can read it but never change it. Sources whose trust level
 -- is excluded never count toward corroboration, so untrusted uploads (the
@@ -163,6 +192,10 @@ BEGIN
   END IF;
 
   -- Independence keying:
+  --   * The scheme match is case-insensitive (~*) and the normalization CHECK
+  --     on sources.canonical_uri enforces a lowercase scheme/authority, so a
+  --     case-varied scheme cannot reclassify a web source into the
+  --     provider-keyed branch below.
   --   * Web/URI sources corroborate ONLY by verified content identity
   --     (sources.content_sha256, the hash of the fetched page bytes the steward
   --     records). A bare model-supplied URL with no content hash contributes no
@@ -181,7 +214,7 @@ BEGIN
   SELECT
     count(DISTINCT
       CASE
-        WHEN s.canonical_uri ~ '^https?://' THEN
+        WHEN s.canonical_uri ~* '^https?://' THEN
           CASE WHEN s.content_sha256 IS NOT NULL THEN 'web-content:' || s.content_sha256 END
         ELSE
           COALESCE(

@@ -2,6 +2,9 @@
 # SPDX-License-Identifier: 0BSD
 set -eu
 umask 077
+# Keep lifecycle runs from shedding bytecode caches into the pristine package.
+PYTHONDONTWRITEBYTECODE=1
+export PYTHONDONTWRITEBYTECODE
 
 # Create one authenticated, self-consistent recovery point: quiesce the
 # consumers, dump the database and tar the state/inbox/quarantine trees, then
@@ -13,6 +16,15 @@ ENV_FILE="$PACKAGE_DIR/.env"
 COMPOSE_FILE="$PACKAGE_DIR/docker-compose.yml"
 COMPOSE_PROJECT="openclaw-lead-research-v3"
 LOCK_DIR="/tmp/openclaw-lead-research-v3-lifecycle.lock"
+# Captured before the cd into the package below: a relative destination must
+# resolve where the operator invoked the script, not inside the live package
+# tree that recovery points are documented to stay out of.
+INVOCATION_PWD="$PWD"
+# Document intake snapshots accumulate in the state tier, so its archive bound
+# is operator-tunable (check_env.py validates the range). Read before the cd so
+# a relative ENV_FILE still resolves.
+STATE_ARCHIVE_MAX_BYTES="$(sed -n 's/^OPENCLAW_STATE_ARCHIVE_MAX_BYTES=//p' "$ENV_FILE" 2>/dev/null | head -n 1)"
+[ -n "$STATE_ARCHIVE_MAX_BYTES" ] || STATE_ARCHIVE_MAX_BYTES=2147483648
 DESTINATION_INPUT="${1:-}"
 LEAVE_QUIESCED="${OPENCLAW_BACKUP_LEAVE_QUIESCED:-0}"
 COMPATIBLE_BACKUP="${OPENCLAW_BACKUP_COMPATIBLE_LOCK:-0}"
@@ -50,6 +62,11 @@ verify_local_artifacts() {
   inventory="$1"
   inbox_root="$2"
   quarantine_root="$3"
+  # vcops writes exactly one artifact URI form into evidence_artifacts:
+  # `state://intake-snapshots/<sha>.<ext>` under VCOPS_STATE_ROOT
+  # (/home/node/.openclaw/vcops). The state archive is tarred from
+  # /home/node/.openclaw, so inside the extracted copy that is vcops/... .
+  state_root="$4"
   tab="$(printf '\t')"
   while IFS="$tab" read -r digest tier uri extra; do
     [ -n "$digest" ] || continue
@@ -59,6 +76,7 @@ verify_local_artifacts() {
     esac
     [ "${#digest}" -eq 64 ] || { echo "invalid artifact digest length" >&2; return 1; }
     case "$tier:$uri" in
+      workspace_file:state://*) root="$state_root/vcops"; relative="${uri#state://}" ;;
       workspace_file:inbox://*) root="$inbox_root"; relative="${uri#inbox://}" ;;
       workspace_file:/inbox/*) root="$inbox_root"; relative="${uri#/inbox/}" ;;
       quarantine:quarantine://*) root="$quarantine_root"; relative="${uri#quarantine://}" ;;
@@ -145,7 +163,7 @@ fi
 
 case "$DESTINATION_INPUT" in
   /*) ;;
-  *) DESTINATION_INPUT="$PWD/$DESTINATION_INPUT" ;;
+  *) DESTINATION_INPUT="$INVOCATION_PWD/$DESTINATION_INPUT" ;;
 esac
 DESTINATION_PARENT_INPUT="$(dirname -- "$DESTINATION_INPUT")"
 DESTINATION_NAME="$(basename -- "$DESTINATION_INPUT")"
@@ -168,12 +186,12 @@ if [ ! -f "$PACKAGE_DIR/deployment-lock.json" ] || [ -L "$PACKAGE_DIR/deployment
 fi
 if [ "$COMPATIBLE_BACKUP" -eq 1 ]; then
   python3 scripts/record_images.py --validate-live-structure \
-    "$PACKAGE_DIR/deployment-lock.json" >/dev/null
+    "$PACKAGE_DIR/deployment-lock.json"
   BACKUP_PACKAGE_VERSION="$(python3 scripts/record_images.py --lock-package-version \
     "$PACKAGE_DIR/deployment-lock.json")"
 else
   python3 scripts/record_images.py --validate-live \
-    "$PACKAGE_DIR/deployment-lock.json" >/dev/null
+    "$PACKAGE_DIR/deployment-lock.json"
   BACKUP_PACKAGE_VERSION="$(tr -d '\r\n' < "$PACKAGE_DIR/VERSION")"
 fi
 if [ -e "$DESTINATION" ] || [ -L "$DESTINATION" ]; then
@@ -211,11 +229,14 @@ compose --profile tools run --rm --no-deps --entrypoint tar openclaw-cli \
 compose --profile tools run --rm --no-deps --entrypoint tar openclaw-cli \
   -C /quarantine -czf - . >"$STAGING/quarantine-artifacts.tar.gz"
 
-unsafe_artifact_rows="$(compose exec -T postgres psql -X -w \
+# Not piped straight into tr: the pipeline's status would be tr's, so an
+# unreachable database would read as an empty count and fail later as a
+# data mismatch instead of here as the connection error it is.
+unsafe_artifact_rows_raw="$(compose exec -T postgres psql -X -w \
   --username openclaw_owner --dbname openclaw --tuples-only --no-align \
   --set=ON_ERROR_STOP=1 \
-  --command "SELECT count(*) FROM evidence_artifacts WHERE storage_tier IN ('workspace_file','quarantine') AND (storage_uri IS NULL OR storage_uri ~ E'[\\t\\r\\n]')" \
-  | tr -d '[:space:]')"
+  --command "SELECT count(*) FROM evidence_artifacts WHERE storage_tier IN ('workspace_file','quarantine') AND (storage_uri IS NULL OR storage_uri ~ E'[\\t\\r\\n]')")"
+unsafe_artifact_rows="$(printf '%s' "$unsafe_artifact_rows_raw" | tr -d '[:space:]')"
 if [ "$unsafe_artifact_rows" != "0" ]; then
   echo "database contains a local artifact URI that cannot be represented safely in recovery inventory" >&2
   exit 1
@@ -237,7 +258,7 @@ do
   archive_label="${archive_contract%%:*}"
   archive_file="${archive_contract#*:}"
   case "$archive_label" in
-    state) max_total=2147483648 ;;
+    state) max_total="$STATE_ARCHIVE_MAX_BYTES" ;;
     inbox|quarantine) max_total=21474836480 ;;
     *) echo "unknown recovery archive class: $archive_label" >&2; exit 1 ;;
   esac
@@ -247,7 +268,7 @@ do
     --max-total-bytes "$max_total" --max-ratio 500 >/dev/null
 done
 verify_local_artifacts "$STAGING/LOCAL_ARTIFACTS.tsv" \
-  "$STAGING/.verify-inbox" "$STAGING/.verify-quarantine"
+  "$STAGING/.verify-inbox" "$STAGING/.verify-quarantine" "$STAGING/.verify-state"
 rm -rf "$STAGING/.verify-state" \
   "$STAGING/.verify-inbox" "$STAGING/.verify-quarantine"
 
@@ -278,7 +299,7 @@ cp "$PACKAGE_DIR/deployment-lock.json" "$STAGING/deployment-lock.json"
   fi
 )
 python3 scripts/authenticate_backup.py create "$ENV_FILE" \
-  "$STAGING/SHA256SUMS" "$STAGING/BACKUP_AUTHENTICATION" >/dev/null
+  "$STAGING/SHA256SUMS" "$STAGING/BACKUP_AUTHENTICATION"
 
 if [ "$GATEWAY_WAS_RUNNING" -eq 1 ] && [ "$LEAVE_QUIESCED" -ne 1 ]; then
   compose up -d --wait --no-deps openclaw-gateway >/dev/null
@@ -299,12 +320,19 @@ if ! mkdir "$DESTINATION"; then
   echo "backup destination appeared during publication; refusing to overwrite it" >&2
   exit 1
 fi
-# Dotfiles matter here: the archive carries BACKUP_AUTHENTICATION and friends.
-for staged_entry in "$STAGING"/* "$STAGING"/.[!.]* "$STAGING"/..?*; do
-  [ -e "$staged_entry" ] || continue
-  mv "$staged_entry" "$DESTINATION/"
-done
-rmdir "$STAGING"
+# One rename, so the recovery point appears complete or not at all. A per-entry
+# move loop is not atomic: an interrupt part-way through leaves a partial recovery
+# point at the final path while the cleanup trap deletes the staging holding the
+# rest. STAGING lives in DESTINATION_PARENT, so this is a same-filesystem rename.
+#
+# rename(2) directly, not `rmdir` + `mv`: POSIX rename replaces an existing
+# EMPTY directory atomically and fails with ENOTEMPTY otherwise, so the mkdir
+# reservation above is never released. Dropping it first would reopen the
+# no-clobber hole this block exists to close — `mv` onto a directory that
+# reappeared in the gap moves the staging INSIDE it and still reports success.
+# `mv -T -n` has the same semantics but is GNU-only, and this script otherwise
+# tolerates BSD userland.
+python3 -c 'import os, sys; os.rename(sys.argv[1], sys.argv[2])' "$STAGING" "$DESTINATION"
 STAGING=""
 if [ "$LEAVE_QUIESCED" -eq 1 ]; then
   echo "Backup written atomically to $DESTINATION; state consumers remain stopped."
