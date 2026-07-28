@@ -208,6 +208,68 @@ Create an evidence directory outside the package and retain timestamps, command
 versions, exit codes, redacted JSON, config/manifest/image digests, and database
 counts. Secrets and approval tokens must never appear in evidence.
 
+### 5.0 What the shipped gates already prove
+
+Most rows below do not have to be proven by hand. The package ships gates that
+already establish them; run the gate, keep its JSON output as the evidence for
+those rows, and spend your effort on the rest. Nothing here lowers the bar —
+it only stops you re-deriving what the package already demonstrates.
+
+| Rows | Already proven by | What is still yours |
+| --- | --- | --- |
+| 5.1 OpenClaw/Lobster/channel/search/Python/Debian versions; per-profile config validation; skill-workshop hook | `verify_offline.py --with-g6-image <image>` | Record *your* live image IDs: `python3 scripts/record_images.py --validate-live` |
+| 5.1 agent authority boundary (no direct Lobster, exec, config, cron, gateway or DB authority) | `validate_skill_system.py` and the `tests/infrastructure` exec-allowlist contract, both inside `verify_offline.py` | — |
+| 5.1 rendered-config mode, ownership, digest and read-only mounting | `tests/infrastructure` plus the in-container initializer assertions exercised by `run_g8_deployment.py` | — |
+| 5.1 `/healthz` and `/readyz` behaviour; private-path reachability | — | Yours: depends on your host and proxy |
+| 5.2 migration names, checksums, and no-op replay | `verify_offline.py --with-g4-database` (applies and registers every migration twice) | Inspect `schema_migrations` once on your database |
+| 5.2 `openclaw_runtime` is `NOINHERIT`, non-superuser, non-replication, cannot create databases/roles/schema/temp objects, no role membership | `tests/g4/test_database_contract.py` asserts that exact privilege set | — |
+| 5.2 typed lifecycle, idempotent replay, optimistic conflict, approval consume/replay denial, notification claim/retry, cross-lead document provenance | the same G4 gate | — |
+| 5.3 all eighteen workflows parse, reject shell injection, environment leaks and unsafe authority | `validate_workflows.py` and `tests/g5` | — |
+| 5.3 live workflow execution | `run_g8_deployment.py` live-runs six workflows end-to-end through real `vcrun`/Lobster | Live-run the remaining twelve against your deployment |
+| 5.3 routing matches the retained fixtures | **nothing — no in-package executor** | Yours, and it needs human judgement (see below) |
+| 5.4 backup/restore argument contracts, archive bounds, HMAC tampering refusal | `tests/g7` | The actual backup, and the restore drill — **never executed by any gate** |
+| 5.5 all five channel schemas validate; the `none` profile connects no provider | `verify_offline.py --with-g6-image` and `run_g8_deployment.py` | The channel matrix in `docs/CHANNELS.md`, if you enable one |
+
+So the work that genuinely remains is: your live image IDs, your health endpoints,
+your restart-survival and restore drill, your credential rotation, live-running
+the remaining workflows, and judging model output quality.
+
+### 5.0.1 If you are one technical operator, not a fund with a compliance function
+
+This checklist and the customization profile are written for an organization
+that has legal, compliance and evaluation functions. Several attestations
+assume that: `privacy_retention.lawful_bases_reviewed`,
+`retention_schedule_reviewed`, `deletion_and_legal_hold_tested`,
+`remote_processor_reviewed`, and the `rubric_backtest_record`,
+`models.benchmark_record` and `search.evaluation_record` fields, which expect a
+backtest on your own labelled, time-split examples.
+
+If you cannot make one of those statements truthfully, **do not set the flag**.
+`check_customization.py` will refuse the profile and the deployment will not
+start, which is the intended behaviour, not a bug to work around.
+
+The supported way to run this system without a compliance function is to reduce
+what it is allowed to do, so that fewer boundaries are in play:
+
+- Keep `PRIMARY_CHANNEL=none` and use the private CLI or the loopback Control
+  UI. This removes the entire §5.5 channel matrix, multi-user identity
+  separation, and channel attachment intake from scope.
+- Set `fact_promotion_policy.auto_promote=false`, so no model output ever
+  becomes a `verified_fact` without a human. This is what
+  `docs/PRODUCTION_READINESS.md` recommends for any deployment whose
+  model-behavioural gates have not been commissioned.
+- Treat every output as a draft for your own reading, never as an input to an
+  automated decision, and do not place personal data of third parties into it
+  beyond what your jurisdiction allows you to process.
+- Still do the restore drill in §5.4. It is the one row nothing else covers,
+  and an unrestorable backup is discovered at the worst possible moment.
+
+That configuration is a legitimate, materially smaller commitment. It is also
+the only one this documentation can responsibly describe for a single operator:
+running a shared channel deployment for other people, or letting the system
+promote facts autonomously, is what creates the obligations the full checklist
+exists to discharge.
+
 ### 5.1 Image and configuration
 
 - Prove the runtime OpenClaw version is exactly `2026.7.1` and record the image

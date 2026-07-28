@@ -838,14 +838,27 @@ examples. Read [CUSTOMIZATION.md](CUSTOMIZATION.md) before using them.
 ### 1. Create the reviewed profile
 
 ```sh
-cp config/customization-profile.example.json config/customization-profile.json
+python3 -B scripts/init_customization.py
 ```
 
-Customize organization intent, thesis/exclusions, rubric, sources, research
+This writes `config/customization-profile.json` from the example and pins the
+twenty reviewed-artifact SHA-256 hashes for you. It deliberately does **not**
+mark anything reviewed: the review flags stay false, the placeholders stay
+unreplaced, and `check_customization.py` keeps failing until a human has read
+those artifacts and said so. Re-run it with `--update-hashes` after you
+deliberately edit a governed artifact, such as the thesis or rubric.
+
+Then customize organization intent, thesis/exclusions, rubric, sources, research
 depth, model/search choices, privacy/retention, approvers, channel/users,
 attachment policy, and memo style. Backtest routing/scoring on locally labeled,
-time-split examples. Fill the profile's reviewed-artifact hashes and set
-`status=reviewed` last. Owner and reviewer must be different stable identities.
+time-split examples. Set `status=reviewed` last. Owner and reviewer must be
+different stable identities.
+
+> [!NOTE]
+> Several fields assume an organization with legal and evaluation functions. If
+> you are a single operator, read `docs/RUNBOOK.md` §5.0.1 before starting: it
+> describes the reduced-scope deployment those obligations shrink to, and says
+> plainly which attestations you should decline rather than guess.
 
 ### 2. Create `.env`
 

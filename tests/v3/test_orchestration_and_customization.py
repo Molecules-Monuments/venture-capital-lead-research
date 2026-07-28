@@ -421,6 +421,40 @@ class Version3ContractTests(unittest.TestCase):
             with self.subTest(path=relative):
                 self.assertTrue((ROOT / relative).is_file())
 
+    def test_profile_scaffold_pins_hashes_without_asserting_review(self) -> None:
+        """The scaffold removes hash toil, never the operator's attestation.
+
+        Filling twenty SHA-256 values by hand says nothing about whether anyone
+        read the files, so the script computes them — but the profile it writes
+        must still FAIL validation, or it would let an operator bless artifacts
+        sight-unseen.
+        """
+        with tempfile.TemporaryDirectory(prefix="scaffold-") as raw:
+            staged = Path(raw) / "customization-profile.json"
+            profile = json.loads(
+                (ROOT / "config/customization-profile.example.json").read_text(encoding="utf-8")
+            )
+            for relative in profile["review"]["reviewed_artifacts"]:
+                profile["review"]["reviewed_artifacts"][relative] = hashlib.sha256(
+                    (ROOT / relative).read_bytes()
+                ).hexdigest()
+            staged.write_text(json.dumps(profile, indent=2) + "\n", encoding="utf-8")
+            staged.chmod(0o600)
+            result = subprocess.run(
+                ["python3", "-B", str(ROOT / "scripts/check_customization.py"), str(staged)],
+                capture_output=True, text=True, check=False,
+            )
+        self.assertNotEqual(result.returncode, 0, "hash-only scaffold must not pass review")
+        self.assertIn("status must be reviewed", result.stdout)
+        self.assertIn("unresolved customization placeholders", result.stdout)
+
+        source = (ROOT / "scripts/init_customization.py").read_text(encoding="utf-8")
+        # The scaffold must never write an attestation of its own.
+        self.assertNotIn('"status": "reviewed"', source)
+        for flag in ("hard_exclusions_reviewed", "lawful_bases_reviewed", "separation_of_duties_reviewed"):
+            self.assertNotIn(f'"{flag}": True', source)
+            self.assertNotIn(f'"{flag}": true', source)
+
     @staticmethod
     def reviewed_artifact_set(path: Path, name: str) -> set[str]:
         module = ast.parse(path.read_text(encoding="utf-8"))
