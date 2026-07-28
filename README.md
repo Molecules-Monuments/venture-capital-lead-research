@@ -855,10 +855,13 @@ time-split examples. Set `status=reviewed` last. Owner and reviewer must be
 different stable identities.
 
 > [!NOTE]
-> Several fields assume an organization with legal and evaluation functions. If
-> you are a single operator, read `docs/RUNBOOK.md` §5.0.1 before starting: it
-> describes the reduced-scope deployment those obligations shrink to, and says
-> plainly which attestations you should decline rather than guess.
+> Every feature is available by configuration; running solo puts nothing out of
+> reach. But the privacy fields apply to **any** deployment, including a private
+> CLI-only one — this system researches identifiable people and sends what it
+> finds to a model provider, so a lawful basis and a retention schedule are
+> owed even with no channel enabled. `docs/RUNBOOK.md` §5.0.1 explains how much
+> verification each choice actually costs, and which attestations to decline
+> rather than guess.
 
 ### 2. Create `.env`
 
