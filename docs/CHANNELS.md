@@ -150,22 +150,25 @@ Use one Slack app and one Socket Mode connection per gateway. Supply distinct
 `xoxb-...` bot and `xapp-...` app tokens and grant only scopes/events required
 by the pinned [OpenClaw Slack guide](https://docs.openclaw.ai/channels/slack).
 
-Provider-side setup, in order:
+Provider-side setup, following the pinned guide:
 
-1. Create an app at `api.slack.com/apps` in the target workspace.
-2. Enable **Socket Mode**, and mint an app-level token with the
-   `connections:write` scope — that is `SLACK_APP_TOKEN` (`xapp-…`).
-3. Under OAuth & Permissions add the bot scopes the guide lists for
-   messaging plus `files:read` for document intake, then install the app to
-   the workspace. The resulting bot token is `SLACK_BOT_TOKEN` (`xoxb-…`).
-4. Subscribe to the message and file events the guide lists; a text-only
-   manifest validates but cannot commission CH-07.
+1. At [api.slack.com/apps](https://api.slack.com/apps/new) choose **Create New
+   App → From a manifest**, select the workspace, and paste the manifest from
+   the pinned guide. That manifest carries the bot scopes and event
+   subscriptions this integration expects, including `files:read` and the
+   `message.*` events; a hand-built text-only app validates but cannot
+   commission CH-07.
+2. Toggle **Socket Mode** on.
+3. Under **Basic Information → App-Level Tokens** create a token with the
+   `connections:write` scope. That is `SLACK_APP_TOKEN` (`xapp-…`).
+4. **Install App → Install to Workspace**, then copy the **Bot User OAuth
+   Token**. That is `SLACK_BOT_TOKEN` (`xoxb-…`).
 5. Invite the bot to the destination channel.
 
-Obtaining the IDs: enable Settings → Advanced → *Show member IDs* in the
-Slack client, then copy a user's ID from their profile's overflow menu
-(`U…`/`W…`) and the channel's ID from the channel details footer
-(`C…`/`G…`). Display names are never authorization.
+Obtaining the IDs: right-click the channel → **Copy link**; the trailing `C…`
+segment of that URL is `SLACK_ALLOWED_CHANNEL_ID`. User IDs (`U…`/`W…`) come
+from a member's profile or an API response. Display names are never
+authorization.
 
 Inbound document use requires the Slack app's file-read capability (including
 `files:read`) and the corresponding reviewed file/message events; a minimal
@@ -197,10 +200,21 @@ Four different identifiers are involved and they are easy to confuse:
   directory (tenant) **UUIDs**, from the app registration overview.
 - `MSTEAMS_ALLOWED_USER_IDS` — each sender's Entra object **UUID**.
 - `MSTEAMS_ALLOWED_TEAM_ID` and `MSTEAMS_ALLOWED_CHANNEL_ID` — Teams
-  **conversation** IDs of the form `19:…@thread.tacv2`, *not* the team's
-  Entra group UUID that the variable name suggests. Take them from the
-  channel's *Get link to channel* URL (the `threadId` parameter) or from a
-  received activity's `conversation.id`.
+  **conversation** IDs of the form `19:…@thread.tacv2`, *not* the team's Entra
+  group UUID that the variable name suggests. The pinned guide calls this the
+  common mistake: take them from the **path** of the Teams link (the segment
+  after `/team/` or `/channel/`, URL-decoded from `19%3A…%40thread.tacv2`), and
+  **ignore the `groupId` query parameter** — that one is the Entra group ID.
+  Older tenants may show `@thread.skype`, which this package also accepts.
+Azure-side setup, following the pinned guide: create an **Azure Bot** resource
+with **Type of App = Single Tenant** (multi-tenant registration was deprecated
+after 2025-07-31); take the Microsoft App ID from its Configuration blade as
+`MSTEAMS_APP_ID`; mint a client secret through Configuration → Manage Password →
+Certificates & secrets and copy its **Value** as `MSTEAMS_APP_PASSWORD`; take
+Directory (tenant) ID from Overview as `MSTEAMS_TENANT_ID`; set the messaging
+endpoint to your public `/api/messages` URL; and finally enable **Channels →
+Microsoft Teams → Configure → Save**, without which no activity is delivered.
+
 - `MSTEAMS_PUBLIC_WEBHOOK_URL` — the public HTTPS URL your reverse proxy
   serves, ending in `/api/messages`. Register exactly this URL as the bot
   resource's messaging endpoint, and install the Teams app package into the
@@ -228,19 +242,29 @@ See the pinned [OpenClaw Teams guide](https://docs.openclaw.ai/channels/msteams)
 
 ## Discord Gateway
 
-Provider-side setup, in order:
+Provider-side setup, following the pinned
+[OpenClaw Discord guide](https://docs.openclaw.ai/channels/discord):
 
-1. Create an application at `discord.com/developers/applications`; its ID is
-   `DISCORD_APPLICATION_ID`.
-2. Add a Bot and copy its token into `DISCORD_BOT_TOKEN`.
-3. Under Bot → Privileged Gateway Intents enable **Message Content** only.
-4. Generate an OAuth2 URL (scopes `bot` plus `applications.commands` if you
-   use them) and use it to invite the bot to the guild. Without this step the
-   bot is never in the guild and no matrix row can pass.
+1. At the [Discord Developer Portal](https://discord.com/developers/applications)
+   choose **New Application**; its ID is `DISCORD_APPLICATION_ID`.
+2. Open **Bot**, then **Reset Token** and copy the value into
+   `DISCORD_BOT_TOKEN`. Discord shows a bot token only once, so an existing
+   application needs a reset rather than a lookup.
+3. Under **Bot → Privileged Gateway Intents** enable **Message Content** only.
+   The guide also suggests Server Members and Presence; this deployment
+   deliberately leaves both off, which costs role allowlists and
+   name-to-ID matching that it does not use.
+4. Under **OAuth2 → URL Generator** select scopes `bot` and
+   `applications.commands`, and bot permissions View Channels, Send Messages,
+   Read Message History, Embed Links and Attach Files (add Send Messages in
+   Threads for thread use). Open the generated URL to invite the bot to the
+   guild. Without this step the bot is never in the guild and no matrix row can
+   pass.
 
-Obtaining the IDs: enable *Advanced → Developer Mode* in the Discord client,
-then right-click a user, the server, or the channel and choose *Copy ID* for
-`DISCORD_ALLOWED_USER_IDS`, `DISCORD_ALLOWED_GUILD_ID` and
+Obtaining the IDs: enable **User Settings → Developer → Developer Mode** (on
+mobile, App Settings → Advanced), then right-click the server icon → *Copy
+Server ID*, an avatar → *Copy User ID*, and a channel → *Copy Channel ID* for
+`DISCORD_ALLOWED_GUILD_ID`, `DISCORD_ALLOWED_USER_IDS` and
 `DISCORD_ALLOWED_CHANNEL_ID`. All are numeric snowflakes.
 
 Enable only the Message
@@ -254,17 +278,29 @@ of the same message ID across restart.
 
 ## Telegram long polling
 
-Provider-side setup: message `@BotFather` in Telegram, `/newbot`, and copy the
-issued token into `TELEGRAM_BOT_TOKEN`. Then `/setprivacy` → *Enable* so the
-bot only receives messages addressed to it, and add the bot to the group.
+Provider-side setup, following the pinned
+[OpenClaw Telegram guide](https://docs.openclaw.ai/channels/telegram): message
+`@BotFather`, run `/newbot`, and copy the issued token into
+`TELEGRAM_BOT_TOKEN`. Add the bot to the group. Leave privacy mode at its
+default **enabled** so the bot only receives messages addressed to it — that
+matches this deployment's mention-gated group lane. If you ever change the
+setting with `/setprivacy`, **remove and re-add the bot in every group**, or the
+change does not take effect there.
 
 Obtaining the IDs: a user's numeric ID and a supergroup's `-100…` ID are not
-shown in the Telegram UI. Read them from the bot's own update stream after
-sending it one message from the account and one in the group:
-`curl -s "https://api.telegram.org/bot<token>/getUpdates"`, then take
-`message.from.id` for `TELEGRAM_ALLOWED_USER_IDS` and `message.chat.id` for
-`TELEGRAM_ALLOWED_GROUP_ID`. Run that only from the deployment host and do
-not paste the token elsewhere.
+shown in the Telegram UI. Send the bot one direct message and one group
+message, then read them from the gateway's log — which avoids handling the
+token:
+
+```sh
+docker compose -f docker-compose.yml -p openclaw-lead-research-v3 --env-file .env \
+  logs -f openclaw-gateway
+```
+
+Take `from.id` for `TELEGRAM_ALLOWED_USER_IDS` and `chat.id` for
+`TELEGRAM_ALLOWED_GROUP_ID`. `curl -s
+"https://api.telegram.org/bot<token>/getUpdates"` returns the same fields; run
+it only on the deployment host.
 
 Use one bot token/poller, positive numeric user IDs, and a negative `-100...`
 supergroup ID. Usernames are not authorization. The group is allowlisted,
