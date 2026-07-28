@@ -901,7 +901,9 @@ Leave every unselected channel credential family empty.
 
 ### 3. Validate and render
 
-With the venv active:
+These four commands use only the Python standard library and the host
+`python3` (3.9+); the disposable dev virtualenv from the developer quick start
+is not needed on a deployment host:
 
 ```sh
 ./scripts/check_env.sh .env

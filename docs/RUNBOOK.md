@@ -30,8 +30,11 @@ until the chosen deployment's applicable commissioning items pass.
 Install the complete hash-locked `requirements-dev.lock` into a disposable
 virtual environment (Python **3.11 or newer** — the lock is compiled for
 3.11+, and `--require-hashes` refuses the unhashed backports older
-interpreters need), then run `python3 -B scripts/verify_offline.py` as the single
-deterministic entry point. The complete package-release proof adds
+interpreters need), then run that virtualenv's interpreter — activate it, or
+call it by path — as `python -B scripts/verify_offline.py`, the single
+deterministic entry point. Running the gate with the system interpreter instead
+fails most suites with import errors, because the pinned test dependencies live
+only in the virtualenv. The complete package-release proof adds
 `--with-g4-database`, `--with-schema-reference`, `--with-retrieval-scale`, and
 `--with-g6-image <built-image>` when local PostgreSQL 17 and Docker are
 available. Live deployment
@@ -43,9 +46,13 @@ never substitute for it.
 
 Use a dedicated Linux host inside one organizational trust boundary. Require:
 
-- Docker Engine with Compose support for `up --wait`, `--force-recreate`,
-  `--no-deps`, `--no-start`, file-backed Compose secrets, Compose
-  configs, `service_completed_successfully`, and profiles. Secret files are
+- Docker Engine **24.0 or newer with the Compose v2 plugin 2.20 or newer**
+  (`docker compose version`). Compose v1 (`docker-compose`) is not supported.
+  The stack needs `up --wait`, `--force-recreate`, `--no-deps`, `--no-start`,
+  file-backed Compose secrets, Compose configs,
+  `service_completed_successfully`, and profiles; a distribution's older
+  `docker.io`/`docker-compose` packages typically lack several of these and
+  fail at the first `docker compose ... config --quiet`. Secret files are
   materialized from `.env` into `config/runtime/secrets/` by
   `scripts/render_channel_config.py` on every lifecycle path (mode-`0444`
   files inside a mode-`0700` directory — the unprivileged container users must
@@ -66,7 +73,10 @@ Use a dedicated Linux host inside one organizational trust boundary. Require:
   `rotate_runtime_role.sh` shell out to it, and `check_customization.py`
   imports `zoneinfo`, which is 3.9+ (`migrate.sh` needs no python3; it uses
   POSIX utilities — `awk`, `sed`, `grep`, `cmp`, `command`, and
-  `sha256sum`/`shasum`);
+  `sha256sum`/`shasum`). The backup and restore paths additionally call `tar`,
+  `mktemp`, `tr`, `cut`, `head`, `stat` and `chmod`, all present in a normal
+  distribution base install — check them explicitly if you build a minimal
+  recovery host for the §5.4 drill;
 - `openssl`, used to generate the six deployment secrets; and
 - a non-root deployment operator with exclusive control of the package and
   `.env`.

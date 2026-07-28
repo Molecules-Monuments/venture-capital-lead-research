@@ -133,7 +133,8 @@ def require_pinned_postgres(initdb: str) -> None:
             f"{expected} (POSTGRES_IMAGE in scripts/check_env.py). This gate would validate "
             f"the migration set against a version this package never deploys. Put the "
             f"PostgreSQL {expected} client tools first on PATH, for example "
-            f"PATH=\"$(brew --prefix postgresql@{expected})/bin:$PATH\"."
+            f"PATH=/usr/lib/postgresql/{expected}/bin:$PATH on Debian/Ubuntu, or "
+            f"PATH=\"$(brew --prefix postgresql@{expected})/bin:$PATH\" on macOS."
         )
 
 

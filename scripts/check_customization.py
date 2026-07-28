@@ -56,7 +56,12 @@ REVIEW_FLAGS = {
     ("channels", "preference_memory_reviewed"),
     ("agent_profile", "schema_and_eval_updates_completed"),
 }
-PLACEHOLDER = re.compile(r"CUSTOMIZE|<[^>]+>|REPLACE|PLACEHOLDER", re.IGNORECASE)
+# Bracketed templates, plus the bare sentinels as whole uppercase words. The
+# previous pattern matched case-insensitive substrings, so a legitimate value
+# like "docs/2026-07-rubric-replacement.md" was reported as an unresolved
+# placeholder with no hint why. Verified to flag exactly the same 38 fields of
+# the shipped example profile.
+PLACEHOLDER = re.compile(r"<[^>]*>|\b(?:CUSTOMIZE(?:_REQUIRED)?|REPLACE_ME|PLACEHOLDER)\b")
 PACKAGE = Path(__file__).resolve().parent.parent
 REQUIRED_REVIEWED_ARTIFACTS = {
     "config/openclaw.json",
