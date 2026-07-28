@@ -72,8 +72,8 @@
     {
       "executable": false,
       "path": "CUSTOMIZATION.md",
-      "sha256": "910d3fbb5781941b06d410848c0d82a74a5f9b4f8e3e080b611c018cde946813",
-      "size": 16925
+      "sha256": "94bcf7ca3404a4153d02b167ae260e125ae0abf8eb08722f48125f9cea774be6",
+      "size": 18622
     },
     {
       "executable": false,
@@ -90,8 +90,8 @@
     {
       "executable": false,
       "path": "README.md",
-      "sha256": "05f12f7823590116d364da321c92c50cdfe50b135ae3409ea6f163acd3ea9249",
-      "size": 73637
+      "sha256": "abdc5cd4670e918cc92cb3836e47c086e69364e690de92103ac35f5224901a61",
+      "size": 75512
     },
     {
       "executable": false,
@@ -150,7 +150,7 @@
     {
       "executable": false,
       "path": "config/customization-profile.example.json",
-      "sha256": "b0a07a4a9e4dbfabcb78f3cea29c38475738a7a1c731736aa80655a23e99e2e8",
+      "sha256": "d568a4dd215e8b201c289ea9ae985d6b1ac4a275fb0267e0864847aab188bd56",
       "size": 3820
     },
     {
@@ -180,8 +180,8 @@
     {
       "executable": false,
       "path": "docs/CHANNELS.md",
-      "sha256": "f36b7fb094fecee1bfeb513f5a93dcc1b165c768769efe26c5e47d1a5fc5045c",
-      "size": 11090
+      "sha256": "ea1293639f300c7f717cd90d8069e4b8b527538fa5ebc742a61c997cba25f9ef",
+      "size": 16040
     },
     {
       "executable": false,
@@ -198,8 +198,8 @@
     {
       "executable": false,
       "path": "docs/OPERATIONS.md",
-      "sha256": "3eccd83f40d45766c7af8cf923f4d706aa127846749f4365fab661a2c8eceb76",
-      "size": 14336
+      "sha256": "338cdbe80d933ace4754c31ff83b0e4e9e331851d76e7204cf7abc35adc7db5f",
+      "size": 18537
     },
     {
       "executable": false,
@@ -210,8 +210,8 @@
     {
       "executable": false,
       "path": "docs/RUNBOOK.md",
-      "sha256": "c709223e2f3505803b26882320d0161f4ba63417d84483dbf92126f66e3a02e2",
-      "size": 34410
+      "sha256": "e56d86436758da433eea72bcdf99ca418a0a0e3cf604ce92de952f01013eba40",
+      "size": 39054
     },
     {
       "executable": false,
@@ -234,8 +234,8 @@
     {
       "executable": false,
       "path": "docs/WORKFLOWS.md",
-      "sha256": "11c4401cb42a1c2b16ecdcf4978206c35355b96ecd88973371297a6ba2ce3c90",
-      "size": 14211
+      "sha256": "0e8cff64812a14a26ab28a34c69143d0fec9dc0edd235dd18939945c9e56061a",
+      "size": 15877
     },
     {
       "executable": false,
@@ -1488,8 +1488,8 @@
     {
       "executable": false,
       "path": "workspaces/vc-chief/vc/document_intake.md",
-      "sha256": "46661e1223299603eff683f47fb319b77e483458d794284833afca6f11b6a26e",
-      "size": 2521
+      "sha256": "a02efeb07f82d8f15eed19fdff5d26a3ecb9f0d265f2d8574d04024a8210787e",
+      "size": 2822
     },
     {
       "executable": false,
@@ -1542,8 +1542,8 @@
     {
       "executable": false,
       "path": "workspaces/vc-chief/vc/governance_lint.md",
-      "sha256": "d643024101c7ded9006ad38d58baa81167dae22fcaabfb9d43519f71f7e87291",
-      "size": 1515
+      "sha256": "34d28447b6d7833a7df9683485a6b22e9f78111d2fdfb31da8ad6796ae1d1e77",
+      "size": 1770
     },
     {
       "executable": false,

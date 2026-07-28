@@ -71,7 +71,7 @@ marked optional.
 | `source-watch` | Register or re-enable one watched surveillance source (the "monitor this website" path); the workflow lane cannot re-enable an operator-disabled entry, lower a stored confidentiality, or change ownership | `idempotency_key`, `source_name`, `source_uri`, `source_class`, `cadence`, `thesis_relevance`, `expected_signal` |
 | `source-unwatch` | Disable one watched source without deleting its history | `idempotency_key`, `source_uri` |
 | `proposal-record` | Persist one governance proposal (schema change / source policy / skill candidate) for operator review; applies nothing | `idempotency_key`, `proposal_kind`, `title`, `summary`, `content_json` |
-| `orchestration-record` | Persist one orchestration/delegation audit entry (delegation_eval / return_assessment / chief_output) for a lead's research run | `idempotency_key`, `lead_id`, `record_kind`, `specialist`, `payload_json`; optional Task Flow correlation handles `flow_id`, `task_id`, `flow_revision` (empty string persists as NULL) |
+| `orchestration-record` | Persist one orchestration/delegation audit entry (delegation_eval / return_assessment / chief_output) for a lead's research run | `idempotency_key`, `lead_id`, `record_kind`, `specialist`, `payload_json`; optional Task Flow correlation handles `flow_id`, `task_id`, `flow_revision` (omit the key entirely to persist NULL; `vcrun` rejects an empty string) |
 | `source-scan` | Atomically claim the enabled sources due this cycle (by cadence) and return the worklist for research | `idempotency_key`, `limit` (1–500) |
 
 The outer runner cap is 360 seconds and 512 KiB output. Individual helper
@@ -87,6 +87,31 @@ element contract lives in `workspaces/shared-skills/memo-writing/SKILL.md`.
 `inbound-intake` is the optional authenticated host-operator lane. Its path
 must be an absolute normalized child of `/inbox` and `channel_provider` must be
 `manual`. Channel attachments cannot be tunneled through that workflow.
+
+To use it: drop the file into the package's `./inbox` directory on the host,
+which the containers mount read-only at `/inbox`, then run the workflow with the
+container path. `channel_account_id` and `channel_event_id` are free-form
+provenance labels you choose for a manual submission — they are recorded with
+the lead, and `channel_event_id` must be unique per submission, as must
+`idempotency_key`:
+
+```sh
+docker compose -f docker-compose.yml -p openclaw-lead-research-v3 --env-file .env \
+  exec openclaw-gateway /workspaces/vc-chief/vc/bin/agent/vcrun run inbound-intake \
+  --args-json '{
+    "idempotency_key": "acme-2026-07-28-1",
+    "lead_title": "Acme Robotics — seed",
+    "company_name": "Acme Robotics",
+    "company_domain": "acme.example",
+    "document_path": "/inbox/acme-deck.pdf",
+    "channel_provider": "manual",
+    "channel_account_id": "operator-console",
+    "channel_event_id": "acme-2026-07-28-1"
+  }'
+```
+
+The workflow returns one JSON object containing the created `lead_id`, which is
+the handle every later workflow takes.
 
 `document-ingest` is the channel lane. Its path must be a direct child of
 `/home/node/.openclaw/media/inbound` and the signed current-turn capability
@@ -157,6 +182,15 @@ docker compose -f docker-compose.yml -p openclaw-lead-research-v3 --env-file .en
   exec -e VCOPS_OPERATOR_ID=<stable-operator-id> openclaw-gateway \
   /workspaces/vc-chief/vc/bin/vcrun-control resume --id <approval-id> --approve yes
 ```
+
+The eight-hex `<approval-id>` is printed by the paused run itself: `vcrun run
+evaluate-lead …` returns a JSON object whose pause result carries the
+correlation ID, and the same value appears in the gateway log for that run.
+Record it when the run pauses — there is no command that lists pending pauses,
+so a lost ID means the run must be cancelled and re-run. For the rejection and
+cancel forms, `--run-id` and `--expected-revision` are the `run_id` and
+`record_version` of the same workflow run, returned by `workflow-start` and by
+every `workflow-transition`.
 
 The wrapper accepts these forms:
 

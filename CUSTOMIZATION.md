@@ -42,11 +42,11 @@ passed the relevant evals.
 |---|---|---|
 | Organization, operator intent, timezone | `workspaces/vc-chief/USER.md`, `.env` (`TZ`), customization profile | State the product objective, fund strategy, reporting style, stable deployment owner, and authority limits. Re-run orchestration and channel tests. |
 | Thesis, stage, sector, geography, check/ownership targets | `workspaces/vc-chief/vc/thesis.md`, `exclusion_criteria.md`, `prequalification.md`, profile | Replace the sample text with your firm's own mandate, exclusions and prequalification bar. The routing and scoring cases under `tests/g3` and the eval JSONL files are hash-pinned examples; after editing any governed artifact, re-pin with `python3 -B scripts/init_customization.py --update-hashes`. |
-| Scoring criteria, weights, missingness, thresholds | `workspaces/vc-chief/vc/scoring-rubric.md` and its machine JSON, `tests/g3`, scoring evals | The shipped weights, bands and gates are examples; the software does not assess their predictive quality. Evidence quality and coverage are separate inputs, and unknown is never scored as negative. Update helper/workflow policy versions together. **Changing the recommendation band boundaries also requires a reviewed edit to the database CHECK in `migrations/007_scoring_readiness_gate.sql` (it re-encodes the same band names and numbers); until both agree, `evaluate-lead` fails at persistence and the G4 gate fails.** |
+| Scoring criteria, weights, missingness, thresholds | `workspaces/vc-chief/vc/scoring-rubric.md` and its machine JSON, `tests/g3`, scoring evals | The shipped weights, bands and gates are examples; the software does not assess their predictive quality. Evidence quality and coverage are separate inputs, and unknown is never scored as negative. Update helper/workflow policy versions together. **The recommendation band boundaries are re-encoded in a database CHECK, so changing them means changing the database too, and how you do that depends on whether you have bootstrapped yet.** Before your first `bootstrap.sh`, edit the CHECK in `migrations/007_scoring_readiness_gate.sql` directly — nothing has recorded its checksum. **After bootstrap, never edit 007** (or any applied migration): `migrate.sh` compares each file against the recorded checksum and fails closed on every later `bootstrap`, `update` and `rotate_runtime_role` run. Add a new numbered forward migration instead that drops and recreates the CHECK with your bands, then regenerate `docs/SCHEMA.sql` and the manifest. Until the rubric and the CHECK agree, `evaluate-lead` fails at persistence and the G4 gate fails. |
 | Sources and outbound discovery | `primary_sources.md`, `active_sourcing.md`, `passive_sourcing.md`, `inbound_sources.md`, `third_party_connectors.md`, `workspaces/outbound-scout/USER.md` | Record stable URL/provider, purpose, allowed data, cost/rate/terms, expected signal, owner, and stop rule. Which sources you admit, and on what terms, is your decision; check the provider's terms of use with your counsel if in doubt. |
 | Research depth, cost, and models | `research_depth.md` **and the mirroring numbers in `workspaces/shared-skills/research-depth-control/SKILL.md` (retune both together)**, `.env` (`VC_MODEL_PROVIDER`, `VC_PRIMARY_MODEL`, `VC_FAST_MODEL`, common model limits), profile | Select OpenAI, native Ollama, or one reviewed HTTPS custom provider. Benchmark tool calling, JSON, context, prompt injection, quality, privacy, latency, and cost on frozen suites. For Ollama, validate the private endpoint, pulled models, host capacity, and restart behavior. Equal model IDs are allowed only when deliberately reviewed. The shipped tier split (PRIMARY: `vc-chief`, `market-mapper`, `memo-writer`; FAST: the other nine, including the scoring gate and the sole DB writer) is a cost-first sample, not a benchmarked optimum. `.env` defines the two model IDs; which agent uses which is the `"model"` field on each agent in `config/openclaw.json` (a hash-pinned reviewed artifact — re-pin both inventories after editing it). |
 | Search and fetch provider | `.env` (`VC_WEB_SEARCH_PROVIDER`, `VC_WEB_FETCH_PROVIDER` and selected key), `primary_sources.md`, `third_party_connectors.md`, profile | Keep the generic agent tool contract. Choose `auto` only with direct OpenAI, or explicitly select a native provider: `duckduckgo` (keyless, bundled), `firecrawl`/`tavily` (bundled, keyed), or `brave`/`perplexity`/`exa`/`searxng`/`parallel-free` (non-bundled — pin the plugin package + rebuild, or render fails closed). Review coverage, ranking, processor terms, retention, rate/cost, egress, failure behavior, and source quality. A provider switch requires research regressions and exact-image/config validation. |
-| Approvers and governed actions | `approval-policy.md`, channel overlays/IDs in `.env`, profile | Use stable authenticated IDs, separation of duties, target/action limits, expiry, and atomic consumption. Test reject, expiry, mismatch, replay, and rollback. Never replace IDs with display names. |
+| Approvers and governed actions | `approval-policy.md`, channel overlays/IDs in `.env`, profile | Use stable authenticated IDs, separation of duties, target/action limits, expiry, and atomic consumption. Test reject, expiry, mismatch, replay, and rollback. Never replace IDs with display names. `approvals.expiry_minutes` records the reviewed decision only; nothing reads it. The enforced lifetime is the `--expires-minutes` argument to `approval-request` (default 60). |
 | Privacy, lawful basis, confidentiality, retention | `trust_boundaries.md`, `storage_tiers.md`, `data_retention.md`, `document_intake.md`, profile | These files hold whatever purpose, lawful basis, allowed fields, audience, processor, retention, deletion, legal-hold and restore policy your firm determines; the software stores and applies that text but does not evaluate it. Ask your counsel if any of it is in doubt. The shipped values are examples to edit. |
 | Channels, users, attachments, notification policy | `.env`, channel overlay, `channel_policy.md`, `document_intake.md`, `notification_policy.md`, `docs/CHANNELS.md`, profile | Begin with `PRIMARY_CHANNEL=none`; use one provider, exact destination IDs, and a reviewed comma-separated stable-user list. Set a measured 1–50 MiB transport cap. Test per-peer sessions, principal preference isolation, signed path scope, all four supported documents, hostile/unsupported media, provider replay, and restart. Teams Graph/SharePoint channel files are a separate privileged design. This release does not authorize proactive outreach. |
 | User preference memory | `AGENTS.md`, `trust_boundaries.md`, `data_retention.md`, preference workflows/helper/migration/tests, profile | Keep the five-key closed schema unless undertaking a versioned schema migration. Define retention/deletion response, explain explicit versus three-event inference, test user isolation/group denial/forget cutoff/replay, and never use preferences as evidence, permission, or scoring input. |
@@ -65,7 +65,14 @@ passed the relevant evals.
   `searxng` (keyed by `SEARXNG_BASE_URL`), and `parallel-free` (keyless) are also
   native but **non-bundled** — each additionally requires its plugin package
   pinned in `runtime-packages/package.json` (+ `package-lock.json` regen and
-  image rebuild) and is confirmed by the exact-image (G6) gate. Selecting a
+  image rebuild) and is confirmed by the exact-image (G6) gate. The package
+  ids are `@openclaw/brave-plugin`, `@openclaw/perplexity-plugin`,
+  `@openclaw/exa-plugin`, `@openclaw/searxng-plugin`, and — for `parallel-free`
+  — `@openclaw/parallel-plugin`. Add the one you need at an exact version,
+  regenerate the lock with `npm install --package-lock-only` in
+  `runtime-packages/`, rebuild the image, and re-run the G6 gate; that
+  reviewed, pinned, lock-regenerated rebuild *is* the audited dependency
+  process the table below refers to. Selecting a
   non-bundled provider **without** pinning its plugin now fails closed at
   `render_channel_config.py` (every lifecycle path runs it) with an actionable
   message, rather than rendering a config that references a plugin the image
@@ -123,7 +130,8 @@ condition, and update to the customization profile’s change record.
 | Existing numbered migrations | Never edit an applied migration. Add a new immutable forward migration, checksum it, test apply/reapply/rollback strategy, and regenerate the manifest. |
 | `config/runtime/openclaw.json` | Generated by the channel renderer. Change reviewed source config/overlay/environment input and render again. |
 | `manifest.json` | Generated by `scripts/build_release_manifest.py` after all tests; never hand-edit a hash or inventory. |
-| `runtime-packages/**`, image/package locks, `deployment-lock.json` | Use the audited dependency/update process and repeat supply-chain and compatibility gates. |
+| `runtime-packages/**`, image/package locks, `deployment-lock.json` | Pin exact versions, regenerate the lock with `npm install --package-lock-only`, rebuild the image, and repeat the supply-chain and G6 gates. |
+| Canonical specialist schemas | `workspaces/schemas/` is mirrored byte-for-byte at `workspaces/vc-chief/vc/schemas/`. There is no generator: edit **both** copies. The contracts suite fails on any drift. |
 | `.env`, raw approval tokens, provider credentials | Supply through the reviewed secret/runtime path. Never commit, copy into reports, or encode in the customization profile. |
 | Postgres/OpenClaw/Lobster live state and named-volume contents | Use typed operations, backup/restore, migrations, and lifecycle locks. Never edit state files by hand. |
 | Canonical schemas in isolation | Change the agent contract, skill, schema, fixtures, resolver, config, helper/workflow consumer, and version together. |
@@ -168,8 +176,11 @@ routine customization.
 
 Do not edit a policy in isolation. At minimum keep these coupled:
 
-- rubric Markdown, rubric JSON, helper policy version, workflow arguments, and
-  scoring fixtures;
+- rubric Markdown, rubric JSON (`scoring-rubric.v3.json`'s `"version"`), the
+  helper `POLICY_VERSION`, the two `--policy-version` literals in
+  `workspaces/vc-chief/vc/workflows/evaluate-lead.lobster`, and the scoring
+  fixtures. No offline gate catches drift here: a mismatch first appears in
+  production as `rubric_version_mismatch` when a lead is evaluated;
 - resolver policy, migration schema, typed CLI, both intake workflows, schemas,
   and retrieval fixtures;
 - agent contract, shared skill, canonical output schema, resolver route, config

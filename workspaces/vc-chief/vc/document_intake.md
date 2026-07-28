@@ -1,8 +1,12 @@
 # Document Intake and Trust Boundary
 
-> [REVIEW_AND_CONFIRM] Deployment may lower file/page/sheet/cell/time limits after
-> capacity and threat testing. Supported formats must exactly match the
-> deterministic extractor; legacy XLS is quarantine/conversion, not supported.
+> [REVIEW_AND_CONFIRM] Confirm the shipped extraction limits suit your capacity
+> and threat model. They are **compiled into the helper, not configurable at
+> deployment**: the `env -i` lane wrappers forward a fixed allowlist that
+> excludes every `VCOPS_MAX_*` variable, so changing a limit means changing the
+> constants in `workspaces/vc-chief/vc/bin/vcops.py` in a reviewed revision and
+> re-running the gates. Supported formats must exactly match the deterministic
+> extractor; legacy XLS is quarantine/conversion, not supported.
 
 Policy version: `3.0`
 

@@ -43,7 +43,7 @@ as group sessions and fail closed for preference writes/forgetting.
 
 ## Attachment boundary
 
-All profiles set `mediaMaxMb` from `VC_CHANNEL_MEDIA_MAX_MB` (1–50 MiB).
+All profiles set `mediaMaxMb` from `VC_CHANNEL_MEDIA_MAX_MB`, a transport cap of 1–50 **MiB**. It is independent of, and should not exceed, the 25 MiB per-document limit the extraction lane enforces.
 Version 3's governed document lane accepts only PDF, PPTX, XLSX, and CSV.
 
 OpenClaw can normally send image/audio/video attachments directly to a capable
@@ -84,21 +84,48 @@ The exact npm graph is locked in `runtime-packages/package-lock.json`. The G6
 image gate verifies installed versions and validates every profile inside the
 exact built image with networking disabled.
 
+A destination group/channel ID is **required for every channel profile**, even
+for a deployment that only intends to use direct messages: the validator
+treats each provider's credential family as complete-or-empty, and the
+customization profile's `approvals.allowed_channel_ids` must match it. If you
+want DM-only operation, create one private channel, put the bot in it, use its
+ID, and simply never post there — the channel lane stays mention-gated and
+restricted to the same user allowlist.
+
 ## Common activation sequence
 
 1. Keep `PRIMARY_CHANNEL=none`; pass offline, database, and exact-image gates.
 2. Create the provider application/bot and record stable provider IDs.
-3. Fill only the selected credential/ID family and a reviewed comma-separated
-   user list. Set `.env` mode `0600`.
-4. Validate `.env` and customization, render config, and record its SHA-256.
-5. Build the exact image; run config validate, doctor, security audit, channel
-   inspect/status/probe, and provider-specific app checks.
-6. Test each applicable matrix row below. Retain timestamps, config/image
+3. Set `PRIMARY_CHANNEL` to the selected provider, fill only that credential/ID
+   family and a reviewed comma-separated user list, and leave the other three
+   families empty. Set `.env` mode `0600`.
+4. Update the customization profile to match: `channels.selected` must equal the
+   new `PRIMARY_CHANNEL` and `approvals.allowed_channel_ids` must exactly equal
+   the destination IDs in `.env`, or every later lifecycle run fails closed on
+   the profile/environment mismatch.
+5. Validate `.env` and customization, render config, and record its SHA-256.
+6. Build the exact image, then run the gateway's own checks. `openclaw` lives
+   in the image, not on the host:
+
+   ```sh
+   compose() { docker compose -f docker-compose.yml -p openclaw-lead-research-v3 --env-file .env "$@"; }
+   compose exec openclaw-gateway openclaw config validate
+   compose exec openclaw-gateway openclaw doctor
+   compose exec openclaw-gateway openclaw security audit
+   compose exec openclaw-gateway openclaw channel status
+   ```
+7. Test each applicable matrix row below. Retain timestamps, config/image
    digests, redacted stable IDs, provider event IDs, database counts, and logs.
-7. Resolve every warning. `FAIL`, `NOT RUN`, missing evidence, or an unexplained
+8. Resolve every warning. `FAIL`, `NOT RUN`, missing evidence, or an unexplained
    warning is not a channel pass.
-8. Only then admit real messages. Rollback sets `PRIMARY_CHANNEL=none`, clears
-   all channel families, rerenders, recreates, and proves no connection exists.
+9. Only then admit real messages.
+
+Rollback is the same sequence in reverse, and the profile has to come with it:
+set `PRIMARY_CHANNEL=none`, clear all channel families, set the profile's
+`channels.selected` back to `none` and `approvals.allowed_channel_ids` to `[]`,
+re-render, re-run `openclaw-state-init`, recreate the gateway, and prove no
+connection exists. Clearing `.env` alone leaves the profile selecting a channel
+and every later lifecycle run fails.
 
 ## Common live matrix
 
@@ -115,15 +142,30 @@ exact built image with networking disabled.
 | CH-09 | Same provider event before/after reconnect or restart | One logical turn/domain effect; replay does not create a second mutation |
 | CH-10 | Network interruption and gateway restart | Bounded recovery; one active receiver; new event processed once |
 | CH-11 | Reply delivery ambiguity/failure | No blind duplicate send; delivery state is reconciled or explicitly unknown |
-| CH-12 | Rollback to `none` | No active channel, credentials, binding, or callback exposure |
+| CH-12 | Rollback to `none` | No active channel, credentials, binding, or callback exposure. The Compose file publishes the Teams webhook port on `MSTEAMS_WEBHOOK_HOST` (loopback by default) regardless of `PRIMARY_CHANNEL`; an open loopback socket with nothing serving it is expected here, an externally reachable one is not |
 
 ## Slack Socket Mode
 
 Use one Slack app and one Socket Mode connection per gateway. Supply distinct
 `xoxb-...` bot and `xapp-...` app tokens and grant only scopes/events required
 by the pinned [OpenClaw Slack guide](https://docs.openclaw.ai/channels/slack).
-Allowed users are stable `U...`/`W...` IDs; the destination is a stable
-`C...`/`G...` ID.
+
+Provider-side setup, in order:
+
+1. Create an app at `api.slack.com/apps` in the target workspace.
+2. Enable **Socket Mode**, and mint an app-level token with the
+   `connections:write` scope — that is `SLACK_APP_TOKEN` (`xapp-…`).
+3. Under OAuth & Permissions add the bot scopes the guide lists for
+   messaging plus `files:read` for document intake, then install the app to
+   the workspace. The resulting bot token is `SLACK_BOT_TOKEN` (`xoxb-…`).
+4. Subscribe to the message and file events the guide lists; a text-only
+   manifest validates but cannot commission CH-07.
+5. Invite the bot to the destination channel.
+
+Obtaining the IDs: enable Settings → Advanced → *Show member IDs* in the
+Slack client, then copy a user's ID from their profile's overflow menu
+(`U…`/`W…`) and the channel's ID from the channel details footer
+(`C…`/`G…`). Display names are never authorization.
 
 Inbound document use requires the Slack app's file-read capability (including
 `files:read`) and the corresponding reviewed file/message events; a minimal
@@ -149,6 +191,21 @@ UUIDs, and exact Teams conversation IDs. The callback is `/api/messages` on the
 loopback-published Teams port. A hardened TLS reverse proxy exposes only that
 path; it must never expose the gateway/Control UI.
 
+Four different identifiers are involved and they are easy to confuse:
+
+- `MSTEAMS_APP_ID` / `MSTEAMS_TENANT_ID` — Entra application (client) and
+  directory (tenant) **UUIDs**, from the app registration overview.
+- `MSTEAMS_ALLOWED_USER_IDS` — each sender's Entra object **UUID**.
+- `MSTEAMS_ALLOWED_TEAM_ID` and `MSTEAMS_ALLOWED_CHANNEL_ID` — Teams
+  **conversation** IDs of the form `19:…@thread.tacv2`, *not* the team's
+  Entra group UUID that the variable name suggests. Take them from the
+  channel's *Get link to channel* URL (the `threadId` parameter) or from a
+  received activity's `conversation.id`.
+- `MSTEAMS_PUBLIC_WEBHOOK_URL` — the public HTTPS URL your reverse proxy
+  serves, ending in `/api/messages`. Register exactly this URL as the bot
+  resource's messaging endpoint, and install the Teams app package into the
+  tenant, or no activity ever reaches the gateway.
+
 The profile disables delegated auth, SSO, welcome/feedback cards, name
 matching, and config writes. DMs and groups use the same stable user allowlist;
 team/channel messages are mention-gated.
@@ -171,7 +228,22 @@ See the pinned [OpenClaw Teams guide](https://docs.openclaw.ai/channels/msteams)
 
 ## Discord Gateway
 
-Use numeric application/user/guild/channel snowflakes. Enable only the Message
+Provider-side setup, in order:
+
+1. Create an application at `discord.com/developers/applications`; its ID is
+   `DISCORD_APPLICATION_ID`.
+2. Add a Bot and copy its token into `DISCORD_BOT_TOKEN`.
+3. Under Bot → Privileged Gateway Intents enable **Message Content** only.
+4. Generate an OAuth2 URL (scopes `bot` plus `applications.commands` if you
+   use them) and use it to invite the bot to the guild. Without this step the
+   bot is never in the guild and no matrix row can pass.
+
+Obtaining the IDs: enable *Advanced → Developer Mode* in the Discord client,
+then right-click a user, the server, or the channel and choose *Copy ID* for
+`DISCORD_ALLOWED_USER_IDS`, `DISCORD_ALLOWED_GUILD_ID` and
+`DISCORD_ALLOWED_CHANNEL_ID`. All are numeric snowflakes.
+
+Enable only the Message
 Content intent required for this interaction; Presence, Server Members, Voice,
 moderation, actions, agent components, native commands/approvals, thread
 session spawning, and bot senders remain off.
@@ -181,6 +253,18 @@ disconnect/resume, thread/parent context without session spawning, and replay
 of the same message ID across restart.
 
 ## Telegram long polling
+
+Provider-side setup: message `@BotFather` in Telegram, `/newbot`, and copy the
+issued token into `TELEGRAM_BOT_TOKEN`. Then `/setprivacy` → *Enable* so the
+bot only receives messages addressed to it, and add the bot to the group.
+
+Obtaining the IDs: a user's numeric ID and a supergroup's `-100…` ID are not
+shown in the Telegram UI. Read them from the bot's own update stream after
+sending it one message from the account and one in the group:
+`curl -s "https://api.telegram.org/bot<token>/getUpdates"`, then take
+`message.from.id` for `TELEGRAM_ALLOWED_USER_IDS` and `message.chat.id` for
+`TELEGRAM_ALLOWED_GROUP_ID`. Run that only from the deployment host and do
+not paste the token elsewhere.
 
 Use one bot token/poller, positive numeric user IDs, and a negative `-100...`
 supergroup ID. Usernames are not authorization. The group is allowlisted,

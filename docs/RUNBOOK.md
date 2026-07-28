@@ -143,9 +143,10 @@ python3 -B scripts/verify_release.py --pristine
 
 `--pristine` rejects undeclared caches, editor/OS debris, symlinks, and special
 files as well as changed declared files. It stays correct after installation and
-during normal operation, so prefer it always: `.env`, the rendered runtime config
-under `config/runtime/`, and `deployment-lock.json` are on the verifier's
-allowed-runtime list, and operator payload inside `./inbox` and `./quarantine` is
+during normal operation, so prefer it always: `.env`,
+`config/customization-profile.json`, `config/connectors.json`, the rendered
+runtime config and secrets under `config/runtime/`, and `deployment-lock.json`
+are all on the verifier's allowed-runtime list, and operator payload inside `./inbox` and `./quarantine` is
 tolerated because those are operator working directories rather than package
 content (`./inbox` is the optional operator-only manual drop point, not the
 channel attachment path; `./quarantine` is a runtime
@@ -289,7 +290,16 @@ The restore drill in §5.4 is the one item no gate covers.
 
 ### 5.2 Database and helper
 
-- Run `vcops db-check` from both gateway and one-off CLI containers.
+- Run `db-check` from both consumer images. There is no `vcops` on `PATH`;
+  use the absolute wrapper, and override the CLI service's own entrypoint:
+
+  ```sh
+  docker compose -f docker-compose.yml -p openclaw-lead-research-v3 --env-file .env \
+    exec openclaw-gateway /workspaces/vc-chief/vc/bin/agent/vcops db-check
+  docker compose -f docker-compose.yml -p openclaw-lead-research-v3 --env-file .env \
+    --profile tools run --rm --no-deps \
+    --entrypoint /workspaces/vc-chief/vc/bin/agent/vcops openclaw-cli db-check
+  ```
 - Inspect `schema_migrations`; prove every migration name and external SHA-256
   matches the release and a repeat run is a no-op.
 - Prove `openclaw_runtime` is `NOINHERIT`, non-superuser, non-replication,
@@ -318,10 +328,29 @@ The restore drill in §5.4 is the one item no gate covers.
   and any mirrored Task Flow is cancelled rather than reported succeeded.
 - Force a Postgres record-version and Task Flow revision conflict; both must
   fail without overwriting newer state.
-- Run `openclaw tasks audit` and `openclaw tasks maintenance`; unresolved
-  broken/stale records are failures.
+- Run the Task Flow audit and maintenance commands. `openclaw` is not
+  installed on the host; it lives in the gateway image:
+
+  ```sh
+  docker compose -f docker-compose.yml -p openclaw-lead-research-v3 --env-file .env \
+    exec openclaw-gateway openclaw tasks audit
+  docker compose -f docker-compose.yml -p openclaw-lead-research-v3 --env-file .env \
+    exec openclaw-gateway openclaw tasks maintenance
+  ```
+
+  Unresolved broken/stale records are failures. Every other bare `openclaw …`
+  command in this runbook runs the same way.
 
 ### 5.4 Persistence and disaster recovery
+
+Backups are bounded, and the bounds are not advisory: `backup.sh` validates each
+archive with `--max-entries 100000`, `--max-member-bytes 2 GiB`, `--max-ratio
+500`, and a per-class total — 2 GiB for the `state` tier (raise it with
+`OPENCLAW_STATE_ARCHIVE_MAX_BYTES` in `.env`, up to 100 GiB) and a fixed 20 GiB
+for `inbox` and `quarantine`. Document snapshots and extractions accumulate in
+the `state` tier, so a deployment with sustained attachment intake will reach
+that bound; raise it and size the volume before backups begin failing. The
+entry-count, member-size and ratio bounds have no configuration escape.
 
 - Restart and recreate every service and prove sessions, Task Flow SQLite,
   Lobster continuation, Postgres business data and preferences, runtime config,
@@ -340,8 +369,17 @@ The restore drill in §5.4 is the one item no gate covers.
   Flow/Lobster state, read-only inbox originals, inbound document snapshots,
   and the named quarantine volume while
   excluding `.env`, generated runtime config, exec approvals, and secrets.
-- On the isolated target, verify the exact package and prepare a valid inert
-  `.env`. That `.env` **must carry the same `BACKUP_HMAC_KEY` that was in force
+- On the isolated target, verify the exact package, prepare a valid inert
+  `.env`, and prepare a customization profile **for that host**: both
+  `bootstrap.sh` and `restore.sh` validate the profile against the `.env`
+  before doing anything, and the profile is deliberately not inside the backup.
+  Copy your reviewed policy artifacts and `config/customization-profile.json`
+  across, set `channels.selected` to `none` and `approvals.allowed_channel_ids`
+  to `[]` so they match the inert `.env`, keep `organization.timezone`,
+  `models.*` and `search.*` byte-identical to that `.env`, re-pin with
+  `python3 -B scripts/init_customization.py --update-hashes`, and confirm
+  `python3 -B scripts/check_customization.py config/customization-profile.json .env`
+  passes. A production profile that selects a channel will not validate here. That `.env` **must carry the same `BACKUP_HMAC_KEY` that was in force
   when the backup was written** — `restore.sh` authenticates the checksum
   manifest with it and aborts with "backup authenticity verification failed"
   otherwise. A fresh key on the recovery host makes every existing recovery
@@ -367,7 +405,12 @@ The restore drill in §5.4 is the one item no gate covers.
   trusted-context HMAC key, backup HMAC key, and selected channel/model/search
   credentials; prove old credentials fail and new credentials work without
   duplicate consumers. The two database credentials rotate together through
-  `./scripts/rotate_runtime_role.sh` (never by editing `.env` alone). The other
+  `./scripts/rotate_runtime_role.sh`. The script does not invent credentials: it
+  reads both passwords out of `.env`, so write the new values there first
+  (24–128 base64url-safe characters each, and different from one another), then
+  run it. Running it without changing `.env` reconciles the role and reports
+  success while rotating nothing. Never change `.env` alone either — the script
+  is what re-reads the file-backed secrets and reconciles the role. The other
   secrets need a re-render and a force-recreate, not a restart — see
   `docs/OPERATIONS.md` "Secrets" for the exact sequence. Rotating
   `VCOPS_APPROVAL_PEPPER` invalidates every approval not yet consumed —
@@ -412,8 +455,14 @@ Then rerun:
 python3 -B scripts/check_customization.py config/customization-profile.json .env
 python3 -B scripts/render_channel_config.py .env
 docker compose -f docker-compose.yml -p openclaw-lead-research-v3 --env-file .env config --quiet
-docker compose -f docker-compose.yml -p openclaw-lead-research-v3 --env-file .env up -d --wait --force-recreate openclaw-gateway
+docker compose -f docker-compose.yml -p openclaw-lead-research-v3 --env-file .env run --rm --no-deps openclaw-state-init
+docker compose -f docker-compose.yml -p openclaw-lead-research-v3 --env-file .env up -d --wait --force-recreate --no-deps openclaw-gateway
 ```
+
+The `openclaw-state-init` run is required, not optional: the gateway reads the
+rendered config from the runtime-config volume, and that one-shot service is the
+only writer of it. Recreating the gateway alone leaves the previous channel
+config mounted. Re-running `./scripts/bootstrap.sh` does the same thing.
 
 The `check_customization.py` step is what makes the profile/environment mismatch
 fail closed here (and on every `update`/`restore`/`rotate` path), before the
@@ -446,7 +495,8 @@ Weekly or after incidents:
 - review pending/expired approvals, stale notification claims, unresolved
   contradictions, pending governance and skill proposals (decisions on
   captured proposals are recorded through the operator-gated
-  `proposal-decide` helper command, never a direct database update),
+  `proposal-decide` helper command, never a direct database update — see
+  "Operator administration lane" in `OPERATIONS.md` for the runnable form),
   quarantine retention, and access logs; and
 - create a new backup and periodically perform an isolated restore drill.
 
@@ -458,6 +508,20 @@ ambiguous external send.
 
 Before any update, review current upstream code/release notes, create a passing
 backup, produce a new reviewed package/manifest, and rerun every offline gate.
+
+Then carry the deployed revision's runtime files into the new package directory:
+`deployment-lock.json`, `.env`, `config/customization-profile.json`,
+`config/connectors.json` if you use connectors, and every customized policy
+artifact. A freshly built package contains none of them, and `update.sh` runs
+`check_env.sh` and `check_customization.py` — which re-hashes the twenty
+reviewed artifacts against the new tree — before it takes the lifecycle lock. So
+re-pin afterwards:
+
+```sh
+python3 -B scripts/init_customization.py --update-hashes
+python3 -B scripts/build_release_manifest.py
+```
+
 Then run:
 
 ```sh
@@ -519,6 +583,17 @@ record. Autonomous transcript review remains disabled.
 
 - **Credential exposure:** set the affected channel to `none`, stop consumers,
   rotate the credential, inspect audit/provider logs, and rerun its live matrix.
+- **Role reconciliation failed** (`openclaw_runtime role restrictions did not
+  reconcile`, or any `rotate_runtime_role.sh` failure): the script has already
+  stopped the gateway and CLI, and both database passwords in `.env` may now
+  differ from what Postgres holds. Do not re-run the script blindly. Confirm
+  Postgres is up (`compose ps`), then check which credentials actually work by
+  connecting as each role from the Postgres container; if `.env` is ahead of the
+  database, the owner password in `.env` is the one to correct. Once a working
+  owner credential is in `.env`, re-run the script — it is idempotent. If
+  neither credential works, restore from the last verified recovery point
+  (§5.4); the database is the authoritative state and the gateway is stateless
+  against it.
 - **Database/auth anomaly:** stop gateway and CLI, preserve evidence, run the
   locked role reconciler, and do not restore traffic until both positive and
   negative authentication proofs pass.

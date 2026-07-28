@@ -52,7 +52,7 @@
       "<STABLE_ID>"
     ],
     "allowed_channel_ids": [],
-    "expiry_minutes": 30,
+    "expiry_minutes": 60,
     "separation_of_duties_reviewed": false
   },
   "privacy_retention": {

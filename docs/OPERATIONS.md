@@ -60,6 +60,78 @@ Both database passwords must be independent 24-128 character base64url-safe valu
 
 Backup, restore, update, bootstrap, and direct role rotation share `/tmp/openclaw-lead-research-v3-lifecycle.lock`. Nested update/bootstrap operations pass a private owner token that is checked against the mode-`0700` lock directory; setting a boolean environment flag cannot bypass the lock. If a host crash leaves the directory, confirm no lifecycle process is active before removing it. Every script pins both the absolute Compose file and project name, so invoking it from a different current directory cannot select another stack.
 
+## Operator administration lane
+
+Several routine duties can only be performed on the host-operator lane, which is
+deliberately absent from the agent exec allowlist. It lives inside the gateway
+image, so reach it with `compose exec` from the package directory:
+
+```sh
+compose() {
+  docker compose -f docker-compose.yml -p openclaw-lead-research-v3 --env-file .env "$@"
+}
+operator() {
+  compose exec -e VCOPS_OPERATOR_ID="$OPERATOR_ID" openclaw-gateway \
+    /workspaces/vc-chief/vc/bin/vcops-operator "$@"
+}
+```
+
+`VCOPS_OPERATOR_ID` is the stable ID of the human acting. It is passed per
+invocation and is **not** an `.env` key — `check_env.py` rejects it there as an
+unknown variable. Every command below emits one JSON object.
+
+```sh
+OPERATOR_ID=partner-1
+
+# Governance/skill proposals (RUNBOOK §7 weekly review).
+operator proposal-list --status submitted
+operator proposal-decide --proposal-id <id> --decision accept \
+  --reviewer "$OPERATOR_ID" --note "<why>"
+
+# Watchlist: re-enable or reclassify a source a model lane may not touch.
+operator source-list
+operator source-watch --name "<name>" --uri "<https://…>" \
+  --source-class news_rss --cadence daily --confidentiality internal
+operator source-unwatch --uri "<https://…>"
+operator source-scan --limit 50
+
+# Database reachability, from the gateway and from a one-off CLI container.
+compose exec openclaw-gateway /workspaces/vc-chief/vc/bin/agent/vcops db-check
+compose --profile tools run --rm --no-deps \
+  --entrypoint /workspaces/vc-chief/vc/bin/agent/vcops openclaw-cli db-check
+```
+
+There is no `vcops` on the host or on the image's `PATH`; always use the
+absolute wrapper path. The `openclaw-cli` service sets its own entrypoint, so
+the `--entrypoint` override above is required.
+
+### Erasing a lead
+
+`data-erase-lead` is approval-gated: request an approval, decide it, then spend
+the returned token exactly once. The `--payload-hash` must be the same value in
+the request and the erasure, and the token is single-use.
+
+```sh
+operator approval-request --idempotency-key "erase-<lead-id>-$(date +%s)" \
+  --action data_erase --scope "lead:<lead-id>" --action-preview "erase lead <lead-id>" \
+  --target-system vcops --lead-id <lead-id> --payload-hash <sha256> \
+  --requested-by "$OPERATOR_ID" --expires-minutes 60
+
+operator approval-decide --request-id <request-id> --decision approve \
+  --approver <second-approver-id> --approval-channel operator-console --reason "<why>"
+
+operator data-erase-lead --lead-id <lead-id> --token <token> \
+  --scope "lead:<lead-id>" --target-system vcops --payload-hash <sha256> \
+  --transaction-id <uuid> --actor "$OPERATOR_ID"
+```
+
+Approver and requester must be different stable identities. Rotating
+`VCOPS_APPROVAL_PEPPER` invalidates every approval that has not yet been
+consumed, including approved ones, because the pepper HMACs the stored token
+digest. `data-erase-lead` is the audited entry point to an erasure procedure and
+does not by itself reach backups, exports, or anything outside this database —
+see `workspaces/vc-chief/vc/data_retention.md` for what it covers.
+
 ## Health
 
 - `/healthz` is liveness only.
@@ -90,13 +162,13 @@ was explicitly excluded from this package-readiness effort.
 
 1. Review upstream release notes and migration requirements.
 2. Change pinned references only in a reviewed release revision; never use `latest` or `main`.
-3. Preserve the deployed revision's runtime `deployment-lock.json` when placing the new package revision, then run `scripts/update.sh <new-pre-update-backup-directory>`. The update-only compatible-backup mode validates the old lock against the still-live image IDs and writes both backup `VERSION` and `BACKUP_MANIFEST.package_version` from that lock, never from the newly placed package. The old lock and its matching old version are therefore embedded together in the pre-update recovery point. The script holds one lifecycle lock from that quiesced point through build, migration, secret/role reconciliation, readiness, and recording the new lock. Do not set `OPENCLAW_BACKUP_COMPATIBLE_LOCK` manually; backup rejects it unless the private update lock and quiesced mode are both active.
+3. Carry the deployed revision's runtime state into the new package directory before running anything: `deployment-lock.json`, `.env`, `config/customization-profile.json`, `config/connectors.json` if you use connectors, and every customized policy artifact. `update.sh` runs `check_env.sh` and `check_customization.py` before it takes the lifecycle lock, and the profile's twenty artifact hashes are re-checked against the new tree — so re-pin with `python3 -B scripts/init_customization.py --update-hashes` after carrying the artifacts across. Then run `scripts/update.sh <new-pre-update-backup-directory>`. The update-only compatible-backup mode validates the old lock against the still-live image IDs and writes both backup `VERSION` and `BACKUP_MANIFEST.package_version` from that lock, never from the newly placed package. The old lock and its matching old version are therefore embedded together in the pre-update recovery point. The script holds one lifecycle lock from that quiesced point through build, migration, secret/role reconciliation, readiness, and recording the new lock. Do not set `OPENCLAW_BACKUP_COMPATIBLE_LOCK` manually; backup rejects it unless the private update lock and quiesced mode are both active.
 4. Run all offline and live release gates again.
 5. Record immutable image IDs/digests in `deployment-lock.json` using `scripts/record_images.py`.
 
 ## Rollback and restore
 
-`scripts/restore.sh <backup-directory> --confirm-destructive-restore` is destructive. Prepare an isolated target with the exact package revision first: verify its external provenance and embedded inventory, create and validate `.env` with `PRIMARY_CHANNEL=none` and the matching retained backup HMAC key, run `scripts/bootstrap.sh` (or equivalently load/build the exact derived CLI image, start a healthy package Postgres service, initialize state, and run `scripts/record_images.py`), and retain its local `deployment-lock.json`. Only then run restore. The canonical backup source and private validation staging must not equal, contain, or sit beneath the package `inbox/`; the script rejects that overlap before mutation so replacing the inbox cannot delete the recovery point or its staged source. Before any verification it copies every backup member into private staging with a single read of each; the operator-writable backup directory is never read again after that point. It then authenticates the staged checksum manifest with HMAC-SHA-256 and verifies every staged member's checksum against that authenticated manifest, so the bytes that were authenticated are exactly the bytes that get restored — there is no verify-then-reread window. From the staged copies it validates the checksum inventory, package version, both deployment locks against the exact manifest/upstream/image-reference/migration contract, and the target's live Docker image IDs and pinned upstream digests against its local lock; structurally rejects archive traversal, links, devices, control-character or duplicate paths, sparse files, and configured entry/size/expansion-limit violations; safely extracts every state/artifact archive into private staging (removing each staged archive after extraction to bound peak staging space); restores the database dump into a disposable validation database; and proves its database artifact inventory resolves to the staged inbox/quarantine bytes. Production replacement — including the destructive `pg_restore` — streams only from that validated staging tree, never from the operator-writable original archive. Staging therefore needs temporary space for a full copy of the backup. Only then does it stop every state consumer, recreate the production database, replace OpenClaw state, inbox, and named quarantine content, reject any migration ledger row unknown to this package, apply pending migrations plus their checksums in transactions, reconcile roles, recreate secret consumers, wait for readiness, and run database checks from both images.
+`scripts/restore.sh <backup-directory> --confirm-destructive-restore` is destructive. Prepare an isolated target with the exact package revision first: verify its external provenance and embedded inventory, create and validate `.env` with `PRIMARY_CHANNEL=none` and the matching retained backup HMAC key, then prepare a customization profile for that host — `bootstrap.sh` and `restore.sh` both validate the profile against the `.env` before doing anything, and the profile is deliberately not inside the backup. Copy your reviewed policy artifacts and `config/customization-profile.json` across, set `channels.selected` to `none` and `approvals.allowed_channel_ids` to `[]` so they match the inert `.env`, keep `organization.timezone`, `models.*` and `search.*` byte-identical to that `.env`, re-pin with `python3 -B scripts/init_customization.py --update-hashes`, and confirm `python3 -B scripts/check_customization.py config/customization-profile.json .env` passes. Then run `scripts/bootstrap.sh` (or equivalently load/build the exact derived CLI image, start a healthy package Postgres service, initialize state, and run `scripts/record_images.py`), and retain its local `deployment-lock.json`. Only then run restore. The canonical backup source and private validation staging must not equal, contain, or sit beneath the package `inbox/`; the script rejects that overlap before mutation so replacing the inbox cannot delete the recovery point or its staged source. Before any verification it copies every backup member into private staging with a single read of each; the operator-writable backup directory is never read again after that point. It then authenticates the staged checksum manifest with HMAC-SHA-256 and verifies every staged member's checksum against that authenticated manifest, so the bytes that were authenticated are exactly the bytes that get restored — there is no verify-then-reread window. From the staged copies it validates the checksum inventory, package version, both deployment locks against the exact manifest/upstream/image-reference/migration contract, and the target's live Docker image IDs and pinned upstream digests against its local lock; structurally rejects archive traversal, links, devices, control-character or duplicate paths, sparse files, and configured entry/size/expansion-limit violations; safely extracts every state/artifact archive into private staging (removing each staged archive after extraction to bound peak staging space); restores the database dump into a disposable validation database; and proves its database artifact inventory resolves to the staged inbox/quarantine bytes. Production replacement — including the destructive `pg_restore` — streams only from that validated staging tree, never from the operator-writable original archive. Staging therefore needs temporary space for a full copy of the backup. Only then does it stop every state consumer, recreate the production database, replace OpenClaw state, inbox, and named quarantine content, reject any migration ledger row unknown to this package, apply pending migrations plus their checksums in transactions, reconcile roles, recreate secret consumers, wait for readiness, and run database checks from both images.
 
 Run restore only in an approved maintenance window with a second current backup and a matching reviewed package. Migration runners serialize on a PostgreSQL transaction-scoped advisory lock and make their ledger decision under that lock; application and checksum registration commit together. If a failure occurs after mutation begins, the script leaves gateway and CLI stopped; do not manually start a partial system. Repair or retry the verified recovery point. Script success proves the package path, not the specific target environment; deployment commissioning may additionally exercise `doctor`, Task Flow audit, exact-once Lobster resume/cancel, models, and a selected channel.
 

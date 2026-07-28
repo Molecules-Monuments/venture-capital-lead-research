@@ -802,7 +802,7 @@ Prerequisites:
   Python, so one floor covers both;
 - one-time access to the exact hash-pinned Python packages or an approved
   package cache;
-- optional local `initdb`, `pg_ctl`, and `psql` **from PostgreSQL 17** for the
+- optional local `initdb`, `pg_ctl`, `psql`, and `pg_dump` **from PostgreSQL 17** for the
   database/scale/schema gates — they must match the deployed
   `POSTGRES_IMAGE` major, and the gates refuse to run against any other
   major rather than validate a version this package never deploys; and
@@ -947,6 +947,37 @@ within this system's lead-research scope.
 
 ## Use the system
 
+### A first lead, end to end
+
+The chat invocations below produce a report and persist nothing. To create a
+lead the rest of the system can act on, run the fixed workflows. From the
+package root, with `compose()` defined as
+`docker compose -f docker-compose.yml -p openclaw-lead-research-v3 --env-file .env`:
+
+```sh
+# 0. Prove the helper/database boundary is live.
+compose exec openclaw-gateway /workspaces/vc-chief/vc/bin/agent/vcrun \
+  run runtime-preflight --args-json '{"idempotency_key":"preflight-1"}'
+
+# 1. Create a lead. Either drop a deck in ./inbox and use inbound-intake
+#    (see docs/WORKFLOWS.md), or start from a name alone:
+compose exec openclaw-gateway /workspaces/vc-chief/vc/bin/agent/vcrun \
+  run outbound-scout --args-json '{
+    "idempotency_key":"acme-1","company_name":"Acme Robotics",
+    "company_domain":"acme.example","lead_title":"Acme Robotics — seed"}'
+# -> returns the lead_id every later workflow takes.
+
+# 2. Research it in chat, then persist what the model found as evidence.
+#    evidence_json's field set is in workspaces/shared-skills/data-persistence/SKILL.md.
+
+# 3. Evaluate. This pauses for a human decision; see docs/WORKFLOWS.md for
+#    resuming it through vcrun-control.
+```
+
+Operator-only duties — deciding proposals, re-enabling a watched source, erasing
+a lead — run on a separate lane documented in
+[OPERATIONS.md](docs/OPERATIONS.md) under "Operator administration lane".
+
 ### Private CLI
 
 ```sh
@@ -956,8 +987,15 @@ docker compose --profile tools --env-file .env run --rm openclaw-cli \
   --json
 ```
 
+Run this from the package root as the deployment operator; add
+`-f docker-compose.yml -p openclaw-lead-research-v3` if you invoke it from
+anywhere else, as the lifecycle scripts always do.
+
 For long prompts, use the pinned CLI's `--message-file` option with a reviewed
-UTF-8 file. Do not place credentials, approval tokens, or unnecessary personal
+UTF-8 file. The path is resolved **inside the container**, so a host path will
+not exist there: place the file where the CLI already mounts something — for
+example under `./inbox`, which is mounted read-only at `/inbox` — and pass that
+container path. Do not place credentials, approval tokens, or unnecessary personal
 data in prompts.
 
 ### Private Control UI
