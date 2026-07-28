@@ -854,6 +854,14 @@ attachment policy, and memo style. The shipped routing and scoring cases are
 examples; how you validate a replacement rubric is your decision. Set
 `status=reviewed` last. Owner and reviewer must be different stable identities.
 
+The policy artifacts you edit are hash-pinned in two inventories, so re-pin
+both afterwards or the pre-deployment gate fails on your own edits:
+
+```sh
+python3 -B scripts/init_customization.py --update-hashes
+python3 -B scripts/build_release_manifest.py
+```
+
 > [!NOTE]
 > The twenty review flags are attestations this package neither makes nor
 > evaluates: `check_customization.py` refuses the profile until each is `true`.

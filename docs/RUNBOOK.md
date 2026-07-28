@@ -137,7 +137,8 @@ during normal operation, so prefer it always: `.env`, the rendered runtime confi
 under `config/runtime/`, and `deployment-lock.json` are on the verifier's
 allowed-runtime list, and operator payload inside `./inbox` and `./quarantine` is
 tolerated because those are operator working directories rather than package
-content (`./inbox` is the document drop point; `./quarantine` is a runtime
+content (`./inbox` is the optional operator-only manual drop point, not the
+channel attachment path; `./quarantine` is a runtime
 quarantine placeholder — the deployed stack quarantines rejected uploads into
 the `vc-quarantine` named volume, not into this directory). A
 *symlink* in either of those directories is still reported — the gateway would
@@ -217,7 +218,7 @@ it only stops you re-deriving what the package already demonstrates.
 
 | Rows | Already proven by | What is still yours |
 | --- | --- | --- |
-| 5.1 OpenClaw/Lobster/channel/search/Python/Debian versions; per-profile config validation; skill-workshop hook | `verify_offline.py --with-g6-image <image>` | Record *your* live image IDs: `python3 scripts/record_images.py --validate-live` |
+| 5.1 OpenClaw/Lobster/channel/search/Python/Debian versions; per-profile config validation; skill-workshop hook | `verify_offline.py --with-g6-image <image>` | Record *your* live image IDs: `python3 -B scripts/record_images.py --validate-live deployment-lock.json` |
 | 5.1 agent authority boundary (no direct Lobster, exec, config, cron, gateway or DB authority) | `validate_skill_system.py` and the `tests/infrastructure` exec-allowlist contract, both inside `verify_offline.py` | — |
 | 5.1 rendered-config mode, ownership, digest and read-only mounting | `tests/infrastructure` plus the in-container initializer assertions exercised by `run_g8_deployment.py` | — |
 | 5.1 `/healthz` and `/readyz` behaviour; private-path reachability | — | Yours: depends on your host and proxy |
@@ -521,8 +522,11 @@ record. Autonomous transcript review remains disabled.
 - **Malicious document:** keep the original quarantined, do not open it with an
   office application, record its hash/provenance, and preserve the governed
   rejection evidence.
-- **Integrity mismatch:** stop installation/update; reacquire the reviewed
-  release. Do not regenerate hashes around unexplained changes.
+- **Integrity mismatch:** if the reported paths are edits you deliberately made
+  — customized policy artifacts, a replaced rubric — re-pin the inventory with
+  `python3 -B scripts/build_release_manifest.py` and re-run the gate. Otherwise
+  stop installation/update and reacquire the reviewed release. Never regenerate
+  hashes around a change you cannot account for.
 
 ## 10. Known release limitations
 

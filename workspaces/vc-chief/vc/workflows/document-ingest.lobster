@@ -1,10 +1,13 @@
 name: vc-document-ingest-v3
 # SPDX-License-Identifier: 0BSD
 
-# Ingest one operator-supplied document from /inbox and run the deterministic
-# extraction pipeline on it, gated by a short-lived trusted-context capability
-# that binds this run to that exact file. Produces a content-addressed evidence
-# extraction (hash + stored bytes); it does not create a lead by itself.
+# Ingest one document a channel user attached to their message and run the
+# deterministic extraction pipeline on it, gated by a short-lived
+# trusted-context capability that binds this run to that exact file. The path
+# must be a direct file under OpenClaw's private inbound-media root, where the
+# channel plugin stores the attachment; this lane cannot read /inbox, which is
+# the separate operator-only `inbound-intake` path. Produces a content-addressed
+# evidence extraction (hash + stored bytes); it does not create a lead by itself.
 
 args:
   idempotency_key:

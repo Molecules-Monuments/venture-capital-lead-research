@@ -7,23 +7,33 @@ passed the relevant evals.
 
 ## Required publication workflow
 
-1. Copy `config/customization-profile.example.json` to
-   `config/customization-profile.json`.
+1. Run `python3 -B scripts/init_customization.py`. It writes
+   `config/customization-profile.json` from the example and pins the twenty
+   `review.reviewed_artifacts` hashes; it marks nothing as reviewed.
 2. Replace every placeholder, set only reviewed booleans to `true`, record the
-   stable reviewer/change record, populate `review.reviewed_artifacts` with the
-   current SHA-256 of every coupled policy/eval file, and set `status` to
-   `reviewed` last.
+   stable reviewer/change record, and set `status` to `reviewed` last.
 3. Apply the corresponding edits in the files below. The JSON profile records
    the decision; it does not silently rewrite policy.
-4. Run `python3 -B scripts/check_customization.py
-   config/customization-profile.json .env`. This binds the reviewed timezone,
-   model/provider IDs, search/fetch selection, channel selection, allowed-user
-   lists, attachment limit, and destination IDs to the exact deployment
+4. Re-pin both inventories, because the files you just edited are hash-pinned
+   in two places:
+
+   ```sh
+   python3 -B scripts/init_customization.py --update-hashes
+   python3 -B scripts/build_release_manifest.py
+   python3 -B scripts/verify_release.py --pristine
+   ```
+
+   Skipping this leaves `verify_release.py --pristine` and the
+   `manifest-current` gate failing on your own deliberate edits.
+5. Run `python3 -B scripts/check_customization.py
+   config/customization-profile.json .env`. Passing the `.env` path is what
+   binds the reviewed timezone, model/provider IDs, search/fetch selection,
+   channel selection and approver destination IDs to the exact deployment
    environment; validating the profile alone is not a publication gate.
-5. Rebuild the routing, scoring, retrieval, specialist, memo, privacy, and live
+6. Rebuild the routing, scoring, retrieval, specialist, memo, privacy, and live
    channel fixtures affected by the changes. Passing old fixtures against a new
    thesis is not evidence.
-6. Run all offline gates and the applicable live acceptance matrix before
+7. Run all offline gates and the applicable live acceptance matrix before
    selecting a channel or production traffic.
 
 ## `MUST_CUSTOMIZE` files

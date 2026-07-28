@@ -72,8 +72,8 @@
     {
       "executable": false,
       "path": "CUSTOMIZATION.md",
-      "sha256": "f325e7d62582e00eeda902ad9dfa88158f38dbb520adf00d24fb9963fd970622",
-      "size": 16203
+      "sha256": "fd01e5ff0dad22588ee76528c02f9b3a377d081dffaae463b377fe8c5a603505",
+      "size": 16609
     },
     {
       "executable": false,
@@ -90,8 +90,8 @@
     {
       "executable": false,
       "path": "README.md",
-      "sha256": "a2f3ff690411ea1830a4ca3006f39fbf30a9b9d94bd021b5526d0ddf9224c7c1",
-      "size": 73216
+      "sha256": "28d4e3cb531aecb4ba6e9a6cc79c179af82579fc804f7067b7eae8a774c25999",
+      "size": 73474
     },
     {
       "executable": false,
@@ -210,8 +210,8 @@
     {
       "executable": false,
       "path": "docs/RUNBOOK.md",
-      "sha256": "a86f23c0981d343ed4508d5f31edbbc3ea2964f21e0005b7512e2e919ecea37e",
-      "size": 33341
+      "sha256": "3e4266a1b16fbb27c935ebd572ed1767ec668539991b1b378bd741ead9de2f57",
+      "size": 33652
     },
     {
       "executable": false,
@@ -234,8 +234,8 @@
     {
       "executable": false,
       "path": "docs/WORKFLOWS.md",
-      "sha256": "739d76c73981820717bb2fb1fb03d925efa62cd2155aa9b5eb2830607180449d",
-      "size": 13729
+      "sha256": "11c4401cb42a1c2b16ecdcf4978206c35355b96ecd88973371297a6ba2ce3c90",
+      "size": 14211
     },
     {
       "executable": false,
@@ -534,8 +534,8 @@
     {
       "executable": true,
       "path": "scripts/build_release_manifest.py",
-      "sha256": "5dd89803febcf13d6b5636b58bf02ad4f391bdbe9afecf3ab41bde7469856c00",
-      "size": 5233
+      "sha256": "72dbc8f9422944514a5be13e92822b8f9e93fe4264de073544ac717a104ce588",
+      "size": 7449
     },
     {
       "executable": true,
@@ -564,8 +564,8 @@
     {
       "executable": false,
       "path": "scripts/init_customization.py",
-      "sha256": "6450d9c63c0ff2cea6e72d9e9d12857a0a33f213f0e141272d7082a96f0094de",
-      "size": 5114
+      "sha256": "927da61cb46fd6e1c0aaab0a261dec8e62f73668ba43a3736498808eb7fe8e70",
+      "size": 5402
     },
     {
       "executable": true,
@@ -1830,8 +1830,8 @@
     {
       "executable": false,
       "path": "workspaces/vc-chief/vc/workflows/document-ingest.lobster",
-      "sha256": "f6193980dad77ea4d6bd946dfa76ac099e4b94db528e6d56c871e6eee8c1ee9c",
-      "size": 2857
+      "sha256": "2f1e4ce2369d3890b1ead778abcd52eec0224f5bf1de697c41ea733f693e1a8a",
+      "size": 3087
     },
     {
       "executable": false,

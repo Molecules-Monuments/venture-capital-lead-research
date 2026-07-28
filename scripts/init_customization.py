@@ -123,7 +123,11 @@ def main() -> int:
                     "Set the twenty review flags to true only for what was actually reviewed.",
                     "Set review.approved_by to a stable ID different from "
                     "organization.deployment_owner, and review.approved_at to an RFC3339 time.",
-                    "Set status last, then run: python3 -B scripts/check_customization.py",
+                    "Set status last, then validate the profile against the deployment "
+                    "environment: python3 -B scripts/check_customization.py "
+                    "config/customization-profile.json .env  (passing the .env path is "
+                    "what binds the reviewed selections to it; the profile alone is not "
+                    "the gate).",
                 ],
             },
             indent=2,

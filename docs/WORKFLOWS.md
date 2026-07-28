@@ -148,15 +148,27 @@ nonce/scope fails as `trusted_context_replay`.
 The pause exposes only an eight-hex correlation ID. The long resume token never
 appears in an agent result.
 
-Operator continuation is separate and not agent-allowlisted:
+Operator continuation is separate and not agent-allowlisted. The wrapper lives
+inside the gateway image, so run it through `compose exec` from the package
+directory on the deployment host:
 
-```text
-/workspaces/vc-chief/vc/bin/vcrun-control resume --id <approval-id> --approve yes
-/workspaces/vc-chief/vc/bin/vcrun-control resume --id <approval-id> --approve no --run-id <postgres-run-id> --expected-revision <n>
-/workspaces/vc-chief/vc/bin/vcrun-control resume --id <approval-id> --cancel --run-id <postgres-run-id> --expected-revision <n>
+```sh
+docker compose -f docker-compose.yml -p openclaw-lead-research-v3 --env-file .env \
+  exec -e VCOPS_OPERATOR_ID=<stable-operator-id> openclaw-gateway \
+  /workspaces/vc-chief/vc/bin/vcrun-control resume --id <approval-id> --approve yes
 ```
 
-The wrapper requires a stable `VCOPS_OPERATOR_ID`. Rejection/cancel first
+The wrapper accepts these forms:
+
+```text
+vcrun-control resume --id <approval-id> --approve yes
+vcrun-control resume --id <approval-id> --approve no --run-id <postgres-run-id> --expected-revision <n>
+vcrun-control resume --id <approval-id> --cancel --run-id <postgres-run-id> --expected-revision <n>
+```
+
+`VCOPS_OPERATOR_ID` identifies the human taking the action, so it is passed per
+invocation with `exec -e` and is deliberately **not** an `.env` key —
+`check_env.py` rejects it there as an unknown variable. Rejection/cancel first
 requires the exact Postgres run to reach `cancelled`; only then may Lobster
 consume destructive continuation. A failure before that proof leaves Lobster
 state intact.

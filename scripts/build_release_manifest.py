@@ -29,6 +29,12 @@ EXCLUDED_FILES = {
 EXCLUDED_PARTS = {".git", "__pycache__", ".pytest_cache", ".ruff_cache"}
 EXCLUDED_SUFFIXES = {".pyc", ".pyo"}
 EXCLUDED_PREFIXES = {"_internal"}
+# Operator payload, not package files. verify_release.py tolerates anything the
+# operator drops here (its OPERATOR_DATA_ROOTS); without the same rule the two
+# checkers disagree and an ordinary document drop makes this manifest look
+# stale, which docs/RUNBOOK.md §9 would have the operator read as tampering.
+# Only the tracked placeholder in each root is a declared package file.
+OPERATOR_DATA_ROOTS = {"inbox", "quarantine"}
 
 
 def inventory() -> list[dict[str, object]]:
@@ -47,6 +53,10 @@ def inventory() -> list[dict[str, object]]:
             or any(part in EXCLUDED_PARTS for part in Path(relative).parts)
             or path.suffix in EXCLUDED_SUFFIXES
             or path.name == ".DS_Store"
+            or (
+                relative.split("/", 1)[0] in OPERATOR_DATA_ROOTS
+                and path.name != ".gitkeep"
+            )
         ):
             continue
         info = path.stat()
@@ -114,6 +124,26 @@ def expected_manifest() -> dict[str, object]:
     }
 
 
+def manifest_differences(expected: dict[str, object], limit: int = 20) -> list[str]:
+    """Summarize how the declared manifest differs from the current tree."""
+    try:
+        declared = json.loads(MANIFEST.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return ["manifest.json is missing or unreadable"]
+    was = {entry["path"]: entry for entry in declared.get("files", [])}
+    now = {entry["path"]: entry for entry in expected["files"]}  # type: ignore[index]
+    lines = [f"added: {path}" for path in sorted(set(now) - set(was))]
+    lines += [f"removed: {path}" for path in sorted(set(was) - set(now))]
+    lines += [
+        f"changed: {path}"
+        for path in sorted(set(was) & set(now))
+        if was[path] != now[path]
+    ]
+    if not lines:
+        return ["file inventory matches; a manifest header field differs"]
+    return lines[:limit] + ([f"... and {len(lines) - limit} more"] if len(lines) > limit else [])
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--check", action="store_true", help="verify instead of writing")
@@ -122,7 +152,18 @@ def main() -> int:
     rendered = json.dumps(expected, indent=2, sort_keys=True) + "\n"
     if args.check:
         if not MANIFEST.is_file() or MANIFEST.read_text(encoding="utf-8") != rendered:
+            # Name what differs and what to do about it. A bare mismatch line
+            # sends the operator to the runbook's tampering procedure even when
+            # the cause is a customization they deliberately made.
             print("manifest does not match the current deployable package", file=sys.stderr)
+            for line in manifest_differences(expected):
+                print(f"  {line}", file=sys.stderr)
+            print(
+                "If these changes are deliberate (customized policy artifacts, a new "
+                'file), re-pin the inventory with "python3 -B scripts/build_release_manifest.py". '
+                "If they are not, treat it as an integrity finding (docs/RUNBOOK.md §9).",
+                file=sys.stderr,
+            )
             return 1
         print(f"Manifest verified: {expected['file_count']} files")
         return 0
