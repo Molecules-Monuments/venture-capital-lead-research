@@ -29,7 +29,7 @@ RUN npm ci --prefix /opt/openclaw-runtime \
 # these exact pins are eventually superseded and drop out of deb.debian.org.
 # RECOVERY (documented in docs/RUNBOOK.md "Rebuilding after a Debian point
 # release"): point apt at a snapshot that still carries these versions, e.g.
-#   printf 'deb [check-valid-until=no] https://snapshot.debian.org/archive/debian/<YYYYMMDDTHHMMSSZ>/ bookworm main\n' \
+#   printf 'deb [check-valid-until=no] https://snapshot.debian.org/archive/debian/20260720T000000Z/ bookworm main\n' \
 #     > /etc/apt/sources.list.d/snapshot.list
 # and rebuild; or bump the pins here and re-run every release gate. The wrapper
 # below turns the otherwise-opaque "has no installation candidate" apt error into

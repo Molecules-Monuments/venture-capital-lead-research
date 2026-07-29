@@ -223,9 +223,29 @@ def parse_skill(path: Path, findings: list[Finding]) -> tuple[str | None, str]:
     except (yaml.YAMLError, DuplicateKeyError) as exc:
         add(findings, "skill_frontmatter", path, str(exc))
         return None, body
-    if not isinstance(metadata, dict) or set(metadata) != {"name", "description"}:
-        add(findings, "skill_metadata", path, "frontmatter must contain only name and description")
+    # name/description are required; user-invocable is the one optional key the
+    # package uses, to keep a skill off the slash-command surface. It has to be
+    # settable: on a channel with no native commands (Microsoft Teams is one),
+    # OpenClaw still parses text commands even with commands.text=false, so
+    # every user-invocable skill is reachable as /<name> and /skill <name>,
+    # which bypasses the chief's own routing.
+    optional_keys = {"user-invocable"}
+    if (
+        not isinstance(metadata, dict)
+        or not {"name", "description"} <= set(metadata)
+        or not set(metadata) <= {"name", "description"} | optional_keys
+    ):
+        add(
+            findings,
+            "skill_metadata",
+            path,
+            "frontmatter must contain name and description, and no keys beyond "
+            f"{sorted(optional_keys)}",
+        )
         return None, body
+    for key in optional_keys:
+        if key in metadata and not isinstance(metadata[key], bool):
+            add(findings, "skill_metadata", path, f"{key} must be a boolean")
     name = metadata.get("name")
     description = metadata.get("description")
     if not isinstance(name, str) or not re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", name) or len(name) > 64:

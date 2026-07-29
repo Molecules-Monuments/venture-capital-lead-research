@@ -7,7 +7,7 @@ Status: **Deterministic package + deployment path VERIFIED; live-model behaviora
 Count re-verification: the suites grew across the two remediation sessions that
 followed the 2026-07-23 evidence, so every count below is the count this tree
 actually produces rather than a carried-forward figure. All were re-executed on
-2026-07-28: `verify_offline.py` (**208 tests, 24/24 checks**), `run_g4.py`
+2026-07-29: `verify_offline.py` (**212 tests, 24/24 checks**), `run_g4.py`
 (**84/84**, migrations 001–017 applied twice on PostgreSQL 17.10),
 `run_g6_image.py` (8/8 against the image rebuilt from this tree, which loads
 `vc-trusted-context` from `/opt/openclaw-extensions`), `run_g8_deployment.py`
@@ -37,7 +37,7 @@ Every gate below was executed after those changes:
 
 | Surface | Result | Command |
 | --- | ---: | --- |
-| Offline verification (all suites, ruff, shell syntax, fixed workflows, skill system, manifest currency, pristine) | **PASS — 208 tests, 24/24 checks** | `python3 -B scripts/verify_offline.py` |
+| Offline verification (all suites, ruff, shell syntax, fixed workflows, skill system, manifest currency, pristine) | **PASS — 212 tests, 24/24 checks** | `python3 -B scripts/verify_offline.py` |
 | Disposable Postgres hard gate | **PASS — 84/84** across seven suites, migrations 001–017 applied twice | `python3 -B scripts/run_g4.py` |
 | Exact-image gate against the image rebuilt from this tree | **PASS — 8/8** (provenance, workshop guard, all five channel schemas, unknown-field fail-closed) | `python3 -B scripts/run_g6_image.py --image openclaw-lead-research:3.0.0` |
 | Real deployment gate (bootstrap → negative-auth proof → live fixed workflows → teardown) | **PASS** | `python3 -B scripts/run_g8_deployment.py` |
@@ -81,7 +81,7 @@ not package passes.
 | Data/helper/Postgres hard gate | **84/84** | `python3 -B scripts/run_g4.py` |
 | Real deployment gate | PASS | `python3 -B scripts/run_g8_deployment.py` (or `verify_offline.py --with-deployment`) |
 
-The aggregate deterministic offline suites pass 208 tests with no failures or
+The aggregate deterministic offline suites pass 212 tests with no failures or
 skips (24/24 offline checks). The G4 runner created a disposable PostgreSQL 17
 cluster, applied and registered migrations **001–017** twice, and — in addition
 to the prior trusted-context/preference/idempotency/approval/document coverage —

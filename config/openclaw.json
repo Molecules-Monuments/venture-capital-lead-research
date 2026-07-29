@@ -43,7 +43,10 @@
     "slots": {},
     "entries": {
       "vc-trusted-context": {
-        "enabled": true
+        "enabled": true,
+        "hooks": {
+          "allowConversationAccess": true
+        }
       }
     }
   },

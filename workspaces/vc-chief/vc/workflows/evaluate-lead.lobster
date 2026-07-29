@@ -54,6 +54,19 @@ steps:
       --decision-context "$LOBSTER_ARG_DECISION_CONTEXT_JSON"
     timeout_ms: 20000
 
+  # This payload is the operator's only view of the pause: it has to carry both
+  # what they are approving and the run identity, because rejecting or
+  # cancelling requires --run-id and --expected-revision and nothing else
+  # surfaces them once the run is paused (docs/WORKFLOWS.md).
+  #
+  # It is the one place this package composes references inside a larger string
+  # rather than using a whole-value reference. An unresolved reference in a
+  # string collapses to an empty string instead of throwing, so that form is
+  # normally forbidden for identifiers. It is safe here and only here: every
+  # field comes from `workflow_running`, a transition step that cannot succeed
+  # without returning them, so the run never reaches this gate with any of them
+  # missing. Each referenced path is also on the validator's reviewed-path
+  # allowlist.
   - id: persist_approval
     approval:
       prompt: Persist this evaluation and its new compiled-truth snapshot?

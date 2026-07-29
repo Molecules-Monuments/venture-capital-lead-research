@@ -191,7 +191,9 @@ def inspect(role: str, image: str, *, required_repo_digest: str | None = None) -
     return record
 
 
-def validate_lock(path: Path, *, structure_only: bool = False) -> dict[str, Any]:
+def validate_lock(
+    path: Path, *, structure_only: bool = False, require_manifest_digest: bool = True
+) -> dict[str, Any]:
     payload = _load_json(path)
     if payload.get("lock_version") != 1:
         raise LockError("deployment lock version is unsupported")
@@ -206,8 +208,26 @@ def validate_lock(path: Path, *, structure_only: bool = False) -> dict[str, Any]
         raise LockError("deployment lock timestamp must include a timezone")
 
     contract = _validate_contract_shape(payload.get("release_contract"))
-    if not structure_only and contract != release_contract():
-        raise LockError("deployment lock does not match this exact package/upstream/migration contract")
+    if not structure_only:
+        current = release_contract()
+        # The manifest digest also covers documentation and the operator's own
+        # policy artifacts, which the customization procedure requires them to
+        # edit and re-pin. Holding a recovery point to it would make every
+        # backup taken before such an edit permanently unrestorable, so a
+        # backup's own lock is compared on the fields that decide whether its
+        # contents can be safely restored: package version, upstream images,
+        # and the migration set. The live package's lock is still compared in
+        # full, so a deployment must always match its own manifest.
+        if not require_manifest_digest:
+            contract = {k: v for k, v in contract.items() if k != "release_manifest_sha256"}
+            current = {k: v for k, v in current.items() if k != "release_manifest_sha256"}
+        if contract != current:
+            differing = sorted(k for k in current if contract.get(k) != current.get(k))
+            raise LockError(
+                "deployment lock does not match this exact package/upstream/migration contract"
+                + (f" (differing: {', '.join(differing)})" if differing else "")
+            )
+        contract = _validate_contract_shape(payload.get("release_contract"))
 
     expected = contract["expected_images"]
     images = payload.get("images")
@@ -282,7 +302,14 @@ def main() -> int:
             return 0
         if args.validate_lock or args.validate_structure:
             path = args.validate_lock or args.validate_structure
-            validate_lock(path, structure_only=bool(args.validate_structure))
+            # --validate-lock is how restore.sh checks a recovery point's own
+            # lock, which may predate a manifest re-pin. --validate-live keeps
+            # the full comparison for the package being run right now.
+            validate_lock(
+                path,
+                structure_only=bool(args.validate_structure),
+                require_manifest_digest=False,
+            )
             print(json.dumps({"result": "PASS", "deployment_lock": str(path)}, sort_keys=True))
             return 0
 

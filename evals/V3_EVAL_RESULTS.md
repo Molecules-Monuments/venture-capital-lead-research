@@ -20,11 +20,11 @@ model-behavioral portion was never run.
 | G customization safety | PASS | Fail-closed sample, exact `.env` binding, artifact hashes, review/change controls; the fact-promotion strictness knob is reviewed configuration; the renderer refuses lifecycle renders from a non-package env | Jurisdiction/fund choices are explicitly excluded deployment data. |
 | H research quality | **BLOCKED** | Source method/roster and structural contracts exist | Research editorial quality is model-behavioral and was not run. The structural contracts pass but the quality gate did not run. |
 | I performance/cost | PASS (reference scope, re-run 2026-07-23) | Indexed resolver at 100k companies / 1m facts: all frozen thresholds met on the recorded host | Eventual target capacity/cost is a commissioning exercise. |
-| J final adversarial | PASS (deterministic) · live robustness BLOCKED | Deterministic attack suites, the reconciled `FINAL_ADVERSARIAL_CHECK.md` (retained in the internal audit archive, `_internal/`, excluded from the published package), and the 2026-07-23 eight-agent final audit (all confirmed findings fixed and execution-re-verified) | Live provider/model semantic robustness was not run. |
+| J final adversarial | PASS (deterministic) · live robustness BLOCKED | The deterministic attack suites that ship with the package and are re-runnable by any downloader (`tests/g4/`, `tests/g5/`), plus successive internal adversarial audits whose confirmed findings were fixed and execution-re-verified by those same suites | Live provider/model semantic robustness was not run. The audit narratives themselves are internal working documents and are not distributed; the suites are the published evidence. |
 
 ### A7 — reinstated with explicit disposition
 
-Finding A7 (from `01_ADVERSARIAL_SYSTEM_AUDIT.md`, also retained in the excluded `_internal/` archive: "evidence claims exceed what
+Finding A7, raised by an internal adversarial audit ("evidence claims exceed what
 the deterministic baseline establishes"; required remediation: retain explicit
 NOT READY status for the specialist/model behavioral gate, the retrieval-scale
 gate, and live channel/recovery gates — "do not turn missing environmental
@@ -34,9 +34,9 @@ precision@1 metric (former dataset-artifact item closed); the live
 portions of B, E, and J are marked BLOCKED. No missing environmental evidence
 is presented as a passing result.
 
-## Final deterministic summary (executed 2026-07-23; counts and G4/G6/G8/scale re-executed 2026-07-28 after the audit remediation)
+## Final deterministic summary (executed 2026-07-23; counts and G4/G6/G8/scale re-executed 2026-07-29 after the upstream-conformance remediation)
 
-- 208 offline unittest cases pass, 0 fail, 0 skip; 24/24 offline checks pass.
+- 212 offline unittest cases pass, 0 fail, 0 skip; 24/24 offline checks pass.
 - Disposable PostgreSQL G4 passes **84/84** across seven suites with migrations
   001–017 applied and registered twice, including step-interpreter execution
   of all eighteen real `.lobster` workflows across the three executing G4 suites

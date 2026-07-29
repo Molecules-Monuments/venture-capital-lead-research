@@ -7,7 +7,8 @@
 
 Package version: `2.0.0`  
 Evidence date: 2026-07-18  
-Ground source: `OpenClaw - Runbook Lead Research.md`, revision 2026-06-10  
+Ground source: `OpenClaw - Runbook Lead Research.md`, revision 2026-06-10 — an
+internal specification document that is not distributed with this package  
 OpenClaw: `v2026.7.1` / `2d2ddc43d0dcf71f31283d780f9fe9ff4cc04fe4`  
 Lobster: `v2026.6.11` / `86b8cc20a867f18c08ae8e3f4fec9ee7d52bf8c9`
 
@@ -37,8 +38,8 @@ derivation archive (`_internal/`, excluded from the published package).
 `manifest.json` binds the reviewed files in this directory by SHA-256, size,
 and executable bit for self-consistency; other permission bits are deliberately
 not part of the contract because Git does not carry them. It is not an external
-authenticity root; first verify the package through the trusted distribution
-channel's signature or checksum.
+authenticity root; confirm separately that the commit you hold is the one the
+project published, as described in `README.md` under the developer quick start.
 
 ## Final adversarial closure
 

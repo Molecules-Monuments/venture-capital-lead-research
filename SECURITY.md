@@ -21,6 +21,10 @@ repository's *Security* tab (GitHub Private Vulnerability Reporting). That
 channel is preferred because it keeps the report, the fix, and the advisory in
 one place and does not disclose the issue before a patch exists.
 
+If that button is not present on the repository, private reporting has not been
+enabled yet. In that case contact the repository owner through their GitHub
+profile and ask them to enable it, rather than filing a public issue.
+
 Please include:
 
 - the package version (`VERSION`) and the migration set applied,

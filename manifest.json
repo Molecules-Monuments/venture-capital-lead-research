@@ -30,8 +30,8 @@
     {
       "executable": false,
       "path": ".env.example",
-      "sha256": "925d242f2e3b294f6faf261987a2ea5e02f8ebcc55d52dc0d30ab0a2505086fc",
-      "size": 7484
+      "sha256": "792785f0d2ddc902139be21eff85f430854b1723d0b351622f75fd5ca3a61daa",
+      "size": 7835
     },
     {
       "executable": false,
@@ -72,14 +72,14 @@
     {
       "executable": false,
       "path": "CUSTOMIZATION.md",
-      "sha256": "94bcf7ca3404a4153d02b167ae260e125ae0abf8eb08722f48125f9cea774be6",
-      "size": 18622
+      "sha256": "555aacbccfec1826b6eea9cc5392d53f058b10c2523c5d9a3bd9c34392382f7c",
+      "size": 19547
     },
     {
       "executable": false,
       "path": "Dockerfile.openclaw",
-      "sha256": "5df35ae9f8fb2181811249642e8abd85efc196a44428128ae3962eb9f023f6d4",
-      "size": 4666
+      "sha256": "94e9c88afe104933b9113617955adb95246ec787102ac1bad57d697f018626ff",
+      "size": 4664
     },
     {
       "executable": false,
@@ -90,14 +90,14 @@
     {
       "executable": false,
       "path": "README.md",
-      "sha256": "abdc5cd4670e918cc92cb3836e47c086e69364e690de92103ac35f5224901a61",
-      "size": 75512
+      "sha256": "b296afa59b25cd501ad95c762500853620e8eeb32cd30c8f056e90e26e9abe93",
+      "size": 78692
     },
     {
       "executable": false,
       "path": "SECURITY.md",
-      "sha256": "56bda5d5fca2a2147bd7eb11d8b616b5d58cdf781e64ca5b7ceb496c9e34748a",
-      "size": 5106
+      "sha256": "9860dbddfb28dfbb801fa754cd0612434b76b14329839e1d07f7593ef34107f2",
+      "size": 5333
     },
     {
       "executable": false,
@@ -162,8 +162,8 @@
     {
       "executable": false,
       "path": "config/openclaw.json",
-      "sha256": "87338543acbba7ef952ae356e8e36db17c5a627d3ab266cad6b04237dc406f98",
-      "size": 15800
+      "sha256": "72ddd4197efd2da44178d3f18e6662d7a51754421e68d05448ecae2fb746c2f9",
+      "size": 15872
     },
     {
       "executable": false,
@@ -180,8 +180,8 @@
     {
       "executable": false,
       "path": "docs/CHANNELS.md",
-      "sha256": "23f08fd765b708efc32e4f9ade6c8503eeb1f8688ec386f44dc73577f35e289e",
-      "size": 18121
+      "sha256": "4590715e77376467c78665478e51f56d70fcd30ee6ccbd50caa0e9dffb9dd435",
+      "size": 19100
     },
     {
       "executable": false,
@@ -192,8 +192,8 @@
     {
       "executable": false,
       "path": "docs/OFFLINE_RELEASE_EVIDENCE.md",
-      "sha256": "2272ddeb3ba8ad89221e2894fe8019d954f8b09c60a9b36d1f87c600d1400b41",
-      "size": 3645
+      "sha256": "21e628db66724a8308eb216ee42c138b48a13db6dccf8d9837c3213be14903e8",
+      "size": 3774
     },
     {
       "executable": false,
@@ -204,14 +204,14 @@
     {
       "executable": false,
       "path": "docs/PRODUCTION_READINESS.md",
-      "sha256": "e7cf8a87f4ca37f4666835d7dfcd563e3c1e2ceff1f34609f0edf88c6530be05",
-      "size": 10085
+      "sha256": "0f94f4206120ceaa6522886fea31c744f7d50504d59aed08c68e280756015fba",
+      "size": 10100
     },
     {
       "executable": false,
       "path": "docs/RUNBOOK.md",
-      "sha256": "e56d86436758da433eea72bcdf99ca418a0a0e3cf604ce92de952f01013eba40",
-      "size": 39054
+      "sha256": "38b6d26c7a4ec433d0ea540c35549726448446b7e832508a3dff753e41a197b4",
+      "size": 41499
     },
     {
       "executable": false,
@@ -222,13 +222,13 @@
     {
       "executable": false,
       "path": "docs/TASKFLOW_LOBSTER_COMPATIBILITY.md",
-      "sha256": "90902c2f13251b40299393f7d4b2c3dc4d0f1a729f0bfe8972adc4989a4f8eeb",
-      "size": 32563
+      "sha256": "613df077a1c3b25d50d58281a83658d5a7b8f50ef86448654caee5ec36dc567d",
+      "size": 33699
     },
     {
       "executable": false,
       "path": "docs/V3_RELEASE_EVIDENCE.md",
-      "sha256": "7f2255f4fe1aed0b84e309b007cc2d70c329950f2c1cee35882bafffef386b11",
+      "sha256": "c3e55bec3732fea08371d6909aa05dbc669db5c870894971bc5b6c87f5dd675a",
       "size": 10157
     },
     {
@@ -240,8 +240,8 @@
     {
       "executable": false,
       "path": "evals/V3_EVAL_RESULTS.md",
-      "sha256": "d5402a24bb8c4bd46824aebaedcca816fb999996431d5656360e18712a67ac60",
-      "size": 6888
+      "sha256": "e77bddf4c6d24d6c6937d3d633bc8917ed7f3641355720f46dba6d597a41517c",
+      "size": 6966
     },
     {
       "executable": false,
@@ -486,8 +486,8 @@
     {
       "executable": false,
       "path": "runtime-extensions/vc-trusted-context/index.js",
-      "sha256": "fdbb692205e34800af963735df7916a875c38f73cd5523704c108d6f0af9eea3",
-      "size": 11257
+      "sha256": "6d4c5c1fa607d32d23986a260e12f131720f14b99344b9edd1e2111c7bb62b05",
+      "size": 15878
     },
     {
       "executable": false,
@@ -546,8 +546,8 @@
     {
       "executable": true,
       "path": "scripts/check_env.py",
-      "sha256": "f29d008101724ab010c3bf2ea421f511b0869c879b4ba9264c73ab2eded0f664",
-      "size": 33907
+      "sha256": "76f8bc5efde838cc7550e5d97a75314cc17df57d6f206f2050fb19d6225d9263",
+      "size": 34328
     },
     {
       "executable": true,
@@ -576,14 +576,14 @@
     {
       "executable": true,
       "path": "scripts/record_images.py",
-      "sha256": "c514d3eedb8a346d4726a542f659b8d73e77e0513f2e317c8d30c8b3eb1674a3",
-      "size": 13505
+      "sha256": "94ac222380dc78026e81df6f48380d70f97f9f83a27ea102756edde66454e14f",
+      "size": 15017
     },
     {
       "executable": true,
       "path": "scripts/render_channel_config.py",
-      "sha256": "40c5fd3c9be87d853e854924545fa0c683c70756157a856b0dbb22e4b79ce689",
-      "size": 23541
+      "sha256": "8f69fb42893c2fae4788bdd0849d95decc52ddd7fe88a315fd2a7590891ba372",
+      "size": 25374
     },
     {
       "executable": true,
@@ -642,14 +642,14 @@
     {
       "executable": true,
       "path": "scripts/validate_skill_system.py",
-      "sha256": "089230e444a904bb1f1f791886ccd1f239077c8efa328b83afb0384adecb0094",
-      "size": 28853
+      "sha256": "9d2d36d9e0b13b8bf0d99d382750019bd8d06e872ace197aca8b40e020ee5ca8",
+      "size": 29719
     },
     {
       "executable": true,
       "path": "scripts/validate_workflows.py",
-      "sha256": "44f525c6df78df4e5b953830e20c3b7f069f0475417cce543202177568a7968f",
-      "size": 16885
+      "sha256": "7adc4ca8788ca30a77352a32df53002f9590660c08e91ae4f40d1eb7ffc4ef82",
+      "size": 18287
     },
     {
       "executable": true,
@@ -846,8 +846,8 @@
     {
       "executable": false,
       "path": "tests/v3/test_runtime_provider_and_context.py",
-      "sha256": "d1dfc4e9ae25d6256c298126d880786d4b7d68fbc2eddb3ea7d3a4e4909b57dc",
-      "size": 20987
+      "sha256": "b5f42f20d99b8538ff70a5b2a04b0d0c6309ef162ae65b6e9501f6c95005be99",
+      "size": 28561
     },
     {
       "executable": false,
@@ -1206,14 +1206,14 @@
     {
       "executable": false,
       "path": "workspaces/shared-skills/controlled-evolution/SKILL.md",
-      "sha256": "b13352c5b13c77da710afd26a786a6468b85d248fac899ccfb1a72e2e808d860",
-      "size": 4641
+      "sha256": "6cf4370ad10080a7485e165cba6ab7439c5a7f640426ed630722d004030992ca",
+      "size": 4663
     },
     {
       "executable": false,
       "path": "workspaces/shared-skills/data-persistence/SKILL.md",
-      "sha256": "e94850d2034e2bc918a7a5183a8dcce51330be7f64b0308ff0190f81120d37a0",
-      "size": 5412
+      "sha256": "e12eb3a905f898a6ce53696bc6c2477ebc1d7e3c30a4ca6fc72581f2a1a1c6dd",
+      "size": 5758
     },
     {
       "executable": false,
@@ -1314,8 +1314,8 @@
     {
       "executable": false,
       "path": "workspaces/shared-skills/skillify/SKILL.md",
-      "sha256": "3d5c862f40b433ac2919bdfa83bda6e98fe08d5d67fab1db0e387608adbb646d",
-      "size": 4834
+      "sha256": "c4b07c72e2c4ccdd37cdf8aed70a64b847cfca0585ffa335dd4d24e87ffec937",
+      "size": 5075
     },
     {
       "executable": false,
@@ -1440,8 +1440,8 @@
     {
       "executable": true,
       "path": "workspaces/vc-chief/vc/bin/vcops.py",
-      "sha256": "af96931d591e206508a3c364b6b2affc7f2a5a0e718cf9465fa75be7385540d9",
-      "size": 317509
+      "sha256": "8c633ada0aa14e5573c44fbfd8c7138032f80fbe517ace58818609e0af489b2d",
+      "size": 318431
     },
     {
       "executable": true,
@@ -1842,8 +1842,8 @@
     {
       "executable": false,
       "path": "workspaces/vc-chief/vc/workflows/evaluate-lead.lobster",
-      "sha256": "a942b55a45223709560254ddad210a5d8784df16dba62eee820521a8fc93ad35",
-      "size": 3639
+      "sha256": "ddd71ed24cdb363c8e34e94434485d67c30883e469f47cc43bbd9e2167915470",
+      "size": 4489
     },
     {
       "executable": false,

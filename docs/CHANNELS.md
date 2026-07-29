@@ -112,7 +112,7 @@ restricted to the same user allowlist.
    compose exec openclaw-gateway openclaw config validate
    compose exec openclaw-gateway openclaw doctor
    compose exec openclaw-gateway openclaw security audit
-   compose exec openclaw-gateway openclaw channel status
+   compose exec openclaw-gateway openclaw channels status
    ```
 7. Test each applicable matrix row below. Retain timestamps, config/image
    digests, redacted stable IDs, provider event IDs, database counts, and logs.
@@ -153,11 +153,12 @@ by the pinned [OpenClaw Slack guide](https://docs.openclaw.ai/channels/slack).
 Provider-side setup, following the pinned guide:
 
 1. At [api.slack.com/apps](https://api.slack.com/apps/new) choose **Create New
-   App → From a manifest**, select the workspace, and paste the manifest from
-   the pinned guide. That manifest carries the bot scopes and event
-   subscriptions this integration expects, including `files:read` and the
-   `message.*` events; a hand-built text-only app validates but cannot
-   commission CH-07.
+   App → From a manifest**, select the workspace, and paste the **Recommended**
+   manifest from the pinned guide — the guide shows a Minimal alternative
+   beside it that omits `files:read` and the `mpim` scopes. The Recommended
+   manifest carries the bot scopes and event subscriptions this integration
+   expects, including `files:read` and the `message.*` events; a Minimal or
+   hand-built text-only app validates but cannot commission CH-07.
 2. Toggle **Socket Mode** on.
 3. Under **Basic Information → App-Level Tokens** create a token with the
    `connections:write` scope. That is `SLACK_APP_TOKEN` (`xapp-…`).
@@ -214,6 +215,14 @@ Certificates & secrets and copy its **Value** as `MSTEAMS_APP_PASSWORD`; take
 Directory (tenant) ID from Overview as `MSTEAMS_TENANT_ID`; set the messaging
 endpoint to your public `/api/messages` URL; and finally enable **Channels →
 Microsoft Teams → Configure → Save**, without which no activity is delivered.
+
+Then build and sideload the Teams app package, per the same guide. Its
+`manifest.json` must set `bots[].botId` and `webApplicationInfo.id` to
+`MSTEAMS_APP_ID`; `bots[].scopes` to `personal`, `team`, and `groupChat`;
+`bots[].supportsFiles: true`, without which the direct-message attachment lane
+this package commissions as CH-07 cannot work; and
+`authorization.permissions.resourceSpecific` channel read/send, without which
+the mention-gated team/channel lane in CH-05 receives nothing.
 
 - `MSTEAMS_PUBLIC_WEBHOOK_URL` — the public HTTPS URL your reverse proxy
   serves, ending in `/api/messages`. Register exactly this URL as the bot
@@ -288,19 +297,26 @@ setting with `/setprivacy`, **remove and re-add the bot in every group**, or the
 change does not take effect there.
 
 Obtaining the IDs: a user's numeric ID and a supergroup's `-100…` ID are not
-shown in the Telegram UI. Send the bot one direct message and one group
-message, then read them from the gateway's log — which avoids handling the
-token:
+shown in the Telegram UI. Collect them **before** you select the channel: both
+values must already be in `.env` for `check_env.sh` to accept a Telegram
+profile, so the gateway is never connected to Telegram while they are still
+unknown, and its log cannot be the source. Send the bot one direct message and
+post one message in the group, then ask Telegram directly, on the deployment
+host only:
+
+```sh
+curl -s "https://api.telegram.org/bot<token>/getUpdates"
+```
+
+Take `result[].message.from.id` for `TELEGRAM_ALLOWED_USER_IDS` and
+`result[].message.chat.id` for `TELEGRAM_ALLOWED_GROUP_ID`. Once the channel is
+running, the same fields also appear in the gateway log, which is the easier
+route when you later add a user:
 
 ```sh
 docker compose -f docker-compose.yml -p openclaw-lead-research-v3 --env-file .env \
   logs -f openclaw-gateway
 ```
-
-Take `from.id` for `TELEGRAM_ALLOWED_USER_IDS` and `chat.id` for
-`TELEGRAM_ALLOWED_GROUP_ID`. `curl -s
-"https://api.telegram.org/bot<token>/getUpdates"` returns the same fields; run
-it only on the deployment host.
 
 Use one bot token/poller, positive numeric user IDs, and a negative `-100...`
 supergroup ID. Usernames are not authorization. The group is allowlisted,

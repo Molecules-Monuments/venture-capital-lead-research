@@ -466,10 +466,15 @@ def validate_runtime_selection(values: dict[str, str]) -> list[str]:
         if any(values.get(key) for key in ("OPENAI_API_KEY", "VC_CUSTOM_PROVIDER_ID", "VC_CUSTOM_BASE_URL", "VC_CUSTOM_API", "VC_CUSTOM_API_KEY")):
             errors.append("Ollama mode requires OpenAI/custom model fields to remain empty")
     else:
+        # Every adapter here authenticates with the single API key this renderer
+        # emits. bedrock-converse-stream is deliberately absent: OpenClaw signs
+        # Bedrock requests through the AWS credential chain, which it uses only
+        # for a provider whose auth is "aws-sdk" and which carries no apiKey —
+        # neither of which this renderer can express — so the mode would
+        # validate here and then fail at the first model call.
         allowed_apis = {
             "openai-completions", "openai-responses", "anthropic-messages",
-            "google-generative-ai", "google-vertex", "bedrock-converse-stream",
-            "azure-openai-responses",
+            "google-generative-ai", "google-vertex", "azure-openai-responses",
         }
         if values.get("VC_CUSTOM_API") not in allowed_apis:
             errors.append(f"VC_CUSTOM_API must be one of {sorted(allowed_apis)}")

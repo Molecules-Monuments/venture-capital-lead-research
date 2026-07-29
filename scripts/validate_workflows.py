@@ -58,6 +58,15 @@ SAFE_STEP_PATHS = {
     "json.workflow_run.record_version",
 }
 SHELL_BUILTINS = {"env", "export", "printenv", "set", "source", "."}
+# Lobster 2026.6.11 accepts far more of a workflow file than this package
+# authors. `command:` is a full alias of `run:` (the runner resolves
+# `step.run ?? step.command`), `when:` takes precedence over `condition:`, and
+# `pipeline:`/`workflow:`/`parallel:`/`for_each:` are additional execution
+# forms. A key this validator does not know about is therefore not inert: it
+# would execute, or gate execution, entirely unchecked. Validate against a
+# closed authoring subset instead of against the keys we happen to inspect.
+ALLOWED_STEP_KEYS = {"id", "run", "stdin", "env", "condition", "timeout_ms", "approval"}
+ALLOWED_WORKFLOW_KEYS = {"name", "args", "steps"}
 
 
 class DuplicateKeyError(ValueError):
@@ -285,6 +294,15 @@ def validate_workflow(
         return [Finding("workflow_shape", "workflow must be an object with a steps array")], {}
 
     findings: list[Finding] = []
+    # Top-level `env:` and `cwd:` are merged into every step's environment and
+    # base directory by Lobster, so they are execution surface too.
+    for key in sorted(set(body) - ALLOWED_WORKFLOW_KEYS):
+        findings.append(
+            Finding(
+                "workflow_key_unknown",
+                f"unreviewed workflow key: {key} (allowed: {', '.join(sorted(ALLOWED_WORKFLOW_KEYS))})",
+            )
+        )
     steps = body["steps"]
     ids = [step.get("id") for step in steps if isinstance(step, dict)]
     all_ids = {value for value in ids if isinstance(value, str)}
@@ -296,6 +314,14 @@ def validate_workflow(
             continue
         step_id = step.get("id")
         rendered_id = step_id if isinstance(step_id, str) else None
+        for key in sorted(set(step) - ALLOWED_STEP_KEYS):
+            findings.append(
+                Finding(
+                    "step_key_unknown",
+                    f"unreviewed step key: {key} (allowed: {', '.join(sorted(ALLOWED_STEP_KEYS))})",
+                    rendered_id,
+                )
+            )
         if not isinstance(step_id, str) or not ID_RE.fullmatch(step_id):
             findings.append(Finding("step_id", "step id is missing or invalid", rendered_id))
         elif step_id in seen:

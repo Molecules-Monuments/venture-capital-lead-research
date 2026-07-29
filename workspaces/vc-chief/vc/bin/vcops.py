@@ -4042,11 +4042,25 @@ def cmd_compiled_truth(args: argparse.Namespace) -> dict[str, Any]:
         )
 
         if not current_facts:
-            raise VcopsError(
-                "insufficient_evidence",
-                "a current compiled-truth snapshot requires at least one verified, sourced fact",
-                exit_code=1,
+            # Name the confidence floor when that is what excluded everything.
+            # Otherwise the operator reads "requires a verified, sourced fact"
+            # while the database plainly holds several, and the real cause —
+            # every one of them sitting below --min-confidence — is invisible.
+            below_floor = sum(
+                1
+                for fact in all_facts
+                if fact["fact_status"] == "verified_fact"
+                and Decimal(str(fact["confidence"])) < Decimal(str(args.min_confidence))
+                and bool(_fact_source_packet(cur, int(fact["id"])))
+                and int(fact["id"]) not in high_or_blocking_fact_ids
             )
+            detail = "a current compiled-truth snapshot requires at least one verified, sourced fact"
+            if below_floor:
+                detail = (
+                    f"{detail}; {below_floor} verified, sourced fact(s) were excluded for "
+                    f"falling below the --min-confidence floor of {args.min_confidence}"
+                )
+            raise VcopsError("insufficient_evidence", detail, exit_code=1)
         areas = [item["key"] for item in _load_rubric()["criteria"]]
         represented = {str(fact["fact_type"]) for fact in current_facts}
         coverage = {area: area in represented for area in areas}

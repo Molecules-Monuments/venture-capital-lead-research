@@ -1,6 +1,7 @@
 ---
 name: controlled-evolution
 description: Evaluate a recurring system gap, shadow-test a bounded improvement, and prepare an operator-reviewed release proposal without changing the running deployment.
+user-invocable: false
 ---
 
 # Controlled evolution

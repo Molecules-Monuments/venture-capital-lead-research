@@ -154,8 +154,9 @@ quarantine placeholder — the deployed stack quarantines rejected uploads into
 the `vc-quarantine` named volume, not into this directory). A
 *symlink* in either of those directories is still reported — the gateway would
 follow it out of the intended tree. This is a
-self-consistency check, not an external authenticity root: first verify the
-trusted distribution signature or out-of-band package digest. A mismatch means
+self-consistency check, not an external authenticity root: confirm separately
+that the commit you hold is the one the project published, as described in
+`README.md` under the developer quick start. A mismatch means
 the directory is not internally consistent with its embedded inventory. It is
 also deliberately offline and makes no claim about locally installed Docker
 images; bootstrap, backup, and restore use `record_images.py`'s separate live
@@ -274,7 +275,36 @@ The restore drill in §5.4 is the one item no gate covers.
   Slack, Teams, and Discord resolve from the locked runtime graph at exact
   `2026.7.1`, and bundled Telegram is exact `2026.7.1`.
 - Run the pinned OpenClaw configuration validation, `doctor`, secret audit, and
-  deep security audit inside the exact image.
+  deep security audit inside the exact image. Each runs through the gateway
+  container, in the same form as §5.2 and §5.3:
+
+  ```sh
+  docker compose -f docker-compose.yml -p openclaw-lead-research-v3 --env-file .env \
+    exec openclaw-gateway openclaw config validate
+  docker compose -f docker-compose.yml -p openclaw-lead-research-v3 --env-file .env \
+    exec openclaw-gateway openclaw doctor
+  docker compose -f docker-compose.yml -p openclaw-lead-research-v3 --env-file .env \
+    exec openclaw-gateway openclaw secrets audit
+  docker compose -f docker-compose.yml -p openclaw-lead-research-v3 --env-file .env \
+    exec openclaw-gateway openclaw security audit --deep
+  ```
+
+  A correctly configured shipped deployment still reports some findings, and
+  §5.6's "a warning is not a pass" rule does not mean commissioning is blocked
+  by them — it means each one must be dispositioned. The expected set and its
+  disposition:
+
+  - the `data-steward` exec permission: the reviewed design, see "Sandboxing
+    and security design" in `README.md`;
+  - `gateway.auth.token` reported as plaintext: a false positive — the rendered
+    value is a SecretRef to `OPENCLAW_GATEWAY_TOKEN`, not a literal;
+  - `plugins.allow` and memory-provider migration hints: legacy-key advice that
+    does **not** apply to this configuration and must not be applied.
+
+  **Never run `openclaw doctor --fix` here.** The runtime config is mounted
+  read-only by design, so it fails with `EROFS`, and its suggested edits are
+  the ones listed above as not applicable. Record the findings and their
+  disposition as the evidence for this row.
 - Prove the host rendered config is a non-symlink regular file at mode `0600`;
   the initializer's named-volume copy has the same SHA-256, owner `node:node`,
   and mode `0400`; and gateway and CLI mount that volume read-only without a
@@ -565,13 +595,25 @@ For an accepted pending proposal:
 4. Deliberately update the exact inventory in
    `scripts/validate_skill_system.py`; an unexplained count change is a release
    failure.
-5. Run the official `skill-creator` `quick_validate.py` against the new skill
-   (an external upstream tool, not shipped in this package — obtain it from
-   the reviewed skill-creator distribution), then run
+5. Run the official `skill-creator` `quick_validate.py` against the new skill.
+   That tool is not part of this package; it is bundled inside the pinned
+   OpenClaw image and runs with the image's own `python3`:
+
+   ```sh
+   docker run --rm -v "$PWD/workspaces/shared-skills:/skills:ro" \
+     --entrypoint python3 openclaw-lead-research:3.0.0 \
+     /app/skills/skill-creator/scripts/quick_validate.py /skills/<skill-name>
+   ```
+
+   Then run
    `python3 -B scripts/validate_skill_system.py` and the complete locked
    virtual-environment gate.
 6. Rebuild the image, run disposable Postgres, retrieval-scale when affected,
    and exact-image gates, then regenerate and verify the release manifest.
+   Once the rebuilt image is running, confirm the harness itself accepts the
+   new skill: `openclaw skills check --agent <owner-agent> --json` must list it
+   as visible. This is what catches a skill that loads locally but pushes the
+   agent past `skills.limits.maxSkillsPromptChars`, which no offline gate sees.
 7. Obtain named code/security/privacy review and deploy through the normal
    update procedure. Confirm routing and rollback in commissioning.
 
@@ -659,12 +701,16 @@ To recover a byte-reproducible build, point apt at a `snapshot.debian.org`
 timestamp that still carries the pinned versions before building:
 
 ```sh
-printf 'deb [check-valid-until=no] https://snapshot.debian.org/archive/debian/<YYYYMMDDTHHMMSSZ>/ bookworm main\n' \
+printf 'deb [check-valid-until=no] https://snapshot.debian.org/archive/debian/20260720T000000Z/ bookworm main\n' \
   > /etc/apt/sources.list.d/snapshot.list
 ```
 
-(add it inside the build, or bake it into a local Dockerfile overlay). Choose a
-timestamp at or shortly after this release's freeze date. Alternatively, run the
+(add it inside the build, or bake it into a local Dockerfile overlay). That
+timestamp is this release's pin date, so it still carries every version
+`Dockerfile.openclaw` names; use it verbatim. Editing `Dockerfile.openclaw` to
+add the overlay makes `verify_release.py --pristine` report a hash mismatch for
+that one file from then on, which is expected and does not affect
+bootstrap or update. Alternatively, run the
 reviewed-release process: bump the pins in `Dockerfile.openclaw`, then re-run
 every release gate (offline, disposable Postgres, retrieval-scale, exact-image,
 and the real deployment gate) and regenerate the manifest before shipping. A

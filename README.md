@@ -335,8 +335,20 @@ deliberately narrow, reviewable configuration surface:
 | `custom` | One reviewed HTTPS provider using a supported OpenClaw API contract | provider ID, provider-prefixed model IDs, HTTPS base URL, API contract, and `VC_CUSTOM_API_KEY` |
 
 Supported custom API contracts are `openai-completions`, `openai-responses`,
-`anthropic-messages`, `google-generative-ai`, `google-vertex`,
-`bedrock-converse-stream`, and `azure-openai-responses`.
+`anthropic-messages`, `google-generative-ai`, `google-vertex`, and
+`azure-openai-responses`. All of them authenticate with the single
+`VC_CUSTOM_API_KEY` this renderer emits. Pick `openai-responses` only for a
+backend that implements `/v1/responses`; any other OpenAI-compatible gateway
+needs `openai-completions`.
+
+Because an API key is the only credential this renderer passes, `google-vertex`
+works only with a Vertex API key, not with a service account or application
+default credentials, and `azure-openai-responses` uses the client's built-in API
+version — `.env` does not carry `AZURE_OPENAI_API_VERSION`, `GOOGLE_*`, or
+`AWS_*` variables into the containers. Amazon Bedrock is not offered at all:
+OpenClaw signs Bedrock calls through the AWS credential chain, which requires a
+provider declaring `auth: "aws-sdk"` and no API key, and this renderer emits
+neither.
 
 Common settings are `VC_MODEL_INPUT`, `VC_MODEL_REASONING`, context window,
 maximum output tokens, and timeout. The renderer generates provider/model
@@ -360,7 +372,22 @@ VC_FAST_MODEL=ollama/qwen3:8b
 VC_OLLAMA_BASE_URL=http://host.docker.internal:11434
 OPENAI_API_KEY=
 VC_WEB_SEARCH_PROVIDER=duckduckgo
+VC_MODEL_CONTEXT_WINDOW=32768
 ```
+
+The context window is part of the example because the shipped default (272000)
+describes a hosted model, and in Ollama mode this value is also what the server
+is asked to allocate.
+
+In Ollama mode `VC_MODEL_CONTEXT_WINDOW` sets two things: the prompt budget
+OpenClaw packs to, and the `num_ctx` the renderer sends with every request.
+Ollama otherwise applies its own default context, which is usually much smaller,
+and truncates the rest of the prompt server-side without an error. Because the
+value now reaches the server, the machine running Ollama has to be able to serve
+it — a context far beyond what the host's memory supports will fail to load or
+run very slowly. The shipped default (272000) is sized for the hosted OpenAI
+default, not for a local model; set it to what your model and hardware actually
+support.
 
 ### Search configuration
 
@@ -370,13 +397,13 @@ not call provider-specific search tools. Configuration controls the provider:
 | Setting | Meaning |
 | --- | --- |
 | `VC_WEB_SEARCH_PROVIDER=auto` | Default for OpenAI. With direct OpenAI Responses, OpenClaw uses native hosted web search when available. |
-| `duckduckgo` | Explicit key-free DuckDuckGo managed search. |
+| `duckduckgo` | Explicit key-free DuckDuckGo search. Upstream documents this as an experimental, unofficial integration that scrapes DuckDuckGo's non-JavaScript HTML pages rather than calling an official API, and notes it can break when those pages change. |
 | `firecrawl` | Explicit Firecrawl search; requires `FIRECRAWL_API_KEY`. |
 | `tavily` | Explicit Tavily search; requires `TAVILY_API_KEY`. |
 | `brave` / `perplexity` / `exa` | Non-bundled native providers; each requires its key (`BRAVE_API_KEY` / `PERPLEXITY_API_KEY` / `EXA_API_KEY`) and the plugin package pinned + image rebuild. |
 | `searxng` | Non-bundled; requires `SEARXNG_BASE_URL` (your SearXNG instance) and the plugin package pinned + rebuild. |
 | `parallel-free` | Non-bundled but key-free (the keyless variant of the parallel plugin); requires the plugin package pinned + rebuild. |
-| `VC_WEB_FETCH_PROVIDER=default` | OpenClaw's bounded local fetch path. |
+| `VC_WEB_FETCH_PROVIDER=default` | Pins no fetch provider. Pages are fetched locally, but if local extraction returns nothing OpenClaw falls back to whichever fetch-capable provider plugin is loaded and holds a credential. Today only Firecrawl contributes one, so this stays purely local unless `VC_WEB_SEARCH_PROVIDER=firecrawl` or `VC_WEB_FETCH_PROVIDER=firecrawl` loads it — in which case those URLs and page contents reach Firecrawl. Upstream offers no value that forces local-only fetching. |
 | `VC_WEB_FETCH_PROVIDER=firecrawl` | Firecrawl fetching; requires `FIRECRAWL_API_KEY`. |
 
 Ollama and custom model modes must select an explicit search provider; `auto`
@@ -827,8 +854,12 @@ deactivate
 Do not install into the system interpreter, put the venv inside this package,
 or remove `--require-hashes`. `verify_release.py --pristine` rejects changed or
 undeclared release files, symlinks, special files, caches, and editor debris.
-The embedded manifest proves package self-consistency, not publisher identity;
-verify a signed tag or independent distribution digest first.
+The embedded manifest proves package self-consistency, not publisher identity.
+It cannot tell you that the copy you downloaded is the copy the publisher
+released. For that, check the commit you have against the release published on
+the project's GitHub releases page, and — if the release carries a signed tag —
+verify it with `git verify-tag v3.0.0` using the signing key named there.
+Neither check is performed by anything in this repository.
 
 ## Customize, install, and commission
 
@@ -990,6 +1021,12 @@ docker compose --profile tools --env-file .env run --rm openclaw-cli \
 Run this from the package root as the deployment operator; add
 `-f docker-compose.yml -p openclaw-lead-research-v3` if you invoke it from
 anywhere else, as the lifecycle scripts always do.
+
+This container runs its own embedded agent against the shared database and
+state volumes; it is not a client of the running gateway. It therefore prints
+an `EMBEDDED FALLBACK: Gateway agent failed` banner before the result. That is
+expected here and does not indicate a broken deployment — channel traffic is
+served by the gateway, and this path exists for operator-initiated runs.
 
 For long prompts, use the pinned CLI's `--message-file` option with a reviewed
 UTF-8 file. The path is resolved **inside the container**, so a host path will
@@ -1227,8 +1264,13 @@ Useful checks:
 ```sh
 docker compose --env-file .env ps
 docker compose --env-file .env logs --tail=200 openclaw-gateway postgres
-docker compose --profile tools --env-file .env run --rm openclaw-cli gateway probe
+curl -fsS -o /dev/null -w '%{http_code}\n' http://127.0.0.1:18789/readyz
 ```
+
+The readiness probe is run from the deployment host, against the gateway's
+loopback port. The `openclaw-cli` service is a separate container with no route
+to the gateway, so `openclaw gateway probe` from inside it reports
+`Reachable: no` even on a healthy deployment.
 
 Routine review covers readiness, restarts, disk/capacity, provider failures,
 stale workflows, approvals, Task Flow audit, quarantine retention, preference

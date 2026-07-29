@@ -46,7 +46,11 @@ object. Unknown fields are refused. Fields:
   `founder_prior_exit`, ≤200), `produced_by` (the producing specialist role
   id, e.g. `founder-researcher`).
 - `confidence`: 0..1 number, or `low`/`medium`/`high` (accepted and mapped to
-  0.3/0.6/0.9).
+  0.3/0.6/0.9). `evaluate-lead` compiles its truth snapshot from facts at
+  **0.7 or above**, so a fact recorded as `medium` (0.6) is stored and
+  retrievable but does not by itself let a lead reach an evaluation. Record
+  `high` only where the evidence genuinely supports it, and expect a lead whose
+  facts are all `medium` or below to stop at compiled truth.
 - Exactly one of `source` (web provenance) or `document` (extraction
   provenance):
   - `source`: `{url, kind, trust_level, title, published_at, accessed_at,

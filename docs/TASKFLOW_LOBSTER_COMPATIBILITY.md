@@ -5,6 +5,12 @@ Audit date: 2026-07-17
 OpenClaw target: `v2026.7.1`, commit `2d2ddc43d0dcf71f31283d780f9fe9ff4cc04fe4`  
 Embedded Lobster runtime: `@clawdbot/lobster@2026.6.11`, source tag `v2026.6.11`, commit `86b8cc20a867f18c08ae8e3f4fec9ee7d52bf8c9`
 
+Source citations below use the prefixes `upstream_openclaw/` and
+`upstream_lobster/` for paths inside those two upstream repositories at the
+commits named above. They are not files in this package: read them at
+`github.com/openclaw/openclaw` and `github.com/openclaw/lobster` at those
+commits. Line numbers are as of the audit date.
+
 ## Release verdict
 
 The package's source, configuration, fixed-runner, negative-boundary, and
@@ -130,7 +136,11 @@ The Lobster v2026.6.11 file shape includes:
 The source types and validation begin at `upstream_lobster/src/workflows/file.ts:31-156,248-380`. For Version 3.0, keep the authoring subset intentionally smaller:
 
 - use sequential top-level steps;
-- use `run` as the preferred spelling for a shell step;
+- use only these keys, which is what `scripts/validate_workflows.py` enforces as
+  a closed set — anything else is a release failure, including the `command:`
+  and `when:` spellings Lobster itself accepts: workflow-level `name`, `args`,
+  `steps`; step-level `id`, `run`, `stdin`, `env`, `condition`, `timeout_ms`,
+  `approval`;
 - use a separate top-level `approval:` step before a consequential command;
 - do not use nested workflow approvals or inputs, because a composed sub-workflow that pauses is rejected (`upstream_lobster/src/workflows/file.ts:1240-1256`);
 - do not use `input:` in an OpenClaw-hosted workflow in this release, even though Lobster itself supports it. OpenClaw v2026.7.1 converts `needs_input` into `unsupported_status` and fails closed (`upstream_openclaw/extensions/lobster/src/lobster-runner.ts:181-190`; test at `lobster-runner.test.ts:352-380`);
@@ -163,7 +173,7 @@ Operational rules:
 
 ### Time and output bounds
 
-OpenClaw's tool defaults are `timeoutMs: 20000` and `maxStdoutBytes: 512000` (`upstream_openclaw/extensions/lobster/src/lobster-tool.ts:273-290`). The runner applies an abort signal and creates byte-limited stdout/stderr sinks (`upstream_openclaw/extensions/lobster/src/lobster-runner.ts:167-179,275-315`). A workflow step can also define `timeout_ms`; Lobster validates it and kills a timed-out shell step (`upstream_lobster/src/workflows/file.ts:57-87,320-329,1261-1271`).
+OpenClaw's tool defaults are `timeoutMs: 20000` and `maxStdoutBytes: 512000` (`upstream_openclaw/extensions/lobster/src/lobster-tool.ts:273-290`). The runner applies an abort signal and creates byte-limited stdout/stderr sinks (`upstream_openclaw/extensions/lobster/src/lobster-runner.ts:167-179,275-315`). A workflow step can also define `timeout_ms`; Lobster validates it and kills a timed-out shell step (`upstream_lobster/src/workflows/file.ts:57-87,592-602,1261-1271`; the separate check at `:320-329` is for a `parallel` block's own timeout).
 
 Do not interpret those defaults as permission to emit 512 KB per step. Version 3.0 should set explicit smaller bounds and require compact outputs. Source inspection found no OpenClaw integration test demonstrating that `maxStdoutBytes` constrains a workflow-file shell step's internally buffered result: Lobster's `runShellCommand` accumulates child stdout/stderr into strings before returning them (`upstream_lobster/src/workflows/file.ts:2764-2818`), whereas the OpenClaw cap wraps the runtime context streams. Until a real regression test proves the effective bound, every helper must enforce its own record/byte limit and the release gate must include an oversized-workflow test.
 
@@ -181,7 +191,7 @@ The resume token is only base64url-encoded JSON and is not cryptographically sig
 - expire and garbage-collect abandoned state operationally, because the Lobster token itself does not encode an enforced expiry in the inspected adapter;
 - for any external action, use a Postgres one-time, scoped, expiring approval record as the hard authorization gate inside the exact consequential helper command. A Lobster pause alone is never sufficient external-action authorization.
 
-Lobster v2026.6.11 contains optional workflow identity fields and environment inputs, but OpenClaw's tool interface exposes only `token`/`approvalId` and boolean `approve`; the normalized envelope also omits the identity metadata (`upstream_openclaw/extensions/lobster/src/lobster-tool.ts:240-263`; `lobster-runner.ts:181-209`). There is no per-channel-approver identity binding in this adapter. This is why the OpenClaw adapter is not used for resume and why Lobster approval remains control only. `vcrun-control` must bind the internal review decision to an authenticated operator in the administrative audit. For any external action, Version 3.0 additionally requires Postgres-backed approver identity, exact action/target/scope, preview hash, expiry, and one-time consumption in `vcops`. Never claim that Lobster supplies those properties.
+Lobster v2026.6.11 contains optional workflow identity fields and environment inputs, but OpenClaw's tool interface exposes only `token`/`approvalId` and boolean `approve`; the normalized envelope also omits the identity metadata (`upstream_openclaw/extensions/lobster/src/lobster-tool.ts:240-263`; `lobster-runner.ts:181-209`). There is no per-channel-approver identity binding in this adapter. This is why the OpenClaw adapter is not used for resume and why Lobster approval remains control only. On the CLI path this package does use, Lobster checks an approver only when the approval step declares `required_approver` or `require_different_approver`; the shipped `persist_approval` step declares neither, so the `LOBSTER_APPROVAL_APPROVED_BY` value `vcrun-control` passes on resume is recorded as metadata and never verified by Lobster. Authorization remains entirely the wrapper's: an authenticated operator on the non-agent administrative path. `vcrun-control` must bind the internal review decision to an authenticated operator in the administrative audit. For any external action, Version 3.0 additionally requires Postgres-backed approver identity, exact action/target/scope, preview hash, expiry, and one-time consumption in `vcops`. Never claim that Lobster supplies those properties.
 
 ### Required state configuration
 

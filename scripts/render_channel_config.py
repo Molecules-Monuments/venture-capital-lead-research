@@ -160,8 +160,8 @@ def _secret_ref(name: str) -> dict[str, str]:
     return {"source": "env", "provider": "default", "id": name}
 
 
-def _model_entry(model_id: str, env: dict[str, str]) -> dict[str, Any]:
-    return {
+def _model_entry(model_id: str, env: dict[str, str], *, native_ollama: bool = False) -> dict[str, Any]:
+    entry: dict[str, Any] = {
         "id": model_id,
         "name": model_id,
         "reasoning": env["VC_MODEL_REASONING"] == "true",
@@ -170,13 +170,39 @@ def _model_entry(model_id: str, env: dict[str, str]) -> dict[str, Any]:
         "contextWindow": int(env["VC_MODEL_CONTEXT_WINDOW"]),
         "maxTokens": int(env["VC_MODEL_MAX_TOKENS"]),
     }
+    if native_ollama:
+        # On the native /api/chat path OpenClaw sends options.num_ctx only when
+        # the model declares params.num_ctx; otherwise the Ollama server falls
+        # back to its own default (commonly far smaller than contextWindow) and
+        # silently truncates the prompt OpenClaw packed to the larger budget.
+        # Keeping the two aligned is what upstream's own config normalizer does.
+        # The host must be able to serve this context: see the Ollama section of
+        # README.md before raising VC_MODEL_CONTEXT_WINDOW.
+        entry["params"] = {"num_ctx": int(env["VC_MODEL_CONTEXT_WINDOW"])}
+    return entry
 
 
 def apply_runtime_selection(config: dict[str, Any], selected_channel: str, env: dict[str, str]) -> None:
     plugins = config.setdefault("plugins", {})
-    allow = ["vc-trusted-context"]
+    # plugins.allow is an exclusive allowlist and it gates bundled plugins too,
+    # so the base image's own Readability extractor has to be admitted by name
+    # or tools.web.fetch.readability below is dead config: web_fetch would fall
+    # back to whole-page raw-HTML conversion (and, whenever a fetch-capable
+    # provider such as firecrawl is loaded, to that provider) on every HTML
+    # page. web-readability is discovered from the image's bundled extension
+    # directory, so it needs no plugins.load.paths entry.
+    allow = ["vc-trusted-context", "web-readability"]
     paths = ["/opt/openclaw-extensions/vc-trusted-context"]
-    entries: dict[str, Any] = {"vc-trusted-context": {"enabled": True}}
+    entries: dict[str, Any] = {
+        # before_model_resolve and before_agent_run are "conversation" hooks,
+        # and OpenClaw drops those registrations outright for any plugin it did
+        # not bundle itself unless the deployment opts in by name. This
+        # extension is loaded from a path, so without this flag the
+        # unsupported-attachment block never runs and the failure is silent —
+        # the plugin still loads and its other hooks still work.
+        "vc-trusted-context": {"enabled": True, "hooks": {"allowConversationAccess": True}},
+        "web-readability": {"enabled": True},
+    }
 
     model_mode = env["VC_MODEL_PROVIDER"]
     if model_mode == "openai":
@@ -209,7 +235,7 @@ def apply_runtime_selection(config: dict[str, Any], selected_channel: str, env: 
         models = []
         for model_id in local_ids:
             if model_id not in [item["id"] for item in models]:
-                models.append(_model_entry(model_id, env))
+                models.append(_model_entry(model_id, env, native_ollama=model_mode == "ollama"))
         config["models"] = {
             "mode": "merge",
             "providers": {

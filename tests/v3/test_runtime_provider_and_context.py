@@ -175,6 +175,28 @@ class RuntimeProviderTests(unittest.TestCase):
         self.assertNotIn("provider", config["tools"]["web"]["search"])
         self.assertEqual("openclaw", config["models"]["providers"]["openai"]["agentRuntime"]["id"])
 
+    def test_runtime_config_keeps_the_two_silently_failing_plugin_settings(self) -> None:
+        # Both of these fail silently when dropped, which is why they are pinned
+        # here rather than left to review. Without the allowlist entry OpenClaw
+        # never loads its own Readability extractor and web_fetch falls back to
+        # whole-page raw HTML (and to a fetch provider, if one is loaded).
+        # Without the hooks flag OpenClaw discards this extension's
+        # before_model_resolve and before_agent_run registrations outright,
+        # because it only grants conversation hooks to plugins it bundled
+        # itself — and the unsupported-attachment block stops running.
+        keyed = replace_line(configured_example(), "VC_WEB_SEARCH_PROVIDER", "tavily")
+        keyed = replace_line(keyed, "TAVILY_API_KEY", "test-only-tavily-key")
+        for body in (configured_example(), keyed):
+            config = self.render(body)
+            with self.subTest(search=config["tools"]["web"]["search"].get("provider", "auto")):
+                self.assertIn("web-readability", config["plugins"]["allow"])
+                self.assertTrue(config["tools"]["web"]["fetch"]["readability"])
+                self.assertTrue(
+                    config["plugins"]["entries"]["vc-trusted-context"]["hooks"][
+                        "allowConversationAccess"
+                    ]
+                )
+
     def test_ollama_and_duckduckgo_are_configuration_only_choices(self) -> None:
         body = configured_example()
         for key, value in {
@@ -251,7 +273,92 @@ class RuntimeProviderTests(unittest.TestCase):
 
 
 class TrustedContextTests(unittest.TestCase):
+    # Every hook payload below is shaped the way OpenClaw 2026.7.1 actually
+    # builds it, because the extension's correctness is entirely a question of
+    # conformance to the harness:
+    #   - message_received carries NO runId. The run id is created when the
+    #     agent turn starts, which is after this hook fires, so a capture keyed
+    #     on it can never be written. Do not add one to make a test pass.
+    #   - on message hooks ctx.channelId is the lowercased provider surface and
+    #     ctx.conversationId is the conversation target; on agent hooks the
+    #     provider surface is ctx.messageProvider/ctx.channel instead.
+    #   - staged attachments arrive as event.metadata.mediaPaths, absolute under
+    #     the state-dir media root, named "<sanitized original>---<uuid><ext>"
+    #     with Unicode preserved.
+    #   - before_model_resolve reports attachments as event.attachments.
+    def test_plugin_pairs_each_message_with_its_own_run(self) -> None:
+        # Two messages arrive in one session before either run starts, which is
+        # what happens whenever a turn is queued behind a running one. Each run
+        # must answer its own message: the deck must not be attributed to the
+        # second message, and the macro-bearing message must block its own run
+        # rather than whichever run happens to start next. Retried attempts of
+        # the same run must keep seeing the same token.
+        dm_key = "agent:vc-chief:slack:direct:u12345678"
+        deck = "/home/node/.openclaw/media/inbound/deck---550e8400-e29b-41d4-a716-446655440000.pdf"
+        macro = "/home/node/.openclaw/media/inbound/book---550e8400-e29b-41d4-a716-446655440001.xlsm"
+        with tempfile.TemporaryDirectory(prefix="trusted-plugin-") as raw:
+            key_path = Path(raw) / "key"
+            key = b"k" * 64
+            key_path.write_bytes(key)
+            script = f"""
+import plugin from {json.dumps(PLUGIN_PATH.as_uri())};
+const hooks = {{}};
+plugin.register({{on: (name, handler) => {{ hooks[name] = handler; }}}});
+const ctxFor = (messageId) => ({{channelId: 'slack', accountId: 'acc-1', conversationId: 'D123', messageId, senderId: 'U1', sessionKey: {json.dumps(dm_key)}}});
+hooks.message_received({{messageId: 'm1', senderId: 'U1', sessionKey: {json.dumps(dm_key)}, metadata: {{mediaPaths: [{json.dumps(deck)}]}}}}, ctxFor('m1'));
+hooks.message_received({{messageId: 'm2', senderId: 'U1', sessionKey: {json.dumps(dm_key)}, metadata: {{mediaPaths: [{json.dumps(macro)}]}}}}, ctxFor('m2'));
+const agentCtx = (runId) => ({{runId, senderId: 'U1', sessionKey: {json.dumps(dm_key)}, messageProvider: 'slack'}});
+const first = hooks.before_prompt_build({{}}, agentCtx('run-1'));
+const firstRetry = hooks.before_prompt_build({{}}, agentCtx('run-1'));
+const firstBlocked = hooks.before_agent_run({{}}, agentCtx('run-1')) ?? null;
+const second = hooks.before_prompt_build({{}}, agentCtx('run-2'));
+const secondBlocked = hooks.before_agent_run({{}}, agentCtx('run-2')) ?? null;
+console.log(JSON.stringify({{
+  first: first?.prependContext ?? null,
+  firstRetry: firstRetry?.prependContext ?? null,
+  second: second?.prependContext ?? null,
+  firstBlocked, secondBlocked,
+}}));
+"""
+            process = subprocess.run(
+                ["node", "--input-type=module", "-e", script],
+                text=True,
+                encoding="utf-8",
+                capture_output=True,
+                check=False,
+                env={**os.environ, "VC_TRUSTED_CONTEXT_KEY_FILE": str(key_path)},
+            )
+            self.assertEqual(0, process.returncode, process.stderr)
+            rendered = json.loads(process.stdout)
+
+        def payload(context: str) -> dict[str, object]:
+            encoded = context.split("[VC_TRUSTED_CONTEXT_V1]\n", 1)[1].split("\n", 1)[0].split(".", 1)[0]
+            return json.loads(base64.urlsafe_b64decode(encoded + "=" * (-len(encoded) % 4)))
+
+        first = payload(rendered["first"])
+        self.assertEqual("m1", first["event_id"])
+        self.assertEqual([deck], first["media_paths"])
+        self.assertIsNone(rendered["firstBlocked"])
+        # A retried attempt of the same run rebuilds the prompt and must still
+        # carry a token for the same message, so the claim cannot be consumed
+        # destructively. The token itself is re-minted, with a fresh nonce.
+        retry = payload(rendered["firstRetry"])
+        for field in ("event_id", "media_paths", "sender_id", "run_id", "scopes"):
+            self.assertEqual(first[field], retry[field])
+        self.assertNotEqual(first["nonce"], retry["nonce"])
+        second = payload(rendered["second"])
+        self.assertEqual("m2", second["event_id"])
+        # The macro workbook is never signed, and it blocks its own run.
+        self.assertEqual([], second["media_paths"])
+        self.assertEqual("unsupported_attachment_type", rendered["secondBlocked"]["reason"])
+
     def test_plugin_correlates_identity_media_and_dm_scope(self) -> None:
+        dm_key = "agent:vc-chief:slack:direct:u12345678"
+        group_key = "agent:vc-chief:slack:channel:c123"
+        staged_doc = (
+            "/home/node/.openclaw/media/inbound/"
+            "Pitch_Deck_Übersicht.pdf---550e8400-e29b-41d4-a716-446655440000.pdf"
+        )
         with tempfile.TemporaryDirectory(prefix="trusted-plugin-") as raw:
             key_path = Path(raw) / "key"
             key = b"k" * 64
@@ -261,26 +368,30 @@ import plugin from {json.dumps(PLUGIN_PATH.as_uri())};
 const hooks = {{}};
 plugin.register({{on: (name, handler) => {{ hooks[name] = handler; }}}});
 hooks.message_received(
-  {{messageId: 'event-1', senderId: 'U12345678', runId: 'run-1', sessionKey: 'agent:vc-chief:slack:direct:u12345678', metadata: {{mediaPaths: ['/home/node/.openclaw/media/inbound/deck.pptx', '/home/node/.openclaw/media/inbound/nested/ignored.pdf']}}}},
-  {{channelId: 'slack', accountId: 'default', conversationId: 'D123', messageId: 'event-1', senderId: 'U12345678', runId: 'run-1', sessionKey: 'agent:vc-chief:slack:direct:u12345678'}}
+  {{messageId: 'event-1', senderId: 'U12345678', sessionKey: {json.dumps(dm_key)}, metadata: {{mediaPaths: [{json.dumps(staged_doc)}, '/home/node/.openclaw/media/inbound/nested/ignored.pdf']}}}},
+  {{channelId: 'slack', accountId: 'acc-1', conversationId: 'D123', messageId: 'event-1', senderId: 'U12345678', sessionKey: {json.dumps(dm_key)}}}
 );
-const direct = hooks.before_prompt_build({{}}, {{runId: 'run-1', senderId: 'U12345678', sessionKey: 'agent:vc-chief:slack:direct:u12345678', messageProvider: 'slack'}});
+const direct = hooks.before_prompt_build({{}}, {{runId: 'run-1', senderId: 'U12345678', sessionKey: {json.dumps(dm_key)}, messageProvider: 'slack'}});
 hooks.message_received(
-  {{messageId: 'event-2', senderId: 'U12345678', runId: 'run-2', sessionKey: 'agent:vc-chief:slack:channel:c123', metadata: {{}}}},
-  {{channelId: 'slack', accountId: 'default', conversationId: 'C123', messageId: 'event-2', senderId: 'U12345678', runId: 'run-2', sessionKey: 'agent:vc-chief:slack:channel:c123'}}
+  {{messageId: 'event-2', senderId: 'U12345678', sessionKey: {json.dumps(group_key)}, metadata: {{}}}},
+  {{channelId: 'slack', accountId: 'acc-1', conversationId: 'C123', messageId: 'event-2', senderId: 'U12345678', sessionKey: {json.dumps(group_key)}}}
 );
-const group = hooks.before_prompt_build({{}}, {{runId: 'run-2', senderId: 'U12345678', sessionKey: 'agent:vc-chief:slack:channel:c123', messageProvider: 'slack'}});
+const group = hooks.before_prompt_build({{}}, {{runId: 'run-2', senderId: 'U12345678', sessionKey: {json.dumps(group_key)}, messageProvider: 'slack'}});
 hooks.message_received(
-  {{messageId: 'event-3', senderId: 'U12345678', runId: 'run-3', sessionKey: 'agent:vc-chief:slack:direct:u12345678', metadata: {{mediaPaths: ['/home/node/.openclaw/media/inbound/photo.png']}}}},
-  {{channelId: 'slack', accountId: 'default', conversationId: 'D123', messageId: 'event-3', senderId: 'U12345678', runId: 'run-3', sessionKey: 'agent:vc-chief:slack:direct:u12345678'}}
+  {{messageId: 'event-3', senderId: 'U12345678', sessionKey: {json.dumps(dm_key)}, metadata: {{mediaPaths: ['/home/node/.openclaw/media/inbound/photo.png']}}}},
+  {{channelId: 'slack', accountId: 'acc-1', conversationId: 'D123', messageId: 'event-3', senderId: 'U12345678', sessionKey: {json.dumps(dm_key)}}}
 );
-hooks.before_model_resolve({{attachments: [{{kind: 'image', mimeType: 'image/png'}}]}}, {{runId: 'run-3'}});
-const blocked = hooks.before_agent_run({{}}, {{runId: 'run-3'}});
-console.log(JSON.stringify({{direct: direct.prependContext, group: group.prependContext, blocked}}));
+// The staged-media suffix check alone must block this turn: it is registered
+// against the session, before any run id exists.
+const blockedByStagedMedia = hooks.before_agent_run({{}}, {{runId: 'run-3', sessionKey: {json.dumps(dm_key)}}});
+hooks.before_model_resolve({{attachments: [{{kind: 'image', mimeType: 'image/png'}}]}}, {{runId: 'run-4'}});
+const blockedByAttachment = hooks.before_agent_run({{}}, {{runId: 'run-4', sessionKey: 'agent:vc-chief:slack:direct:u99'}});
+console.log(JSON.stringify({{direct: direct.prependContext, group: group.prependContext, blockedByStagedMedia, blockedByAttachment}}));
 """
             process = subprocess.run(
                 ["node", "--input-type=module", "-e", script],
                 text=True,
+                encoding="utf-8",
                 capture_output=True,
                 check=False,
                 env={**os.environ, "VC_TRUSTED_CONTEXT_KEY_FILE": str(key_path)},
@@ -301,11 +412,23 @@ console.log(JSON.stringify({{direct: direct.prependContext, group: group.prepend
         group = payload(rendered["group"])
         self.assertFalse(direct["is_group"])
         self.assertTrue(group["is_group"])
-        self.assertEqual(["/home/node/.openclaw/media/inbound/deck.pptx"], direct["media_paths"])
-        path_hash = hashlib.sha256(direct["media_paths"][0].encode("utf-8")).hexdigest()
+        # The run id comes from the agent hook, the only place one exists.
+        self.assertEqual("run-1", direct["run_id"])
+        self.assertEqual("event-1", direct["event_id"])
+        self.assertEqual("acc-1", direct["account_id"])
+        self.assertEqual("D123", direct["conversation_id"])
+        self.assertEqual("slack", direct["provider"])
+        # A staged document keeps the Unicode of its original filename, so a
+        # scope must still be minted for it.
+        self.assertEqual([staged_doc], direct["media_paths"])
+        path_hash = hashlib.sha256(staged_doc.encode("utf-8")).hexdigest()
         self.assertIn(f"document.ingest:{path_hash}", direct["scopes"])
-        self.assertEqual("block", rendered["blocked"]["outcome"])
-        self.assertEqual("unsupported_attachment_type", rendered["blocked"]["reason"])
+        for blocked_key in ("blockedByStagedMedia", "blockedByAttachment"):
+            with self.subTest(blocked=blocked_key):
+                self.assertEqual("block", rendered[blocked_key]["outcome"])
+                self.assertEqual(
+                    "unsupported_attachment_type", rendered[blocked_key]["reason"]
+                )
 
     def test_plugin_blocks_unsupported_attachment_beyond_path_cap(self) -> None:
         # The 11th attachment exceeds MAX_MEDIA_PATHS; a disallowed suffix
@@ -323,10 +446,10 @@ import plugin from {json.dumps(PLUGIN_PATH.as_uri())};
 const hooks = {{}};
 plugin.register({{on: (name, handler) => {{ hooks[name] = handler; }}}});
 hooks.message_received(
-  {{messageId: 'event-1', senderId: 'U12345678', runId: 'run-cap', sessionKey: 'agent:vc-chief:slack:direct:u12345678', metadata: {{mediaPaths: {json.dumps(supported)}, mediaPath: '/home/node/.openclaw/media/inbound/macro.xlsm'}}}},
-  {{channelId: 'slack', accountId: 'default', conversationId: 'D123', messageId: 'event-1', senderId: 'U12345678', runId: 'run-cap', sessionKey: 'agent:vc-chief:slack:direct:u12345678'}}
+  {{messageId: 'event-1', senderId: 'U12345678', sessionKey: 'agent:vc-chief:slack:direct:u12345678', metadata: {{mediaPaths: {json.dumps(supported)}, mediaPath: '/home/node/.openclaw/media/inbound/macro.xlsm'}}}},
+  {{channelId: 'slack', accountId: 'default', conversationId: 'D123', messageId: 'event-1', senderId: 'U12345678', sessionKey: 'agent:vc-chief:slack:direct:u12345678'}}
 );
-const blocked = hooks.before_agent_run({{}}, {{runId: 'run-cap'}});
+const blocked = hooks.before_agent_run({{}}, {{runId: 'run-cap', sessionKey: 'agent:vc-chief:slack:direct:u12345678'}});
 console.log(JSON.stringify({{blocked}}));
 """
             process = subprocess.run(
@@ -358,12 +481,15 @@ console.log(JSON.stringify({{blocked}}));
                 "spaced_pdf": f"{root}/Q3 Board Deck.pdf",
                 "nested_pdf": f"{root}/nested/ignored.pdf",
             }
+            # One session per probe: the staged-media block is registered
+            # against the session key, so sharing one would let a block raised
+            # by an earlier probe be consumed by the next and mask the result.
             statements = "\n".join(
                 f"""hooks.message_received(
-  {{messageId: 'event-{name}', senderId: 'U12345678', runId: 'run-{name}', sessionKey: 'agent:vc-chief:slack:direct:u12345678', metadata: {{mediaPaths: [{json.dumps(value)}]}}}},
-  {{channelId: 'slack', accountId: 'default', conversationId: 'D123', messageId: 'event-{name}', senderId: 'U12345678', runId: 'run-{name}', sessionKey: 'agent:vc-chief:slack:direct:u12345678'}}
+  {{messageId: 'event-{name}', senderId: 'U12345678', sessionKey: 'agent:vc-chief:slack:direct:u-{name}', metadata: {{mediaPaths: [{json.dumps(value)}]}}}},
+  {{channelId: 'slack', accountId: 'default', conversationId: 'D123', messageId: 'event-{name}', senderId: 'U12345678', sessionKey: 'agent:vc-chief:slack:direct:u-{name}'}}
 );
-results[{json.dumps(name)}] = hooks.before_agent_run({{}}, {{runId: 'run-{name}'}}) ?? null;"""
+results[{json.dumps(name)}] = hooks.before_agent_run({{}}, {{runId: 'run-{name}', sessionKey: 'agent:vc-chief:slack:direct:u-{name}'}}) ?? null;"""
                 for name, value in probes.items()
             )
             script = f"""

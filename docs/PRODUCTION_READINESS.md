@@ -47,7 +47,7 @@ archive (excluded from the published package).
 
 | Proof | Result |
 | --- | --- |
-| Complete aggregate offline suites | 208 tests passed; 0 failed; 0 skipped; 24/24 offline checks pass (count re-verified 2026-07-28 after the audit remediation) |
+| Complete aggregate offline suites | 212 tests passed; 0 failed; 0 skipped; 24/24 offline checks pass (count re-verified 2026-07-29 after the upstream-conformance remediation) |
 | Disposable PostgreSQL G4 | 84/84 across seven suites (semantics 6, document security 15, database contract 8, helper CLI 18, workflow execution 10, research intelligence 19, source surveillance 8); migrations 001–017 applied and registered twice |
 | Real deployment gate (G8) | PASS — `./scripts/bootstrap.sh` completes on the pinned images; the negative credential proof is rejected over TCP with no host trust rules remaining; fixed workflows run through real `vcrun`/Lobster inside the deployed gateway; an autonomous run leaves a non-empty knowledge base; teardown removes all state |
 | Exact-image gate (G6) | PASS — 8/8 against the image rebuilt from this tree |
