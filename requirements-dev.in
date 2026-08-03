@@ -5,6 +5,7 @@
 pytest==8.4.1
 pytest-cov==6.2.1
 ruff==0.12.3
+ty==0.0.65
 jsonschema==4.26.0
 PyYAML==6.0.3
 typing-extensions==4.16.0

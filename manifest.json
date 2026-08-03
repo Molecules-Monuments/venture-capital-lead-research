@@ -366,14 +366,14 @@
     {
       "executable": false,
       "path": "requirements-dev.in",
-      "sha256": "b48c718a80383a9a4b5e3b43135afd74ad2dad4a8893dfe041e1ebaea3be1934",
-      "size": 331
+      "sha256": "427811ecad97793dff97976861f9ec62b6c4c22952ebcad733bfff1c490b9828",
+      "size": 342
     },
     {
       "executable": false,
       "path": "requirements-dev.lock",
-      "sha256": "8a8b80b16446c5c2a09a68a9fc4b070d85614c9c44869ef0074accd05e99643c",
-      "size": 34305
+      "sha256": "bbbf19e76787fbce63e03b451d84177ddc21696157b6fc56ef3a1d0f2c7e55e1",
+      "size": 35879
     },
     {
       "executable": false,
