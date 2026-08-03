@@ -82,15 +82,6 @@ SEARCH_PACKAGES = {
     # (needs PARALLEL_API_KEY) is intentionally not offered as a keyless option.
     "parallel-free": ("parallel", "/opt/openclaw-runtime/node_modules/@openclaw/parallel-plugin"),
 }
-CHANNEL_PACKAGES = {
-    "slack": "/opt/openclaw-runtime/node_modules/@openclaw/slack",
-    "msteams": "/opt/openclaw-runtime/node_modules/@openclaw/msteams",
-    "discord": "/opt/openclaw-runtime/node_modules/@openclaw/discord",
-    # telegram ships bundled at /app/extensions/telegram inside the pinned image;
-    # give it an explicit load path too rather than relying on the base image's
-    # default extensions scan (which is not guaranteed and untested).
-    "telegram": "/app/extensions/telegram",
-}
 # Search-provider plugins that are actually present in the built image: the base
 # image's /app/extensions and whatever runtime-packages/package.json pins via
 # `npm ci`. A provider outside this set renders a plugins.load path that does not
@@ -313,10 +304,15 @@ def apply_runtime_selection(config: dict[str, Any], selected_channel: str, env: 
     config.setdefault("tools", {})["web"] = tools_web
 
     if selected_channel != "none":
+        # No load path: Dockerfile.openclaw places all four channel
+        # distributions under the harness's own extension scan root, so each
+        # resolves as a bundled plugin. That is load-bearing, not tidiness — a
+        # path-loaded plugin is denied the keyed store ("openKeyedStore is only
+        # available for trusted plugins in this release"), which stopped the
+        # Teams provider from starting at all. plugins.allow and plugins.entries
+        # are what enable a bundled plugin.
         allow.append(selected_channel)
         entries[selected_channel] = {"enabled": True}
-        if selected_channel in CHANNEL_PACKAGES:
-            paths.append(CHANNEL_PACKAGES[selected_channel])
     plugins["allow"] = list(dict.fromkeys(allow))
     # Bundled plugins (duckduckgo, ollama, telegram) need no load path, and
     # giving them one is actively wrong. Verified against the pinned image:

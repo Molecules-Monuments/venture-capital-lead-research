@@ -750,30 +750,25 @@ record. Autonomous transcript review remains disabled.
 
 ## 10. Known release limitations
 
-- **Microsoft Teams cannot be selected in this release.** `check_env.sh`,
-  `check_customization.py`, and `render_channel_config.py` all refuse
-  `PRIMARY_CHANNEL=msteams`. The GHCR base image prunes the Slack, Teams, and
-  Discord distributions, so `Dockerfile.openclaw` reinstalls them from the locked
-  npm graph into `/opt/openclaw-runtime` and the renderer names that directory in
-  `plugins.load.paths`. The harness only grants its keyed store to a plugin that
-  is either `origin: "bundled"` or a recorded trusted official install, and a
-  path-loaded plugin is neither. The Teams provider reaches that store while
-  starting, so on a live deployment it exited 40 ms after
-  `[msteams] starting provider (port 3978)` with `openKeyedStore is only
-  available for trusted plugins in this release`, then crash-looped through its
-  ten auto-restart attempts. Port 3978 was never bound — while `bootstrap.sh`
-  exited 0 and the container reported `healthy`. The refusal exists so that
-  failure surfaces at commissioning instead of after handover. Re-test on the
-  next image bump: the upstream message says "in this release", and the entry in
-  `check_env.INOPERABLE_CHANNELS` should be deleted once the provider starts.
-- **Slack and Discord carry the same structural risk, unproven.** They are loaded
-  the same non-bundled way and contain the same `openKeyedStore` call sites, but
-  in their providers those sit past authentication rather than on the startup
-  path, so a run with deliberately invalid credentials stops earlier — at
-  `auth.test` — and never reaches the gate. Neither has been driven with a real
-  credential here. Treat the first live Slack or Discord activation as the test
-  of this, and if the provider exits with the trusted-plugin message, the cause
-  and the shape of the fix are the same as for Teams above.
+- **Channel plugins must stay under the harness's own extension scan root.** Not
+  a limitation so much as a constraint that is easy to undo by accident, and it
+  is load-bearing. The GHCR base image prunes the Slack, Teams, and Discord
+  distributions, so `Dockerfile.openclaw` reinstalls them from the locked npm
+  graph and then moves them into `/app/dist/extensions/<id>`, where the harness
+  resolves them as `stock:<id>/…` with `origin: "bundled"`. The harness grants
+  its keyed store only to a plugin that is bundled or a recorded trusted
+  official install. Naming a channel in `plugins.load.paths` instead makes it a
+  path/config origin, and every code path that reaches `openKeyedStore` then
+  throws `openKeyedStore is only available for trusted plugins in this release`.
+  Teams reaches it while *starting*: with the plugin path-loaded, the provider
+  exited 40 ms after `[msteams] starting provider (port 3978)`, crash-looped
+  through all ten auto-restarts, and never bound the port — while `bootstrap.sh`
+  exited 0 and the container reported `healthy`. Slack and Discord carry the
+  same call sites past authentication. `render_channel_config.py` therefore
+  emits no load path for any channel, and
+  `tests/v3/test_runtime_provider_and_context.py` asserts that. If a future edit
+  reintroduces one, the symptom is a channel that never connects on a deployment
+  that otherwise looks correct.
 - The package does not provide hostile multi-tenant isolation or Docker-backed
   tool sandboxes inside the gateway container.
 - Direct Lobster and managed Lobster-to-Task-Flow mode remain disabled; the

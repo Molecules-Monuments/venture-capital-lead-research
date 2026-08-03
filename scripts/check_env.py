@@ -68,42 +68,6 @@ CHANNEL_FIELDS = {
     ),
 }
 
-# Channels that this package installs, validates, and renders correctly, but
-# that the pinned harness image cannot actually run.
-#
-# The GHCR release prunes the Slack, Teams, and Discord distributions, so
-# Dockerfile.openclaw reinstalls them from the locked npm graph into
-# /opt/openclaw-runtime and render_channel_config.py names that directory in
-# plugins.load.paths. A path-loaded plugin is neither `origin: "bundled"` nor a
-# recorded `trustedOfficialInstall`, and the harness gates its keyed store on
-# exactly that pair, so any code path reaching openKeyedStore throws.
-#
-# msteams reaches it while *starting*: measured on a live deployment, the
-# provider exited 40 ms after "starting provider (port 3978)" with "openKeyedStore
-# is only available for trusted plugins in this release", then crash-looped
-# through its ten auto-restart attempts. Port 3978 was never bound, yet
-# bootstrap.sh exited 0 and the container stayed `healthy` — so selecting Teams
-# produced a deployment that looked correct and could not receive a single
-# message. Refusing it here is the honest outcome: this package would rather
-# fail commissioning loudly than hand over a silently dead channel.
-#
-# slack and discord are deliberately NOT listed. They carry the same
-# openKeyedStore call sites and the same non-bundled origin, so they are at risk
-# of the same failure once a real credential lets them past authentication — but
-# that has not been observed here, and refusing a channel on suspicion would cost
-# an operator a working integration. See docs/RUNBOOK.md.
-#
-# The upstream message says "in this release", so re-test this on the next image
-# bump and delete the entry once the provider starts.
-INOPERABLE_CHANNELS = {
-    "msteams": (
-        "the pinned image loads the Teams plugin from a path, which the harness "
-        "does not treat as a trusted plugin, so the provider crash-loops on "
-        "startup and never binds its webhook port while the gateway still reports "
-        "healthy (see docs/RUNBOOK.md)"
-    ),
-}
-
 DEPLOYMENT_FIELDS = {
     "TZ",
     "OPENCLAW_HOST",
@@ -330,11 +294,6 @@ def validate_channel_selection(values: dict[str, str]) -> list[str]:
     if selected not in allowed:
         errors.append(f"PRIMARY_CHANNEL must be one of {sorted(allowed)}")
         return errors
-    if selected in INOPERABLE_CHANNELS:
-        errors.append(
-            f"PRIMARY_CHANNEL={selected} cannot be operated on the pinned image: "
-            + INOPERABLE_CHANNELS[selected]
-        )
 
     populated = {
         profile: [key for key in fields if values.get(key, "")]

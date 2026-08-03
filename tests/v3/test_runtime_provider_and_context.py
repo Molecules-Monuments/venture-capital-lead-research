@@ -65,24 +65,6 @@ def replace_line(body: str, key: str, value: str) -> str:
     return "\n".join(lines) + "\n"
 
 
-# Syntactically valid, deliberately inert credential families. These exist to
-# exercise selection logic, never to reach a provider.
-_MSTEAMS_FAMILY = {
-    "MSTEAMS_APP_ID": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
-    "MSTEAMS_APP_PASSWORD": "inert-check-env-app-password",
-    "MSTEAMS_TENANT_ID": "72f988bf-86f1-41af-91ab-2d7cd011db47",
-    "MSTEAMS_ALLOWED_USER_IDS": "29f1c4de-9a1b-4d0e-8f2a-11bb22cc33dd",
-    "MSTEAMS_ALLOWED_TEAM_ID": "19:checkenvteam0000000@thread.tacv2",
-    "MSTEAMS_ALLOWED_CHANNEL_ID": "19:checkenvchannel00000@thread.tacv2",
-    "MSTEAMS_PUBLIC_WEBHOOK_URL": "https://teams.check-env.invalid/api/messages",
-}
-_TELEGRAM_FAMILY = {
-    "TELEGRAM_BOT_TOKEN": "123456789:AAHcheckenvinerttokenvalue0000000000",
-    "TELEGRAM_ALLOWED_USER_IDS": "123456789",
-    "TELEGRAM_ALLOWED_GROUP_ID": "-1001234567890",
-}
-
-
 class RuntimeProviderTests(unittest.TestCase):
     def render(self, body: str) -> dict[str, Any]:
         with tempfile.TemporaryDirectory(prefix="provider-render-") as raw:
@@ -248,43 +230,47 @@ class RuntimeProviderTests(unittest.TestCase):
         # on the vendor's hardware.
         self.assertEqual([], self._errors_for(configured_example()))
 
-    def test_a_channel_the_image_cannot_run_is_refused_everywhere(self) -> None:
-        # Selecting Teams rendered a valid config, bootstrapped, and reported
-        # healthy while its provider crash-looped on "openKeyedStore is only
-        # available for trusted plugins" and never bound port 3978. Every
-        # lifecycle entry point has to refuse it, or the failure only shows up
-        # after handover.
-        self.assertIn("msteams", check_env.INOPERABLE_CHANNELS)
-        # Still a known channel name — this is an operability refusal, not a typo.
-        self.assertIn("msteams", check_env.CHANNEL_FIELDS)
-        body = configured_example()
-        body = replace_line(body, "PRIMARY_CHANNEL", "msteams")
-        for key in check_env.CHANNEL_FIELDS["msteams"]:
-            body = replace_line(body, key, _MSTEAMS_FAMILY[key])
-        with tempfile.TemporaryDirectory(prefix="channel-refusal-") as raw:
-            probe = Path(raw) / "probe.env"
-            probe.write_text(body, encoding="utf-8")
-            probe.chmod(0o600)
-            errors = check_env.validate_channel_selection(check_env.parse_dotenv(probe))
-        self.assertTrue(
-            any("cannot be operated on the pinned image" in error for error in errors),
-            f"check_env must refuse msteams: {errors}",
-        )
-        # And the renderer must not produce a config no validator would allow.
-        self.render_expecting_failure(body)
-        # A complete, otherwise-valid family for a channel that *is* operable
-        # stays acceptable, so this is not a blanket channel refusal.
-        telegram = configured_example()
-        telegram = replace_line(telegram, "PRIMARY_CHANNEL", "telegram")
-        for key, value in _TELEGRAM_FAMILY.items():
-            telegram = replace_line(telegram, key, value)
-        with tempfile.TemporaryDirectory(prefix="channel-ok-") as raw:
-            probe = Path(raw) / "probe.env"
-            probe.write_text(telegram, encoding="utf-8")
-            probe.chmod(0o600)
-            self.assertEqual(
-                [], check_env.validate_channel_selection(check_env.parse_dotenv(probe))
-            )
+    def test_a_selected_channel_is_enabled_without_a_load_path(self) -> None:
+        # The harness grants its keyed store only to a plugin whose registry
+        # record is origin "bundled" (or a recorded trusted official install).
+        # Naming a channel in plugins.load.paths makes it a path/config origin
+        # instead, and every code path reaching openKeyedStore then throws
+        # "openKeyedStore is only available for trusted plugins in this release".
+        # Teams hits that while starting: the provider exited 40 ms in,
+        # crash-looped through all ten auto-restarts, and never bound port 3978,
+        # while bootstrap.sh exited 0 and the container reported healthy.
+        # Dockerfile.openclaw now places all four channel distributions under the
+        # harness's own extension scan root, so a load path must never come back.
+        families = {
+            "msteams": {
+                "MSTEAMS_APP_ID": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+                "MSTEAMS_APP_PASSWORD": "inert-render-test-app-password",
+                "MSTEAMS_TENANT_ID": "72f988bf-86f1-41af-91ab-2d7cd011db47",
+                "MSTEAMS_ALLOWED_USER_IDS": "29f1c4de-9a1b-4d0e-8f2a-11bb22cc33dd",
+                "MSTEAMS_ALLOWED_TEAM_ID": "19:rendertestteam00000@thread.tacv2",
+                "MSTEAMS_ALLOWED_CHANNEL_ID": "19:rendertestchan00000@thread.tacv2",
+                "MSTEAMS_PUBLIC_WEBHOOK_URL": "https://teams.render-test.invalid/api/messages",
+            },
+            "telegram": {
+                "TELEGRAM_BOT_TOKEN": "123456789:AAHrendertestinerttokenvalue00000000",
+                "TELEGRAM_ALLOWED_USER_IDS": "123456789",
+                "TELEGRAM_ALLOWED_GROUP_ID": "-1001234567890",
+            },
+        }
+        for channel, family in families.items():
+            with self.subTest(channel=channel):
+                body = replace_line(configured_example(), "PRIMARY_CHANNEL", channel)
+                for key, value in family.items():
+                    body = replace_line(body, key, value)
+                config = self.render(body)
+                plugins = config["plugins"]
+                self.assertIn(channel, plugins["allow"])
+                self.assertTrue(plugins["entries"][channel]["enabled"])
+                for path in plugins["load"]["paths"]:
+                    self.assertNotIn(
+                        channel, path,
+                        f"{channel} must load as a bundled plugin, not from {path}",
+                    )
 
     def test_control_ui_origins_follow_the_configured_gateway_port(self) -> None:
         body = configured_example().replace(
