@@ -63,7 +63,8 @@ class Version3ContractTests(unittest.TestCase):
             text = skill_file.read_text(encoding="utf-8")
             self.assertTrue(text.startswith("---\n"), skill_file)
             match = re.search(r"(?m)^name:\s*([^\s]+)\s*$", text)
-            self.assertIsNotNone(match, skill_file)
+            if match is None:
+                self.fail(f"{skill_file} has no frontmatter name")
             skill_names.append(match.group(1))
         self.assertEqual(26, len(skill_names))
         self.assertEqual(len(skill_names), len(set(skill_names)))
@@ -327,12 +328,12 @@ class Version3ContractTests(unittest.TestCase):
             {"stable_approver_ids": ["approver-1"], "allowed_channel_ids": []}
         )
         profile["privacy_retention"]["jurisdictions"] = ["DE"]
-        artifact_paths = profile["review"]["reviewed_artifacts"] = {
-            relative: ""
-            for relative in json.loads(
-                (ROOT / "config/customization-profile.example.json").read_text(encoding="utf-8")
-            )["review"]["reviewed_artifacts"]
-        }
+        example_artifacts = json.loads(
+            (ROOT / "config/customization-profile.example.json").read_text(encoding="utf-8")
+        )["review"]["reviewed_artifacts"]
+        artifact_paths = profile["review"]["reviewed_artifacts"] = dict.fromkeys(
+            example_artifacts, ""
+        )
         for relative in artifact_paths:
             artifact_paths[relative] = hashlib.sha256((ROOT / relative).read_bytes()).hexdigest()
 
@@ -460,8 +461,16 @@ class Version3ContractTests(unittest.TestCase):
         module = ast.parse(path.read_text(encoding="utf-8"))
         for node in module.body:
             targets = getattr(node, "targets", [])
-            if any(isinstance(t, ast.Name) and t.id == name for t in targets):
-                return {element.value for element in node.value.elts}
+            if (
+                any(isinstance(t, ast.Name) and t.id == name for t in targets)
+                and isinstance(node, ast.Assign)
+                and isinstance(node.value, (ast.Set, ast.List, ast.Tuple))
+            ):
+                return {
+                    element.value
+                    for element in node.value.elts
+                    if isinstance(element, ast.Constant) and isinstance(element.value, str)
+                }
         raise AssertionError(f"{name} not found in {path}")
 
     def test_workflow_state_is_bound_to_v3_package_and_policy(self) -> None:

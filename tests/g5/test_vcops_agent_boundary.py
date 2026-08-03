@@ -8,6 +8,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from typing import Any
 
 
 PACKAGE = Path(__file__).resolve().parents[2]
@@ -15,7 +16,7 @@ VCOPS = PACKAGE / "workspaces/vc-chief/vc/bin/vcops.py"
 
 
 class AgentVcopsBoundaryTests(unittest.TestCase):
-    def invoke_agent(self, command: list[str]) -> tuple[int, dict[str, object]]:
+    def invoke_agent(self, command: list[str]) -> tuple[int, dict[str, Any]]:
         environment = {
             "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
             "VCOPS_AGENT_MODE": "1",

@@ -13,7 +13,7 @@ description: Validate a scoped, expiring, single-use human approval before an ex
 
 ## Contract
 
-Require approval for outreach, third-party writes/uploads, spending, sensitive-personal-data collection, destructive changes, schema migrations, public exposure, and expanded automation. Accept only an allowlisted approver in an allowed channel. Recompute the preview scope hash; require exact match, `pending` status, and `issued_at <= now < expires_at`. Consumption and the governed action must be one atomic database operation on the operator lane (agent-mode and workflow-mode `vcops` cannot request, decide, or consume approval tokens). A token is valid once and cannot authorize a revised, split, broader, or later action.
+Require approval for outreach, third-party writes/uploads, spending, sensitive-personal-data collection, destructive changes, schema migrations, public exposure, and expanded automation. Accept only an authenticated approver in an allowed channel: the operator helper binds `--approver` to `VCOPS_OPERATOR_ID` under a constant-time comparison. (`approvals.stable_approver_ids` in the customization profile is a reviewed record, not a runtime allowlist.) Recompute the preview scope hash; require exact match, `pending` status, and `issued_at <= now < expires_at`. Consumption and the governed action must be one atomic database operation on the operator lane (agent-mode and workflow-mode `vcops` cannot request, decide, or consume approval tokens). A token is valid once and cannot authorize a revised, split, broader, or later action.
 
 ## Evidence and failures
 

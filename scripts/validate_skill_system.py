@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+import yaml.resolver
 
 
 # This validator loads vcrun.py by path, which would byte-compile it into
@@ -219,7 +220,7 @@ def parse_skill(path: Path, findings: list[Finding]) -> tuple[str | None, str]:
         add(findings, "skill_frontmatter", path, "missing exact YAML frontmatter")
         return None, body
     try:
-        metadata = yaml.load(match.group(1), Loader=UniqueSafeLoader)
+        metadata = yaml.load(match.group(1), Loader=UniqueSafeLoader)  # noqa: S506  # SafeLoader subclass; adds duplicate-key rejection
     except (yaml.YAMLError, DuplicateKeyError) as exc:
         add(findings, "skill_frontmatter", path, str(exc))
         return None, body
@@ -377,8 +378,17 @@ def validate_skills_and_agents(config: dict[str, Any], findings: list[Finding]) 
 
 def validate_router_and_hook(findings: list[Finding]) -> None:
     resolver = RESOLVER_PATH.read_text(encoding="utf-8")
-    if "discovers 26 shared skills" not in resolver:
-        add(findings, "resolver_inventory", RESOLVER_PATH, "resolver must declare the exact discovered inventory")
+    # Derived from the inventory, not a frozen literal: checking for the string
+    # "discovers 26 shared skills" is the exact inversion of what this check
+    # claims — a stale count would pass and a truthful one would fail.
+    expected_inventory = f"discovers {len(EXPECTED_SKILLS)} shared skills"
+    if expected_inventory not in resolver:
+        add(
+            findings,
+            "resolver_inventory",
+            RESOLVER_PATH,
+            f'resolver must declare the exact discovered inventory ("{expected_inventory}")',
+        )
     for skill in EXPECTED_SKILLS:
         if f"`{skill}`" not in resolver:
             add(findings, "resolver_skill", RESOLVER_PATH, f"skill absent from resolver: {skill}")
@@ -510,7 +520,7 @@ def validate_workflows(findings: list[Finding]) -> None:
         if path is None:
             continue
         try:
-            body = yaml.load(path.read_text(encoding="utf-8"), Loader=UniqueSafeLoader)
+            body = yaml.load(path.read_text(encoding="utf-8"), Loader=UniqueSafeLoader)  # noqa: S506  # SafeLoader subclass; adds duplicate-key rejection
         except (OSError, UnicodeError, yaml.YAMLError, DuplicateKeyError) as exc:
             add(findings, "workflow_parse", path, str(exc))
             continue

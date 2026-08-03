@@ -264,19 +264,20 @@ def apply_runtime_selection(config: dict[str, Any], selected_channel: str, env: 
             f"(bundled providers: {sorted(bundled)}). Pin its plugin package in "
             f"runtime-packages/package.json and rebuild, or use the default fetch provider."
         )
-    tools_web: dict[str, Any] = {
-        "search": {"enabled": True, "maxResults": 5, "timeoutSeconds": 30, "cacheTtlMinutes": 15},
-        "fetch": {
+    search_web: dict[str, Any] = {
+        "enabled": True, "maxResults": 5, "timeoutSeconds": 30, "cacheTtlMinutes": 15,
+    }
+    fetch_web: dict[str, Any] = {
             "enabled": True,
             "maxChars": 20000,
             "maxCharsCap": 20000,
             "maxResponseBytes": 750000,
             "timeoutSeconds": 30,
             "cacheTtlMinutes": 15,
-            "maxRedirects": 3,
-            "readability": True,
-        },
+        "maxRedirects": 3,
+        "readability": True,
     }
+    tools_web: dict[str, Any] = {"search": search_web, "fetch": fetch_web}
     selected_search_plugins = set()
     if search != "auto":
         plugin_id, plugin_path = SEARCH_PACKAGES[search]
@@ -313,6 +314,20 @@ def apply_runtime_selection(config: dict[str, Any], selected_channel: str, env: 
         if selected_channel in CHANNEL_PACKAGES:
             paths.append(CHANNEL_PACKAGES[selected_channel])
     plugins["allow"] = list(dict.fromkeys(allow))
+    # Bundled plugins (duckduckgo, ollama, telegram) need no load path, and
+    # giving them one is actively wrong. Verified against the pinned image:
+    # the harness's stock scan root is /app/dist/extensions and `plugins list`
+    # resolves each of them as `stock:<id>/index.js` with no load path
+    # configured at all, while /app/extensions/<id> is the image's TypeScript
+    # source tree. Configuring the latter makes `openclaw doctor` emit
+    # "ignored plugins.load.paths entry that points at OpenClaw's legacy
+    # bundled plugin directory" on every commissioning run — a warning
+    # RUNBOOK §5.6 requires the operator to disposition, for a path that never
+    # loaded anything. plugins.allow and plugins.entries are what enable them,
+    # and both still name each plugin. Load paths remain for the plugins that
+    # genuinely need one: the npm packages under /opt/openclaw-runtime and the
+    # trusted-context extension under /opt/openclaw-extensions.
+    paths = [path for path in paths if not path.startswith("/app/extensions/")]
     plugins["load"] = {"paths": list(dict.fromkeys(paths))}
     plugins["entries"] = entries
 

@@ -23,14 +23,31 @@ from pathlib import Path
 import psycopg
 
 from test_workflow_execution import LobsterStepError, LobsterStepRunner, build_trusted_context
+from typing import Any, ClassVar
 
-OWNER_DATABASE_URL = os.environ.get("DATABASE_URL")
-DATABASE_URL = os.environ.get("G4_RUNTIME_DATABASE_URL")
+OWNER_DATABASE_URL = os.environ.get("DATABASE_URL", "")
+DATABASE_URL = os.environ.get("G4_RUNTIME_DATABASE_URL", "")
 HELPER = Path(os.environ.get("VCOPS_HELPER", ""))
 PYTHON = os.environ.get("G4_PYTHON", sys.executable)
 
 
+def one_row(cur):
+    """Return the row a RETURNING statement is required to have produced."""
+    row = cur.fetchone()
+    assert row is not None, "expected one row from the preceding statement"
+    return row
+
+
 class ResearchIntelligenceTests(unittest.TestCase):
+    # State handed from one ordered test to the next via type(self).<name>.
+    # Declared so the sharing is visible at the top of the class instead of
+    # being implied by an assignment several hundred lines down.
+    claim_hash: ClassVar[Any]
+    cited_fact_id: ClassVar[Any]
+    cited_source_id: ClassVar[Any]
+    fact_id: ClassVar[Any]
+    verified_fact_id: ClassVar[Any]
+
     @classmethod
     def setUpClass(cls):
         if not DATABASE_URL or not OWNER_DATABASE_URL:
@@ -926,7 +943,7 @@ class ResearchIntelligenceTests(unittest.TestCase):
                     "VALUES ('public_web','public_web','internal',%s,'web-research',%s) RETURNING id",
                     (disguised, shared),
                 )
-                source_id = cur.fetchone()[0]
+                source_id = one_row(cur)[0]
                 cur.execute(
                     "INSERT INTO fact_sources (fact_id,source_id,evidence_role) "
                     "VALUES (%s,%s,'supporting')",
@@ -934,7 +951,7 @@ class ResearchIntelligenceTests(unittest.TestCase):
                 )
             cur.execute("SELECT count(*) FROM promote_submitted_claim(%s)", (fact_id,))
             self.assertEqual(
-                cur.fetchone()[0], 0,
+                one_row(cur)[0], 0,
                 "identical content under different hosts must count as one independent key",
             )
             # A genuinely distinct content hash is the second independent key.
@@ -943,14 +960,14 @@ class ResearchIntelligenceTests(unittest.TestCase):
                 "VALUES ('public_web','public_web','internal',%s,'web-research',%s) RETURNING id",
                 (f"https://distinct-{self.prefix}.invalid/d", self.content_hash("nrr-distinct")),
             )
-            distinct_source = cur.fetchone()[0]
+            distinct_source = one_row(cur)[0]
             cur.execute(
                 "INSERT INTO fact_sources (fact_id,source_id,evidence_role) VALUES (%s,%s,'supporting')",
                 (fact_id, distinct_source),
             )
             cur.execute("SELECT count(*) FROM promote_submitted_claim(%s)", (fact_id,))
             self.assertEqual(
-                cur.fetchone()[0], 1,
+                one_row(cur)[0], 1,
                 "a genuinely distinct content hash provides the second independent key",
             )
 

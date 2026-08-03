@@ -436,7 +436,7 @@ class RecoveryLifecycleContractTests(unittest.TestCase):
             self.assertEqual(0, result.returncode, result.stderr)
             self.assertEqual(b"reviewed", (destination / "nested/evidence.txt").read_bytes())
 
-            attacks = {
+            attacks: dict[str, list[tuple[str, bytes, bytes | None]]] = {
                 "traversal": [("../escape", b"x", None)],
                 "link": [("pivot", b"", b"../outside")],
                 "duplicate": [("same", b"one", None), ("./same", b"two", None)],
@@ -650,6 +650,7 @@ class RecoveryLifecycleContractTests(unittest.TestCase):
         ]
         payload = {
             "lock_version": 1,
+            "baked_sources_sha256": module.baked_sources_digest(),
             "created_at": "2026-07-18T00:00:00+00:00",
             "release_contract": contract,
             "images": images,
@@ -734,6 +735,7 @@ class RecoveryLifecycleContractTests(unittest.TestCase):
             )
         payload = {
             "lock_version": 1,
+            "baked_sources_sha256": module.baked_sources_digest(),
             "created_at": "2026-07-18T00:00:00+00:00",
             "release_contract": prior_contract,
             "images": images,
@@ -850,6 +852,144 @@ class LifecycleScriptRefusalExecutionTests(unittest.TestCase):
         result = self._run("update.sh", [])
         self.assertEqual(2, result.returncode)
         self.assertIn("usage:", result.stderr)
+
+    def test_baked_source_digest_covers_every_image_baked_artifact(self) -> None:
+        # The derived image is a build-time snapshot of these paths and nothing
+        # bind-mounts them, so this digest is the only thing in the package that
+        # can tell an operator their policy edit has not reached the gateway.
+        module = self._record_images()
+        with tempfile.TemporaryDirectory(prefix="g7-baked-sources-") as temporary:
+            root = Path(temporary) / "package"
+            for tree in module.BAKED_SOURCE_TREES:
+                shutil.copytree(PACKAGE / tree, root / tree, symlinks=True)
+            for name in module.BAKED_SOURCE_FILES:
+                (root / name).parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(PACKAGE / name, root / name)
+            baseline = module.baked_sources_digest(root)
+            self.assertEqual(baseline, module.baked_sources_digest(root))
+
+            # Every governed policy artifact the operator is told to customize
+            # must move the digest, including the reviewed prompt files and the
+            # helper entry points the exec allowlist names.
+            for relative in (
+                "workspaces/vc-chief/vc/thesis.md",
+                "workspaces/vc-chief/vc/exclusion_criteria.md",
+                "workspaces/vc-chief/vc/scoring-rubric.v3.json",
+                "workspaces/vc-chief/vc/primary_sources.md",
+                "workspaces/vc-chief/USER.md",
+                "workspaces/vc-chief/SOUL.md",
+                "workspaces/vc-chief/vc/bin/vcops.py",
+                "workspaces/shared-skills/evidence-scoring/SKILL.md",
+                "runtime-extensions/vc-trusted-context/index.js",
+                "config/exec-approvals.json",
+                "requirements.lock",
+                "Dockerfile.openclaw",
+            ):
+                target = root / relative
+                original = target.read_bytes()
+                target.write_bytes(original + b"\n")
+                self.assertNotEqual(
+                    baseline,
+                    module.baked_sources_digest(root),
+                    f"editing {relative} must change the image-baked source digest",
+                )
+                target.write_bytes(original)
+                self.assertEqual(baseline, module.baked_sources_digest(root))
+
+            # Losing the executable bit on a helper the exec allowlist names
+            # changes the image, so it changes the digest.
+            helper = root / "workspaces/vc-chief/vc/bin/agent/vcops"
+            mode = helper.stat().st_mode
+            helper.chmod(mode & ~stat.S_IXUSR)
+            self.assertNotEqual(baseline, module.baked_sources_digest(root))
+            helper.chmod(mode)
+
+            # Host-generated workspace state is excluded from the build context,
+            # so it must not be able to report a false drift.
+            (root / "workspaces/vc-chief/memory").mkdir(exist_ok=True)
+            (root / "workspaces/vc-chief/memory/session.md").write_text("x", encoding="utf-8")
+            (root / "workspaces/vc-chief/.openclaw").mkdir(exist_ok=True)
+            (root / "workspaces/vc-chief/.openclaw/state.json").write_text("{}", encoding="utf-8")
+            (root / "workspaces/vc-chief/vc/logs/scan.log").write_text("x", encoding="utf-8")
+            (root / "workspaces/vc-chief/vc/bin/__pycache__").mkdir(exist_ok=True)
+            (root / "workspaces/vc-chief/vc/bin/__pycache__/vcops.pyc").write_bytes(b"\x00")
+            self.assertEqual(baseline, module.baked_sources_digest(root))
+
+    def test_stale_deployment_is_reported_but_never_blocks_recovery(self) -> None:
+        module = self._record_images()
+        contract = module.release_contract()
+        images = [
+            {
+                "role": role,
+                "reference": reference.split("@", 1)[0],
+                "id": "sha256:" + (str(index) * 64),
+                "repo_digests": (
+                    [module._role_required_repo_digest(role, reference)]
+                    if module._role_required_repo_digest(role, reference)
+                    else []
+                ),
+            }
+            for index, (role, reference) in enumerate(contract["expected_images"].items(), start=1)
+        ]
+        payload = {
+            "lock_version": 1,
+            "baked_sources_sha256": module.baked_sources_digest(),
+            "created_at": "2026-07-30T00:00:00+00:00",
+            "release_contract": contract,
+            "images": images,
+        }
+        with tempfile.TemporaryDirectory(prefix="g7-stale-deployment-") as temporary:
+            lock = Path(temporary) / "deployment-lock.json"
+            lock.write_text(json.dumps(payload), encoding="utf-8")
+            self.assertEqual(payload, module.validate_baked_sources(lock))
+
+            stale = json.loads(json.dumps(payload))
+            stale["baked_sources_sha256"] = "a" * 64
+            lock.write_text(json.dumps(stale), encoding="utf-8")
+            with self.assertRaisesRegex(module.LockError, "Re-run ./scripts/bootstrap.sh"):
+                module.validate_baked_sources(lock)
+            # A recovery point legitimately predates a policy edit, so the
+            # staleness check must stay out of the comparisons restore.sh and
+            # backup.sh depend on: those still validate this lock.
+            self.assertEqual(stale, module.validate_lock(lock, require_manifest_digest=False))
+            with mock.patch.object(module, "inspect", side_effect=lambda role, image, **_: dict(
+                next(item for item in images if item["role"] == role)
+            )):
+                self.assertEqual(stale, module.validate_live(lock))
+
+            malformed = json.loads(json.dumps(payload))
+            del malformed["baked_sources_sha256"]
+            lock.write_text(json.dumps(malformed), encoding="utf-8")
+            with self.assertRaisesRegex(
+                module.LockError, "image-baked source digest is invalid"
+            ):
+                module.validate_lock(lock, structure_only=True)
+
+    def test_stale_deployment_notice_is_surfaced_to_the_operator(self) -> None:
+        # The defect this closes was silence: the edit re-pinned cleanly and
+        # every gate passed. Both commands the customization loop runs after an
+        # edit must name the rebuild.
+        module = self._record_images()
+        self.assertIn("bootstrap.sh", module.STALE_DEPLOYMENT_MESSAGE)
+        checker = (SCRIPTS / "check_customization.py").read_text(encoding="utf-8")
+        self.assertIn("STALE_DEPLOYMENT_MESSAGE", checker)
+        self.assertIn('"notices": stale_deployment_notices()', checker)
+        initializer = (SCRIPTS / "init_customization.py").read_text(encoding="utf-8")
+        self.assertIn("stale_deployment_step", initializer)
+        self.assertIn("--validate-baked-sources", initializer)
+        self.assertIn("--validate-baked-sources", body("record_images.py"))
+        # The diagnostic must reach the operator even from the lifecycle scripts
+        # that discard this script's stdout.
+        self.assertIn("file=sys.stderr", body("record_images.py"))
+
+    def _record_images(self):
+        spec = importlib.util.spec_from_file_location(
+            "g7_record_images_baked", SCRIPTS / "record_images.py"
+        )
+        assert spec is not None and spec.loader is not None
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
 
     def test_backup_refuses_an_invalid_quiesce_flag(self) -> None:
         # A malformed control env var is rejected at parse time, before any lock

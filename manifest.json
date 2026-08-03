@@ -19,7 +19,7 @@
     "config/runtime/secrets/vcops_approval_pepper",
     "deployment-lock.json"
   ],
-  "file_count": 318,
+  "file_count": 319,
   "files": [
     {
       "executable": false,
@@ -71,9 +71,15 @@
     },
     {
       "executable": false,
+      "path": "CLAUDE.md",
+      "sha256": "fb29a74bcc9ad9ae56a33a8345e434bf7c60198690bbf4451d0ad303b9367452",
+      "size": 4913
+    },
+    {
+      "executable": false,
       "path": "CUSTOMIZATION.md",
-      "sha256": "555aacbccfec1826b6eea9cc5392d53f058b10c2523c5d9a3bd9c34392382f7c",
-      "size": 19547
+      "sha256": "e22fe0fedf11518cb1a74b74386be959cfaf17de2067671163c1764e76e7b34c",
+      "size": 25090
     },
     {
       "executable": false,
@@ -90,8 +96,8 @@
     {
       "executable": false,
       "path": "README.md",
-      "sha256": "b296afa59b25cd501ad95c762500853620e8eeb32cd30c8f056e90e26e9abe93",
-      "size": 78692
+      "sha256": "e08f0f7322ba1f81fd35967907c54146d3965e24776bc71f5fc915a0551b5073",
+      "size": 81643
     },
     {
       "executable": false,
@@ -198,20 +204,20 @@
     {
       "executable": false,
       "path": "docs/OPERATIONS.md",
-      "sha256": "338cdbe80d933ace4754c31ff83b0e4e9e331851d76e7204cf7abc35adc7db5f",
-      "size": 18537
+      "sha256": "ddacba8a85f3fe5738d9630ed44cf5e93d395113391aa7b8caa42acddaf9afac",
+      "size": 19139
     },
     {
       "executable": false,
       "path": "docs/PRODUCTION_READINESS.md",
-      "sha256": "0f94f4206120ceaa6522886fea31c744f7d50504d59aed08c68e280756015fba",
-      "size": 10100
+      "sha256": "6c613d984ab1e473d3e7b3b4b3f6f335108abc3d10dec44e5a0f0221eb800207",
+      "size": 10098
     },
     {
       "executable": false,
       "path": "docs/RUNBOOK.md",
-      "sha256": "38b6d26c7a4ec433d0ea540c35549726448446b7e832508a3dff753e41a197b4",
-      "size": 41499
+      "sha256": "4c28df2d9b12d7088bd1aded64abf37cc9dca547df3d470c60c68371d1d06005",
+      "size": 45031
     },
     {
       "executable": false,
@@ -228,8 +234,8 @@
     {
       "executable": false,
       "path": "docs/V3_RELEASE_EVIDENCE.md",
-      "sha256": "c3e55bec3732fea08371d6909aa05dbc669db5c870894971bc5b6c87f5dd675a",
-      "size": 10157
+      "sha256": "8b700df1b263f61b87eb95b987831cd364882d23d17d0109fa355645c1814bd8",
+      "size": 10201
     },
     {
       "executable": false,
@@ -240,7 +246,7 @@
     {
       "executable": false,
       "path": "evals/V3_EVAL_RESULTS.md",
-      "sha256": "e77bddf4c6d24d6c6937d3d633bc8917ed7f3641355720f46dba6d597a41517c",
+      "sha256": "7c951deff6bd4ba29809c5bb19458b7e2a3944d35a66bd974b6e01cae609ae8e",
       "size": 6966
     },
     {
@@ -480,8 +486,8 @@
     {
       "executable": false,
       "path": "ruff.toml",
-      "sha256": "1c2e819ba7f4d2d9a115773d112d59117a419c594cbee5fc2f61d15e6c042128",
-      "size": 228
+      "sha256": "e4ce496abda21b3cd8084eeef38c94f49cd1e4b776b610a4d1112361c03f7d40",
+      "size": 2511
     },
     {
       "executable": false,
@@ -534,14 +540,14 @@
     {
       "executable": true,
       "path": "scripts/build_release_manifest.py",
-      "sha256": "72dbc8f9422944514a5be13e92822b8f9e93fe4264de073544ac717a104ce588",
-      "size": 7449
+      "sha256": "bcf2d72885552f4cecbef4620cf64e9bded87485947b2f911330d5964dd1a624",
+      "size": 8502
     },
     {
       "executable": true,
       "path": "scripts/check_customization.py",
-      "sha256": "d4065363824aa950ca955caa6b561da5d6439366bb5296ec8a02d6fa112d7607",
-      "size": 13630
+      "sha256": "d08581d58d4fd5019caa6536334c7a0fa79735f13a55d358bf5389afc675da9d",
+      "size": 15344
     },
     {
       "executable": true,
@@ -558,14 +564,14 @@
     {
       "executable": true,
       "path": "scripts/generate_schema_reference.py",
-      "sha256": "668a3746a4e519ff0a090ee51f3b747892bbd3faf72189ecb557ad45eda6cb69",
-      "size": 5956
+      "sha256": "4d3d5e6ce486084fa379998d3a96bea0a95efaacc2a95759f6b239edfc71ac66",
+      "size": 6370
     },
     {
-      "executable": false,
+      "executable": true,
       "path": "scripts/init_customization.py",
-      "sha256": "927da61cb46fd6e1c0aaab0a261dec8e62f73668ba43a3736498808eb7fe8e70",
-      "size": 5402
+      "sha256": "fce2137e8fb0a1c0f4eed0e03f19f98bf571dc6267dd8783fd334397fb75472f",
+      "size": 6996
     },
     {
       "executable": true,
@@ -576,14 +582,14 @@
     {
       "executable": true,
       "path": "scripts/record_images.py",
-      "sha256": "94ac222380dc78026e81df6f48380d70f97f9f83a27ea102756edde66454e14f",
-      "size": 15017
+      "sha256": "72b040144921d2f5a5d86e143b2b9cf01ef8521ed227098e56bf4d15df72eaa4",
+      "size": 21541
     },
     {
       "executable": true,
       "path": "scripts/render_channel_config.py",
-      "sha256": "8f69fb42893c2fae4788bdd0849d95decc52ddd7fe88a315fd2a7590891ba372",
-      "size": 25374
+      "sha256": "dbcd8c7d157ab518bb33dd1be7481ef20045c4fa1fdf002e5c15bc84b7eb9389",
+      "size": 26497
     },
     {
       "executable": true,
@@ -600,8 +606,8 @@
     {
       "executable": true,
       "path": "scripts/run_g4.py",
-      "sha256": "881a1573cfe236224235eb443cc56258d775cc02630d03eceab8bbcae586c117",
-      "size": 12283
+      "sha256": "4a32ebfd5c6b4341942b4bb8471348debeec4f6cc4bc401ec90e084e0434d9f0",
+      "size": 13489
     },
     {
       "executable": true,
@@ -612,20 +618,20 @@
     {
       "executable": true,
       "path": "scripts/run_g8_deployment.py",
-      "sha256": "59f5fa0557cf4ed84ca82b8962e40eafa3d9a8f5f97388acfaa1acff4e6b786b",
-      "size": 20226
+      "sha256": "0f4d5a8740fcacbd12f321581935a95e5c0cea0fe0d9ac2adbd5816aa36e0578",
+      "size": 20235
     },
     {
       "executable": true,
       "path": "scripts/run_retrieval_scale.py",
-      "sha256": "d37354c7b5e7486875c6bd1002b0aa4f0cfc604de2890f92be9f41c527bfaeaa",
-      "size": 18062
+      "sha256": "4e6b5cc5865d002e419dea8b01801a7fc2b3c61cd9202593f034746f6c1ef477",
+      "size": 19081
     },
     {
       "executable": true,
       "path": "scripts/schedule_jobs.sh",
-      "sha256": "6fb9b00939bd718da885e722da7a8a5acae201e3625e728229ec05211fc67eff",
-      "size": 3206
+      "sha256": "db4ebde4395ed51fffa85a3cb2122dccdc5e7c4e80442cca312bfa88b2074a88",
+      "size": 4501
     },
     {
       "executable": true,
@@ -642,20 +648,20 @@
     {
       "executable": true,
       "path": "scripts/validate_skill_system.py",
-      "sha256": "9d2d36d9e0b13b8bf0d99d382750019bd8d06e872ace197aca8b40e020ee5ca8",
-      "size": 29719
+      "sha256": "e04d4643443bb582e0edd04f941130098ae3a8a325d651fb7b646ec5f171acda",
+      "size": 30254
     },
     {
       "executable": true,
       "path": "scripts/validate_workflows.py",
-      "sha256": "7adc4ca8788ca30a77352a32df53002f9590660c08e91ae4f40d1eb7ffc4ef82",
-      "size": 18287
+      "sha256": "1b109c85c4983240bda65a61ce3eb7d16a2c6fa31baeec7b444791bdac47775c",
+      "size": 18706
     },
     {
       "executable": true,
       "path": "scripts/verify_offline.py",
-      "sha256": "e9ef5c2819b2d318c87935db6d6f55bfb018c96930f4c7f05cc4afba2857d5db",
-      "size": 7931
+      "sha256": "771962f9e4ab8f764f7044232b7b9c5f52ca2e6e00adf1caed87ef26d4447ba3",
+      "size": 7942
     },
     {
       "executable": true,
@@ -678,14 +684,14 @@
     {
       "executable": false,
       "path": "tests/contracts/test_envelope_contracts.py",
-      "sha256": "082336dd728d2229cf660159c7273f8eac7d0264d74501cbfbc84ed80e9b65e8",
-      "size": 12036
+      "sha256": "e902fad252407592408b58a028e5e7ba7320a5b0a90ba9397dc3d298f0834b4f",
+      "size": 12095
     },
     {
       "executable": false,
       "path": "tests/contracts/test_specialist_contracts.py",
-      "sha256": "077e38017a3978553cfd77866c3a9913919fbf9714de273c10f20643cfd82f8f",
-      "size": 7505
+      "sha256": "a984f54791f01f74aef1a3b0a7bef96d78cc8ef3bf2a9bea6dda7003e6abde6f",
+      "size": 7537
     },
     {
       "executable": false,
@@ -726,8 +732,8 @@
     {
       "executable": false,
       "path": "tests/g4/test_database_contract.py",
-      "sha256": "c100fcb3139b0cf6edbbf5476cf8bd6f4c558d9ee24f510cf6f5a353103b98fd",
-      "size": 20494
+      "sha256": "44e06bb9ac30ea63be938d241e8cd2169610492abe6367ef3ec3447e7bd849af",
+      "size": 20503
     },
     {
       "executable": false,
@@ -738,32 +744,32 @@
     {
       "executable": false,
       "path": "tests/g4/test_helper_cli_database.py",
-      "sha256": "af71234d309c06ad93f7faefb2776c9846ed9ee24d468e9d533e0156ea463cec",
-      "size": 53560
+      "sha256": "207a1a3f7d5cf7c44e5aa43f0ab4efb6da87baf68820873732dceee78ea0f412",
+      "size": 56368
     },
     {
       "executable": false,
       "path": "tests/g4/test_research_intelligence.py",
-      "sha256": "c7097d1e63fa72c1d0ed452d9a74055d84b0c9ac5521cca049b5c3fc82af9350",
-      "size": 55190
+      "sha256": "a40eda11cfd953ec2897e9fafc582b3691d665ff127baa2aa1c198041520b805",
+      "size": 55815
     },
     {
       "executable": false,
       "path": "tests/g4/test_semantics.py",
-      "sha256": "b83c9057f72e152a5de202d4b49c54c2e6cd248d70de38c3d73e36b896032b51",
-      "size": 8082
+      "sha256": "70bb45f62d3a5112185abc4b87e49c83788425fce0ff29253703ca841d619d3f",
+      "size": 8117
     },
     {
       "executable": false,
       "path": "tests/g4/test_source_surveillance.py",
-      "sha256": "ad875735c3c581ea222a18bd5613b5ca85750fa08edee8c206b6006efd873472",
-      "size": 14683
+      "sha256": "c609b77c362179d5e5858438bea296b66464018a7ae5f4b702cd479713e8f864",
+      "size": 14691
     },
     {
       "executable": false,
       "path": "tests/g4/test_workflow_execution.py",
-      "sha256": "4141aff214452b51a763e91011d0c7e7ce8f4d75e871d1d0114a89d5357a1535",
-      "size": 18703
+      "sha256": "17ad40ead08805b593563ce453467151a84bc6e95b49f08c68523e7097e4c556",
+      "size": 19084
     },
     {
       "executable": false,
@@ -780,14 +786,14 @@
     {
       "executable": false,
       "path": "tests/g5/test_vcops_agent_boundary.py",
-      "sha256": "ccf3ca7b201ec07bbd61eafeec759a284268e18a7fd537fe504b3b1e452b5959",
-      "size": 10893
+      "sha256": "f6352bba2eaa2a3541ea6cf7c604d056ab6851d8d8db41b5938c4d15193805e3",
+      "size": 10913
     },
     {
       "executable": false,
       "path": "tests/g5/test_vcrun.py",
-      "sha256": "29b9c319944e026aa43d0128b49bc6198d0b4944ee12a3e9c1d4ad9a594e0b7c",
-      "size": 25896
+      "sha256": "2d1d2b8c5387769c926654d7b253ead897612ea666cdfb622f5d2e893ee8ed8e",
+      "size": 25988
     },
     {
       "executable": false,
@@ -810,14 +816,14 @@
     {
       "executable": false,
       "path": "tests/g7/test_recovery_lifecycle.py",
-      "sha256": "562cf41bbfb5f815db645d0fb5cfa537d55d6c450ac0ada084b3e1ff95780c51",
-      "size": 41856
+      "sha256": "c73e3105eb5735dd58b6d01ac9567bbf7826e3471e9ad69d468e65d8065c95d4",
+      "size": 49506
     },
     {
       "executable": false,
       "path": "tests/infrastructure/test_infrastructure_contract.py",
-      "sha256": "e443f75378fc853962008c148fe10815cc689a234ddffc6c6775f4fa1e95aacd",
-      "size": 29073
+      "sha256": "dfcc3497bb9ba32af4c26f56fc4f4a4ce60fe1565d875d9842030d6b74de07d4",
+      "size": 31446
     },
     {
       "executable": false,
@@ -834,26 +840,26 @@
     {
       "executable": false,
       "path": "tests/v3/test_connectors.py",
-      "sha256": "e8377631e9b9a94661dded2cdea48ddd493874c04a1f1bfe804b7f73afd846ae",
-      "size": 3984
+      "sha256": "b640da003d18270a9a4fd07491548e2089c44ef4892bb9b4c8ba52abdf1ea531",
+      "size": 4108
     },
     {
       "executable": false,
       "path": "tests/v3/test_orchestration_and_customization.py",
-      "sha256": "4e407fdc3b61d8efa3adc142a8fe7ccb715574d3acab173466a796896d072912",
-      "size": 24360
+      "sha256": "f83f7eac757ff8d30d3e03c3c6dbe1cbd906b5ff6d3210fccf8dd63518a23f8a",
+      "size": 24725
     },
     {
       "executable": false,
       "path": "tests/v3/test_runtime_provider_and_context.py",
-      "sha256": "b5f42f20d99b8538ff70a5b2a04b0d0c6309ef162ae65b6e9501f6c95005be99",
-      "size": 28561
+      "sha256": "a7d9d81e5d0488fc5971386741a2888443e406776e645d18bd730965c3fc1176",
+      "size": 28645
     },
     {
       "executable": false,
       "path": "tests/v3/test_search_providers.py",
-      "sha256": "a12defdb84d7ffeb1968910f8b052a67a4154fd31ee8d14c66ee2f92ceeeadf9",
-      "size": 7674
+      "sha256": "afdc11d56aab17d42e35b457ae145a2dbf0fe063733e9bfe68caf5a17a333750",
+      "size": 7772
     },
     {
       "executable": false,
@@ -876,8 +882,8 @@
     {
       "executable": false,
       "path": "workspaces/data-steward/TOOLS.md",
-      "sha256": "877dc53fec6d35c81558922ba2394273563b3eca4c6b8c3b0b947d50c60e5d96",
-      "size": 1993
+      "sha256": "7d295fb5e76c5028959fe9fe31eae494e5a9153cb58ec2ec7605da109792f7c8",
+      "size": 2367
     },
     {
       "executable": false,
@@ -1188,8 +1194,8 @@
     {
       "executable": false,
       "path": "workspaces/shared-skills/approval-gates/SKILL.md",
-      "sha256": "6d96605454fb43c98d7cfdf96fd5a2ec87987ad3df9d9710b92741e39834797b",
-      "size": 1659
+      "sha256": "a8ea59d0645bf11db71872d13a0eacda319871f09dcd4e576d5deea36fd5a976",
+      "size": 1867
     },
     {
       "executable": false,
@@ -1410,8 +1416,8 @@
     {
       "executable": false,
       "path": "workspaces/vc-chief/vc/approval-policy.md",
-      "sha256": "7149a0d20cce999028b835cc370bda74c4adf08c8517d7e2ade3e37822eebedc",
-      "size": 2425
+      "sha256": "5de585ae61ce9f8a69b432bcfe01daadbf031a9c3e555827baf3916e2beae3f9",
+      "size": 2802
     },
     {
       "executable": true,
@@ -1440,8 +1446,8 @@
     {
       "executable": true,
       "path": "workspaces/vc-chief/vc/bin/vcops.py",
-      "sha256": "8c633ada0aa14e5573c44fbfd8c7138032f80fbe517ace58818609e0af489b2d",
-      "size": 318431
+      "sha256": "9b9d1d4fe945998b43b16929b77248ed55bc0b8f08cb853d9f532f386ecffe7c",
+      "size": 323867
     },
     {
       "executable": true,
@@ -1452,8 +1458,8 @@
     {
       "executable": true,
       "path": "workspaces/vc-chief/vc/bin/vcrun.py",
-      "sha256": "63527dc67f4a2a1da662afb836140bcd657bbdfe6674dff390a684eaaea9f073",
-      "size": 37288
+      "sha256": "656dabf881c774763b309547d055d8a109983540e88b16613bc9f069158f4509",
+      "size": 37377
     },
     {
       "executable": true,
@@ -1482,8 +1488,8 @@
     {
       "executable": false,
       "path": "workspaces/vc-chief/vc/data_retention.md",
-      "sha256": "727532db122e6a1a7cd7a03f4faa156e6d7befcef7597b68e1048913ec5fca52",
-      "size": 3928
+      "sha256": "e721776425463161a8973399f367aada5c0d444619066091c60efd64ae075dc7",
+      "size": 4157
     },
     {
       "executable": false,
@@ -1542,8 +1548,8 @@
     {
       "executable": false,
       "path": "workspaces/vc-chief/vc/governance_lint.md",
-      "sha256": "34d28447b6d7833a7df9683485a6b22e9f78111d2fdfb31da8ad6796ae1d1e77",
-      "size": 1770
+      "sha256": "7df96837d6b02df45bdf737d32a97b5efe91d3a70f87fcf50e61b27cd5147870",
+      "size": 2045
     },
     {
       "executable": false,

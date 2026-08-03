@@ -33,7 +33,7 @@ from contextlib import contextmanager
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
-from typing import Any, Iterator, Mapping, Sequence
+from typing import Any, Iterator, Mapping, NoReturn, Sequence
 from urllib.parse import urlsplit, urlunsplit
 from uuid import UUID, uuid4
 
@@ -42,9 +42,9 @@ try:
     from psycopg.rows import dict_row
     from psycopg.types.json import Jsonb
 except ImportError:  # permits pure-function and document tests before install
-    psycopg = None
-    dict_row = None
-    Jsonb = None
+    psycopg = None  # ty: ignore[invalid-assignment]
+    dict_row = None  # ty: ignore[invalid-assignment]
+    Jsonb = None  # ty: ignore[invalid-assignment]
 
 
 VERSION = "3.0.0"
@@ -93,6 +93,8 @@ MAX_CSV_ROWS = int(os.environ.get("VCOPS_MAX_CSV_ROWS", 100_000))
 MAX_CSV_COLUMNS = int(os.environ.get("VCOPS_MAX_CSV_COLUMNS", 500))
 
 SUPPORTED_SUFFIXES = {".pdf", ".pptx", ".xlsx", ".csv"}
+# Slide parts, with the ordinal captured so ordering never re-parses the name.
+SLIDE_PART_RE = re.compile(r"ppt/slides/slide([1-9][0-9]*)\.xml")
 REJECTED_SUFFIXES = {".xls", ".xlsm", ".xltm", ".xlam", ".docm", ".pptm", ".ppsm"}
 FORMULA_PREFIXES = ("=", "+", "-", "@")
 TERMINAL_RUN_STATES = {"succeeded", "failed", "cancelled", "lost"}
@@ -310,7 +312,10 @@ def _decode_base64url(value: str) -> bytes:
         raise VcopsError("invalid_trusted_context", "trusted-context encoding is invalid", exit_code=1)
     try:
         return base64.urlsafe_b64decode(value + "=" * (-len(value) % 4))
-    except (ValueError, base64.binascii.Error) as exc:
+    # binascii.Error subclasses ValueError, so ValueError alone catches every
+    # decode failure. The former spelling reached it as base64.binascii, an
+    # undocumented re-export that is not part of the module's public surface.
+    except ValueError as exc:
         raise VcopsError("invalid_trusted_context", "trusted-context encoding is invalid", exit_code=1) from exc
 
 
@@ -455,7 +460,7 @@ def _verified_media_context(token: str | None, document_path: str | Path, operat
     return context, scope
 
 
-def require_text(value: str | None, name: str, *, maximum: int = 10_000) -> str:
+def require_text(value: object, name: str, *, maximum: int = 10_000) -> str:
     # Agent-supplied JSON can put any type here; .strip() on a non-str would
     # collapse the typed contract into internal_error/exit 3.
     if value is not None and not isinstance(value, str):
@@ -1032,10 +1037,15 @@ def _inspect_pptx_archive(path: Path) -> dict[str, Any]:
         content_types = archive.read("[Content_Types].xml")
         if b"macroEnabled" in content_types or b"application/vnd.ms-powerpoint" in content_types:
             raise VcopsError("pptx_macro_content", "PPTX content types indicate macro-enabled content")
-        slide_names = sorted(
-            (name for name in names if re.fullmatch(r"ppt/slides/slide[1-9][0-9]*\.xml", name)),
-            key=lambda item: int(re.search(r"([0-9]+)\.xml$", item).group(1)),
-        )
+        # Ordered off the fullmatch's own capture. The previous form re-searched
+        # each name inside the sort key and indexed .group(1) on a match object
+        # that nothing local proved was non-None.
+        slide_matches = [
+            match for match in (SLIDE_PART_RE.fullmatch(name) for name in names) if match
+        ]
+        slide_names = [
+            match.group(0) for match in sorted(slide_matches, key=lambda m: int(m.group(1)))
+        ]
         if not slide_names:
             raise VcopsError("invalid_pptx", "PPTX contains no slides")
         if len(slide_names) > MAX_PDF_PAGES:
@@ -1075,7 +1085,7 @@ def _pdf_stream_decoded_size(stream: Any, budget: int) -> int:
         # Not a pypdf encoded stream: its stored bytes are already decoded.
         try:
             return len(stream.get_data())
-        except Exception:  # noqa: BLE001 - an unreadable stream contributes nothing
+        except Exception:  # an unreadable stream contributes nothing
             return 0
     declared = stream.get("/Filter")
     filters = (
@@ -1131,6 +1141,13 @@ def _inspect_pdf(path: Path) -> dict[str, Any]:
         content_budget = MAX_PDF_CONTENT_BYTES
         for page in reader.pages:
             page_object = page.get_object()
+            # get_object() resolves an indirect reference and returns the base
+            # PdfObject type. A page that does not resolve to a dictionary is a
+            # structural defect, not a page that happens to carry no additional
+            # actions — the difference matters because /AA is a rejection rule.
+            # pypdf's DictionaryObject subclasses dict, so this is its own test.
+            if not isinstance(page_object, dict):
+                raise VcopsError("invalid_pdf_structure", "a PDF page is not a dictionary object")
             if page_object.get("/AA") is not None:
                 raise VcopsError("pdf_active_content", "PDF page actions are rejected")
             # Page count and file size bound nothing about decompressed content:
@@ -1287,13 +1304,17 @@ def _extract_pptx(path: Path) -> dict[str, Any]:
     truncated = False
     with zipfile.ZipFile(path) as archive:
         names = archive.namelist()
-        slide_names = sorted(
-            (name for name in names if re.fullmatch(r"ppt/slides/slide[1-9][0-9]*\.xml", name)),
-            key=lambda item: int(re.search(r"([0-9]+)\.xml$", item).group(1)),
-        )
+        # Same ordering rule as _inspect_pptx_archive: sort on the fullmatch's
+        # own captured ordinal rather than re-searching inside the sort key.
+        slide_matches = [
+            match for match in (SLIDE_PART_RE.fullmatch(name) for name in names) if match
+        ]
+        slide_names = [
+            match.group(0) for match in sorted(slide_matches, key=lambda m: int(m.group(1)))
+        ]
         for index, name in enumerate(slide_names, start=1):
             try:
-                root = ElementTree.fromstring(archive.read(name))
+                root = ElementTree.fromstring(archive.read(name))  # noqa: S314  # DTD/entity parts rejected pre-extraction
             except ElementTree.ParseError as exc:
                 raise VcopsError("pptx_extract_failed", f"slide {index} XML is malformed") from exc
             fragments = [node.text or "" for node in root.iter(text_tag)]
@@ -1306,7 +1327,7 @@ def _extract_pptx(path: Path) -> dict[str, Any]:
             notes = ""
             if note_name in names and not truncated:
                 try:
-                    notes_root = ElementTree.fromstring(archive.read(note_name))
+                    notes_root = ElementTree.fromstring(archive.read(note_name))  # noqa: S314  # same pre-extraction rejection
                 except ElementTree.ParseError as exc:
                     raise VcopsError("pptx_extract_failed", f"notes for slide {index} are malformed") from exc
                 notes = "\n".join(node.text or "" for node in notes_root.iter(text_tag) if node.text)
@@ -1448,7 +1469,10 @@ def _period_bounds(fact: Mapping[str, Any]) -> tuple[str | None, str | None]:
 def _periods_overlap(left: Mapping[str, Any], right: Mapping[str, Any]) -> bool | None:
     left_start, left_end = _period_bounds(left)
     right_start, right_end = _period_bounds(right)
-    if not all((left_start, left_end, right_start, right_end)):
+    # Tested one bound at a time rather than through all(): the tuple form is
+    # equivalent at runtime but proves nothing to a reader or a checker about
+    # the four names being non-None on the comparison below.
+    if left_start is None or left_end is None or right_start is None or right_end is None:
         return None
     return left_start <= right_end and right_start <= left_end
 
@@ -1658,7 +1682,7 @@ def calculate_score(
                 "evidence_state", "quality_score", "coverage", "evidence_quality",
                 "evidence_fact_ids", "counterevidence_fact_ids", "rationale", "what_would_change",
             }
-            extra = sorted(set(raw) - expected_fields)
+            extra = sorted(str(name) for name in set(raw) - expected_fields)
             if extra:
                 raise VcopsError("invalid_criterion", f"criterion {key} has unknown fields: {', '.join(extra)}")
             missing_fields = sorted(expected_fields - set(raw))
@@ -1863,7 +1887,9 @@ def connection() -> Iterator[Any]:
     connect_kwargs: dict[str, Any] = {}
     if FIXED_RUNTIME:
         connect_kwargs["password"] = _read_secret(DB_PASSWORD_FILE, "database password")
-    with psycopg.connect(dsn, row_factory=dict_row, connect_timeout=10, **connect_kwargs) as conn:
+    # dict_row is psycopg's own documented RowFactory; ty 0.0.65 does not match
+    # it against connect()'s row_factory overloads.
+    with psycopg.connect(dsn, row_factory=dict_row, connect_timeout=10, **connect_kwargs) as conn:  # ty: ignore[invalid-argument-type]
         yield conn
 
 
@@ -2175,7 +2201,9 @@ def _current_company_facts(cur: Any, company_id: int, maximum: str, limit: int) 
             fact["current_state"] = True
             fact["provenance"] = []
             grouped[fact_id] = fact
-        fact["provenance"].append(
+        provenance = fact["provenance"]
+        assert isinstance(provenance, list)
+        provenance.append(
             {
                 "source_id": row["source_id"],
                 "artifact_id": row["artifact_id"],
@@ -3325,6 +3353,8 @@ def _resolve_web_evidence_source(cur: Any, spec: Mapping[str, Any]) -> dict[str,
         domains = policy["official_source_domains"] if policy else []
         if not any(host == domain or host.endswith("." + domain) for domain in domains):
             source_kind = "public_web"
+    if uri is None:  # unreachable: require_text() above rejects the empty case
+        raise VcopsError("invalid_uri", "source URI is required")
     stable_source_id = "url:" + hashlib.sha256(uri.encode("utf-8")).hexdigest()
     # Optional content hash of the fetched page bytes. Independence for web
     # corroboration is keyed by this verified-content identity, not by the
@@ -3488,6 +3518,8 @@ def cmd_evidence_record(args: argparse.Namespace) -> dict[str, Any]:
             extraction_id: int | None = None
             locators: dict[str, Any] = {}
         else:
+            if lead_id is None:
+                raise VcopsError("invalid_arguments", "document evidence requires lead_id")
             source, artifact_id, extraction_id, locators = _resolve_document_evidence_source(
                 cur, document_spec, lead_id
             )
@@ -3872,7 +3904,7 @@ def cmd_compiled_truth(args: argparse.Namespace) -> dict[str, Any]:
         lead = fetch_one(cur, not_found="lead not found or exceeds the model confidentiality ceiling")
         if lead["company_id"] is None:
             raise VcopsError("company_required", "compiled truth requires a canonical lead company", exit_code=1)
-        cur.execute("SELECT pg_advisory_xact_lock(%s)", (int(args.lead_id),))
+        cur.execute("SELECT pg_advisory_xact_lock(%s)", (_require_lead_id(args),))
 
         cur.execute("SELECT * FROM contradictions WHERE lead_id=%s ORDER BY created_at,id", (args.lead_id,))
         contradiction_packet: list[dict[str, Any]] = []
@@ -4022,7 +4054,8 @@ def cmd_compiled_truth(args: argparse.Namespace) -> dict[str, Any]:
         expected_trajectories: set[tuple[int, int]] = set()
         for left, right in combinations(sourced_verified_facts, 2):
             classification = classify_fact_pair(left, right)
-            pair = tuple(sorted((int(left["id"]), int(right["id"]))))
+            low, high = sorted((int(left["id"]), int(right["id"])))
+            pair = (low, high)
             if classification == "contradiction":
                 expected_contradictions.add(pair)
             elif classification == "trajectory":
@@ -4154,6 +4187,20 @@ def _load_fact(cur: Any, fact_id: str) -> dict[str, Any]:
     return fetch_one(cur, not_found=f"fact not found: {fact_id}")
 
 
+def _require_lead_id(args: argparse.Namespace) -> int:
+    """Return the required --lead-id as an int.
+
+    argparse leaves the value Optional even on the subparsers that declare it
+    required=True, so every advisory-lock call site below had to int() a value
+    the reader could not see was non-None. A missing id now fails as a typed
+    invalid_arguments denial instead of TypeError/internal_error.
+    """
+    lead_id = getattr(args, "lead_id", None)
+    if lead_id is None:
+        raise VcopsError("invalid_arguments", "lead_id is required")
+    return int(lead_id)
+
+
 def _require_fact_lead(args: argparse.Namespace, left: Mapping[str, Any], right: Mapping[str, Any]) -> int:
     lead_id = left.get("lead_id") or right.get("lead_id")
     if lead_id is None or left.get("lead_id") != right.get("lead_id"):
@@ -4224,11 +4271,15 @@ def cmd_trajectory_check(args: argparse.Namespace) -> dict[str, Any]:
         # passing the later fact first must not invert the persisted up/down.
         # classification == "trajectory" guarantees both periods exist and are
         # disjoint under _period_bounds, so one bound comparison orders them.
-        if _period_bounds(left)[1] < _period_bounds(right)[0]:
+        left_end, right_start = _period_bounds(left)[1], _period_bounds(right)[0]
+        if left_end is None or right_start is None:
+            raise VcopsError("not_dated", "trajectory persistence requires dated facts")
+        if left_end < right_start:
             first, second = left, right
+            first_value, second_value = left_value, right_value
         else:
             first, second = right, left
-        first_value, second_value = _comparable_value(first), _comparable_value(second)
+            first_value, second_value = right_value, left_value
         delta = second_value - first_value
         direction = "up" if delta > 0 else "down" if delta < 0 else "flat"
         calculation = {"left": first_value, "right": second_value, "delta": delta, "percent": None if first_value == 0 else delta / abs(first_value) * 100}
@@ -4285,7 +4336,7 @@ def cmd_evaluation_save(args: argparse.Namespace) -> dict[str, Any]:
     if not re.fullmatch(r"[0-9a-f]{64}", evidence_hash):
         raise VcopsError("invalid_hash", "evidence_hash must be lowercase SHA-256")
     with connection() as conn, conn.cursor() as cur:
-        cur.execute("SELECT pg_advisory_xact_lock(%s)", (int(args.lead_id),))
+        cur.execute("SELECT pg_advisory_xact_lock(%s)", (_require_lead_id(args),))
         cur.execute(
             """SELECT id,lead_id,company_id,status,evidence_packet_hash,coverage_percent,decision_guards
                FROM compiled_truth WHERE id=%s FOR SHARE""",
@@ -4350,10 +4401,10 @@ def cmd_evaluation_save(args: argparse.Namespace) -> dict[str, Any]:
                 for field in derived_context
                 if field in caller_decision_context
             },
-            "database_derived": {**derived_context, **{
+            "database_derived": {**derived_context,
                 "identity_conflict_ids": live_identity_ids,
-                "blocking_contradiction_ids": live_blocking_ids,
-            }},
+                "blocking_contradiction_ids": live_blocking_ids
+            },
             "mismatches_overridden": context_mismatches,
         }
         blockers = list(caller_blockers)
@@ -4485,7 +4536,7 @@ def cmd_memo_save(args: argparse.Namespace) -> dict[str, Any]:
     content_name = f"{digest}.md"
     content_uri = f"state://memos/{content_name}"
     with connection() as conn, conn.cursor() as cur:
-        cur.execute("SELECT pg_advisory_xact_lock(%s)", (int(args.lead_id),))
+        cur.execute("SELECT pg_advisory_xact_lock(%s)", (_require_lead_id(args),))
         cur.execute(
             "SELECT * FROM memos WHERE lead_id=%s AND content_sha256=%s ORDER BY id",
             (args.lead_id, digest),
@@ -5365,16 +5416,54 @@ def cmd_document_extract(args: argparse.Namespace) -> dict[str, Any]:
             if media_context is not None and media_scope is not None
             else None
         )
+        # The upsert is a deliberate no-op on conflict: an artifact is
+        # content-addressed, so re-ingesting the same bytes must reuse the row
+        # rather than rewrite it. But that also means the FIRST ingestion fixes
+        # the classification, and a later extract presenting a different trust
+        # boundary, confidentiality or retention class would be silently
+        # discarded while this command still reported success. Re-select and
+        # compare, exactly as the company/lead/workflow upserts above do, so a
+        # genuine classification conflict is a typed failure instead.
         cur.execute(
             """INSERT INTO evidence_artifacts
                  (sha256,artifact_type,storage_tier,trust_boundary,confidentiality,retention_class,storage_uri,mime_type,size_bytes)
                VALUES (%s,'document','workspace_file',%s,%s,%s,%s,%s,%s)
-               ON CONFLICT (sha256) DO UPDATE SET sha256=EXCLUDED.sha256
+               ON CONFLICT (sha256) DO NOTHING
                RETURNING id,sha256,mime_type,size_bytes,storage_uri,created_at""",
             (inspection["sha256"], args.trust_level, args.confidentiality, args.retention_class,
              f"state://intake-snapshots/{snapshot_path.name}", inspection["detected_mime"], inspection["size_bytes"]),
         )
-        artifact = fetch_one(cur)
+        artifact = cur.fetchone()
+        if artifact is None:
+            cur.execute(
+                """SELECT id,sha256,mime_type,size_bytes,storage_uri,created_at,
+                          trust_boundary,confidentiality,retention_class
+                     FROM evidence_artifacts WHERE sha256=%s""",
+                (inspection["sha256"],),
+            )
+            existing = fetch_one(cur, not_found="evidence artifact identity conflict")
+            stored = {
+                "trust_boundary": existing["trust_boundary"],
+                "confidentiality": existing["confidentiality"],
+                "retention_class": existing["retention_class"],
+            }
+            requested = {
+                "trust_boundary": args.trust_level,
+                "confidentiality": args.confidentiality,
+                "retention_class": args.retention_class,
+            }
+            if stored != requested:
+                raise VcopsError(
+                    "artifact_classification_conflict",
+                    "these bytes are already recorded under a different governance classification; "
+                    "reuse the recorded one or run a reviewed reclassification",
+                    details={"recorded": stored, "requested": requested},
+                    exit_code=1,
+                )
+            artifact = {key: existing[key] for key in
+                        ("id", "sha256", "mime_type", "size_bytes", "storage_uri", "created_at")}
+        else:
+            artifact = dict(artifact)
         request_hash = sha256_json(
             {
                 "artifact_id": str(artifact["id"]),
@@ -5722,7 +5811,10 @@ def add_entity_identity_args(parser: argparse.ArgumentParser) -> None:
 
 
 class JsonArgumentParser(argparse.ArgumentParser):
-    def error(self, message: str) -> None:
+    # NoReturn, not None: this override always raises, and argparse relies on
+    # error() never returning. Declaring None also made the override
+    # incompatible with ArgumentParser.error.
+    def error(self, message: str) -> NoReturn:
         raise VcopsError("invalid_arguments", message)
 
 

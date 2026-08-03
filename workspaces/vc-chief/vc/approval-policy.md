@@ -24,7 +24,7 @@ Default validity is 60 minutes (the `approval-request` helper default); a policy
 
 ## Validation and consumption
 
-The caller must present the exact token and unchanged preview. Validate allowlisted stable identity, allowed channel, pending status, scope hash, action type/target, and `issued_at <= now < expires_at`. Consume exactly once in the same database transaction as the governed operation. Replays, partial scope matches, revised payloads, split actions, expired/revoked/consumed tokens, and vague phrases are denied.
+The caller must present the exact token and unchanged preview. Validate stable identity, allowed channel, pending status, scope hash, action type/target, and `issued_at <= now < expires_at`. Identity is bound by the helper: `--approver` must match the authenticated `VCOPS_OPERATOR_ID` under a constant-time comparison, on the operator lane only. Note what is *not* enforced in 3.0: `approvals.stable_approver_ids` in the customization profile is a reviewed record, not a runtime allowlist — the container never reads that file — so membership in it is attested, not checked. Consume exactly once in the same database transaction as the governed operation. Replays, partial scope matches, revised payloads, split actions, expired/revoked/consumed tokens, and vague phrases are denied.
 
 Approval for one Slack, Teams, Discord, or Telegram message does not authorize a thread, outreach sequence, another provider, new attachment, CRM update, or follow-up. A failed governed operation rolls back consumption so a deterministic retry with the same idempotency key can be evaluated safely.
 

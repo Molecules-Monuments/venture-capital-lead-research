@@ -21,8 +21,8 @@ import psycopg
 
 from test_workflow_execution import LobsterStepRunner
 
-OWNER_DATABASE_URL = os.environ.get("DATABASE_URL")
-DATABASE_URL = os.environ.get("G4_RUNTIME_DATABASE_URL")
+OWNER_DATABASE_URL = os.environ.get("DATABASE_URL", "")
+DATABASE_URL = os.environ.get("G4_RUNTIME_DATABASE_URL", "")
 HELPER = os.environ.get("VCOPS_HELPER", "")
 PYTHON = os.environ.get("G4_PYTHON", sys.executable)
 

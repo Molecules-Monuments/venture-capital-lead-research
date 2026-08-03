@@ -12,11 +12,13 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from typing import Any
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))  # render imports check_env as a sibling
 SPEC = importlib.util.spec_from_file_location("v3_render_connectors", ROOT / "scripts/render_channel_config.py")
-render = importlib.util.module_from_spec(SPEC)
+assert SPEC is not None and SPEC.loader is not None, "render_channel_config.py is not loadable"
+render: Any = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(render)
 
 

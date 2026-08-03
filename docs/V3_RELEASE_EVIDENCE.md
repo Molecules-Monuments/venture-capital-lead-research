@@ -7,8 +7,8 @@ Status: **Deterministic package + deployment path VERIFIED; live-model behaviora
 Count re-verification: the suites grew across the two remediation sessions that
 followed the 2026-07-23 evidence, so every count below is the count this tree
 actually produces rather than a carried-forward figure. All were re-executed on
-2026-07-29: `verify_offline.py` (**212 tests, 24/24 checks**), `run_g4.py`
-(**84/84**, migrations 001–017 applied twice on PostgreSQL 17.10),
+2026-07-30: `verify_offline.py` (**216 tests, 24/24 checks**), `run_g4.py`
+(**85/85**, migrations 001–017 applied twice on PostgreSQL 17.10),
 `run_g6_image.py` (8/8 against the image rebuilt from this tree, which loads
 `vc-trusted-context` from `/opt/openclaw-extensions`), `run_g8_deployment.py`
 (PASS end-to-end), `run_retrieval_scale.py` (all frozen thresholds met),
@@ -37,8 +37,8 @@ Every gate below was executed after those changes:
 
 | Surface | Result | Command |
 | --- | ---: | --- |
-| Offline verification (all suites, ruff, shell syntax, fixed workflows, skill system, manifest currency, pristine) | **PASS — 212 tests, 24/24 checks** | `python3 -B scripts/verify_offline.py` |
-| Disposable Postgres hard gate | **PASS — 84/84** across seven suites, migrations 001–017 applied twice | `python3 -B scripts/run_g4.py` |
+| Offline verification (all suites, ruff, shell syntax, fixed workflows, skill system, manifest currency, pristine) | **PASS — 216 tests, 24/24 checks** | `python3 -B scripts/verify_offline.py` |
+| Disposable Postgres hard gate | **PASS — 85/85** across seven suites, migrations 001–017 applied twice | `python3 -B scripts/run_g4.py` |
 | Exact-image gate against the image rebuilt from this tree | **PASS — 8/8** (provenance, workshop guard, all five channel schemas, unknown-field fail-closed) | `python3 -B scripts/run_g6_image.py --image openclaw-lead-research:3.0.0` |
 | Real deployment gate (bootstrap → negative-auth proof → live fixed workflows → teardown) | **PASS** | `python3 -B scripts/run_g8_deployment.py` |
 | Reference retrieval scale (100k companies / 1m facts) | PASS, all frozen thresholds met | `python3 -B scripts/run_retrieval_scale.py` |
@@ -69,20 +69,20 @@ not package passes.
 | Surface | Result | Reproducible command |
 | --- | ---: | --- |
 | Agent schemas/contracts | 42/42 | `python3 -B -m unittest discover -s tests/contracts -p 'test*.py' -v` |
-| Version 3 providers/context/orchestration/customization/skill system | 48/48 | `python3 -B -m unittest discover -s tests/v3 -p 'test*.py' -v` |
+| Version 3 providers/context/orchestration/customization/skill system | 51/51 | `python3 -B -m unittest discover -s tests/v3 -p 'test*.py' -v` |
 | Exact skill/agent/router/workflow inventory | 26 skills, 12 agents, **18 workflows**, 0 findings | `python3 -B scripts/validate_skill_system.py` |
 | Retrieval policy contracts | 7/7 | `python3 -B -m unittest discover -s tests/retrieval -p 'test*.py' -v` |
-| Infrastructure contracts | 24/24 | `python3 -B -m unittest discover -s tests/infrastructure -p 'test*.py' -v` |
+| Infrastructure contracts | 26/26 | `python3 -B -m unittest discover -s tests/infrastructure -p 'test*.py' -v` |
 | G6 image/channel contract (offline) | 4/4 | `python3 -B -m unittest discover -s tests/g6 -p 'test*.py' -v` |
 | Fixed workflow/runner boundary | 37/37 | `python3 -B -m unittest discover -s tests/g5 -p 'test*.py' -v` |
-| Recovery/release lifecycle | 25/25 | `python3 -B -m unittest discover -s tests/g7 -p 'test*.py' -v` |
+| Recovery/release lifecycle | 28/28 | `python3 -B -m unittest discover -s tests/g7 -p 'test*.py' -v` |
 | Scoring/helper semantics | 6/6 | `VCOPS_HELPER=workspaces/vc-chief/vc/bin/vcops.py python3 -B -m unittest discover -s tests/g4 -p 'test_semantics.py' -v` |
 | Document security | 15/15 | `VCOPS_HELPER=workspaces/vc-chief/vc/bin/vcops.py python3 -B -m unittest discover -s tests/g4 -p 'test_document_security.py' -v` |
-| Data/helper/Postgres hard gate | **84/84** | `python3 -B scripts/run_g4.py` |
+| Data/helper/Postgres hard gate | **85/85** | `python3 -B scripts/run_g4.py` |
 | Real deployment gate | PASS | `python3 -B scripts/run_g8_deployment.py` (or `verify_offline.py --with-deployment`) |
 
-The aggregate deterministic offline suites pass 212 tests with no failures or
-skips (24/24 offline checks). The G4 runner created a disposable PostgreSQL 17
+The aggregate deterministic offline suites pass 216 tests with no failures or
+skips (24/24 offline checks). The per-suite rows above sum to that total. The G4 runner created a disposable PostgreSQL 17
 cluster, applied and registered migrations **001–017** twice, and — in addition
 to the prior trusted-context/preference/idempotency/approval/document coverage —
 now executes the **real `.lobster` workflow files end-to-end** against the live

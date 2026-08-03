@@ -193,6 +193,20 @@ recorded lock independently you may re-run the same recorder:
 python3 -B scripts/record_images.py
 ```
 
+The lock also records which image-baked artifacts the running image was built
+from — the reviewed `workspaces/` tree, the trusted-context extension, the
+exec-approvals seed and the dependency locks. Nothing bind-mounts those, so an
+edit to a thesis, rubric, prompt or skill only reaches the gateway through a
+rebuild. Assert at any time that a deployment reflects the current tree:
+
+```sh
+python3 -B scripts/record_images.py --validate-baked-sources deployment-lock.json
+```
+
+A non-`PASS` result means `./scripts/bootstrap.sh` has not been re-run since the
+edit; it is safe to re-run on a live deployment and re-records the lock. See
+`CUSTOMIZATION.md`, "Policy edits reach the deployment only through a rebuild".
+
 Do not proceed if the image build, package-version assertion, database password
 proof, negative invalid-password proof, role restriction check, migration,
 consumer `vcops db-check`, or `/readyz` fails.
@@ -264,6 +278,16 @@ package neither makes nor evaluates them: `check_customization.py` refuses the
 profile until each is `true`, and the deployment does not start. Whether any
 given statement holds for your organization, jurisdiction, data and model
 choice is outside this software's scope and is yours to determine.
+
+The profile carries a twenty-first boolean, `channels.live_acceptance_completed`,
+which is deliberately **not** one of those twenty and is **not** gated by
+`check_customization.py`. It records that §5.5's channel matrix has passed, and
+that matrix can only be exercised with the channel already selected and running
+— so gating it would make channel activation unreachable. Keep it as your own
+commissioning record: leave it `false` while the matrix is outstanding, set it
+`true` when every row passes, and treat §5.6 and the retained evidence, not this
+validator, as the enforcement point. Setting it `true` changes nothing the
+software does.
 
 The restore drill in §5.4 is the one item no gate covers.
 
@@ -653,7 +677,17 @@ record. Autonomous transcript review remains disabled.
   — customized policy artifacts, a replaced rubric — re-pin the inventory with
   `python3 -B scripts/build_release_manifest.py` and re-run the gate. Otherwise
   stop installation/update and reacquire the reviewed release. Never regenerate
-  hashes around a change you cannot account for.
+  hashes around a change you cannot account for. On an **already-bootstrapped**
+  deployment, re-running `./scripts/bootstrap.sh` afterwards is required, not
+  optional: it rebuilds the image so the edit actually reaches the gateway, and
+  re-records `deployment-lock.json` against the new manifest — without which
+  `backup.sh` aborts at its internal
+  `record_images.py --validate-live` step with
+  `differing: release_manifest_sha256`. (`--validate-live` is a
+  `record_images.py` flag that `backup.sh` and `restore.sh` invoke themselves;
+  it is not an argument you pass to those scripts.)
+  Re-running `python3 -B scripts/record_images.py` alone re-affirms the lock but
+  leaves the running image stale.
 
 ## 10. Known release limitations
 
@@ -684,9 +718,34 @@ record. Autonomous transcript review remains disabled.
   gateway reads the rendered volume copy at
   `/home/node/.openclaw-config/openclaw.json`, never the host file, so a bare
   edit does not take effect. (4) Run `./scripts/schedule_jobs.sh` to seed the
-  native cron job that drives `source-scan` on a schedule (idempotent via a
-  declaration key). It is a commissioning action — validate the seeded job with
+  native cron jobs. It is a commissioning action — validate the seeded jobs with
   `openclaw cron list` — and never performs autonomous outreach.
+
+  What the script seeds, exactly:
+
+  - **`vc-source-scan`** (always). A native cron job that sends `vc-chief` a
+    standing-orders message in an **isolated** session; the chief then walks the
+    due watchlist through the normal `source-scan` → research → `evidence-record`
+    path for human review. It does not invoke the `source-scan` selector
+    directly. Schedule and timezone default to `0 7 * * 1-5` / `Europe/Berlin`.
+  - **`vc-heartbeat`** (only when `VC_HEARTBEAT_CRON` is set). A read-only
+    health review per `workspaces/vc-chief/HEARTBEAT.md`.
+
+  Both are idempotent through `--declaration-key`, so re-running the script on
+  every deploy is safe. Its four tunables are read from the **process
+  environment only** — `check_env.py` rejects them in `.env`:
+  `VC_SCAN_CRON`, `VC_SCAN_TZ`, `VC_SCAN_DELIVERY`, and `VC_HEARTBEAT_CRON`
+  (plus `VC_HEARTBEAT_DELIVERY`).
+
+  Two behaviours to know before you run it. First, an empty delivery value is
+  seeded as `--no-deliver`, not as upstream's default: omitting every delivery
+  flag would make the pinned CLI announce to channel `last`, which an isolated
+  session cannot resolve, and every run would be stamped `status=error` even
+  though the research persisted. Set `VC_SCAN_DELIVERY="--announce --channel
+  <c> --to <target>"` only if you want an internal digest delivered. Second,
+  clearing `VC_HEARTBEAT_CRON` later does **not** remove a heartbeat an earlier
+  run seeded; it keeps firing on its old cadence until you remove it with
+  `openclaw cron rm <id>` (find the id with `openclaw cron list`).
 
 ## 11. Rebuilding after a Debian point release
 

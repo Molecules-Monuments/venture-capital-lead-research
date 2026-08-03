@@ -313,7 +313,7 @@ def check(name: str, action) -> dict:
     try:
         detail = action()
         return {"name": name, "result": "PASS", "detail": detail if isinstance(detail, str) else None}
-    except Exception as exc:  # noqa: BLE001 - gate reports every failure
+    except Exception as exc:  # the gate reports every failure rather than raising
         return {"name": name, "result": "FAIL", "detail": str(exc)}
 
 

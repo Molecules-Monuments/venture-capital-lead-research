@@ -63,7 +63,9 @@ _DELETE_POSITION = 7            # query deletion site (distinct from the above)
 
 
 def cluster_target_name(k: int) -> str:
-    digest = hashlib.md5(f"cluster:{k}".encode()).hexdigest()
+    # Names only, never a security property — and the explicit flag is what
+    # keeps this working on a FIPS-mode host, where a bare md5() raises.
+    digest = hashlib.md5(f"cluster:{k}".encode(), usedforsecurity=False).hexdigest()
     return "".join(_LETTERS[int(ch, 16)] for ch in digest[:_BASE_LEN])
 
 
@@ -100,6 +102,20 @@ vcops = load_module(
 )
 
 
+def one_row(cur: Any) -> Any:
+    """Return the row the preceding statement is required to have produced.
+
+    Every call site follows a RETURNING or an EXPLAIN, both of which always
+    yield exactly one row. fetchone() is nonetheless Optional, and subscripting
+    the None case raised a bare TypeError that said nothing about which
+    statement misbehaved.
+    """
+    row = cur.fetchone()
+    if row is None:
+        raise RuntimeError("expected one row from the preceding statement, got none")
+    return row
+
+
 def percentile(values: Iterable[float], quantile: float) -> float:
     ordered = sorted(values)
     if not ordered:
@@ -123,7 +139,7 @@ def seed_confusable_clusters(owner_url: str) -> dict[int, int]:
                     "INSERT INTO companies (name, canonical_domain) VALUES (%s, %s) RETURNING id",
                     (name, f"cluster-{k}-{idx}.invalid"),
                 )
-                company_id = int(cur.fetchone()[0])
+                company_id = int(one_row(cur)[0])
                 cur.execute(
                     """INSERT INTO company_aliases
                          (company_id, alias_kind, alias_value, normalized_alias,
@@ -179,7 +195,7 @@ def seed_reference_data(owner_url: str) -> dict[str, float]:
                        'https://scale.invalid/source', 'internal_admin', 'internal')
                RETURNING id"""
         )
-        source_id = int(cur.fetchone()[0])
+        source_id = int(one_row(cur)[0])
         # The benchmark measures the production query path, not bulk-ingest
         # trigger throughput. Constraints and indexes remain active; disabling
         # user triggers only avoids one million redundant lineage checks while
@@ -218,7 +234,9 @@ def seed_reference_data(owner_url: str) -> dict[str, float]:
 
 def explain_plans(runtime_url: str, fuzzy_target: str) -> dict[str, Any]:
     plans: dict[str, Any] = {}
-    with psycopg.connect(runtime_url, row_factory=dict_row) as conn, conn.cursor() as cur:
+    # dict_row is psycopg's own documented RowFactory; ty 0.0.65 does not
+    # match it against connect()'s row_factory overloads.
+    with psycopg.connect(runtime_url, row_factory=dict_row) as conn, conn.cursor() as cur:  # ty: ignore[invalid-argument-type]
         cur.execute("SELECT set_config('pg_trgm.similarity_threshold', '0.18', true)")
         cur.execute(
             """EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)
@@ -229,7 +247,7 @@ def explain_plans(runtime_url: str, fuzzy_target: str) -> dict[str, Any]:
                  AND a.valid_to IS NULL""",
             ("scale company 050001",),
         )
-        plans["exact_alias"] = cur.fetchone()["QUERY PLAN"][0]
+        plans["exact_alias"] = one_row(cur)["QUERY PLAN"][0]
         cur.execute(
             """EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)
                SELECT c.id,c.name,c.canonical_domain,c.status,a.alias_value,
@@ -241,7 +259,7 @@ def explain_plans(runtime_url: str, fuzzy_target: str) -> dict[str, Any]:
                LIMIT 500""",
             (fuzzy_target, fuzzy_target),
         )
-        plans["fuzzy_candidate"] = cur.fetchone()["QUERY PLAN"][0]
+        plans["fuzzy_candidate"] = one_row(cur)["QUERY PLAN"][0]
         cur.execute(
             """EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)
                SELECT f.id
@@ -255,7 +273,7 @@ def explain_plans(runtime_url: str, fuzzy_target: str) -> dict[str, Any]:
                ORDER BY f.observed_at DESC,f.id DESC,fs.id
                LIMIT 200"""
         )
-        plans["current_facts"] = cur.fetchone()["QUERY PLAN"][0]
+        plans["current_facts"] = one_row(cur)["QUERY PLAN"][0]
     return plans
 
 
@@ -266,7 +284,9 @@ def run_benchmark(runtime_url: str, cluster_targets: dict[int, int]) -> dict[str
     fuzzy_top1_hits = 0       # target is the top-ranked candidate (precision@1)
     fuzzy_candidate_total = 0
 
-    with psycopg.connect(runtime_url, row_factory=dict_row) as conn, conn.cursor() as cur:
+    # dict_row is psycopg's own documented RowFactory; ty 0.0.65 does not
+    # match it against connect()'s row_factory overloads.
+    with psycopg.connect(runtime_url, row_factory=dict_row) as conn, conn.cursor() as cur:  # ty: ignore[invalid-argument-type]
         cur.execute("SET statement_timeout = '5s'")
         for offset in range(EXACT_CASES):
             company_id = 1 + (offset * (COMPANY_COUNT - 1) // (EXACT_CASES - 1))

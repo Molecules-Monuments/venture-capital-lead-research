@@ -63,6 +63,35 @@ REVIEW_FLAGS = {
 # the shipped example profile.
 PLACEHOLDER = re.compile(r"<[^>]*>|\b(?:CUSTOMIZE(?:_REQUIRED)?|REPLACE_ME|PLACEHOLDER)\b")
 PACKAGE = Path(__file__).resolve().parent.parent
+DEPLOYMENT_LOCK = PACKAGE / "deployment-lock.json"
+
+
+def stale_deployment_notices() -> list[str]:
+    """Report a recorded deployment whose image predates the current governed artifacts.
+
+    Not an error: most of the governed artifacts this validator gates are baked
+    into the derived image read-only (see record_images.py), and a tree that is
+    ahead of its deployment is the normal state between an edit and the rebuild
+    that applies it. It is reported because nothing else in this package can see
+    it — the profile, the manifest and the pristine inventory all validate the
+    tree, never the running image. `./scripts/bootstrap.sh` resolves it, which is
+    also why this stays non-fatal: bootstrap runs this validator before it
+    rebuilds, and a hard failure here would make the remedy unreachable.
+    """
+    if not DEPLOYMENT_LOCK.is_file() or DEPLOYMENT_LOCK.is_symlink():
+        return []
+    try:
+        # Imported here, not at module scope: record_images imports this module back.
+        from record_images import STALE_DEPLOYMENT_MESSAGE, baked_sources_digest
+
+        recorded = json.loads(DEPLOYMENT_LOCK.read_text(encoding="utf-8")).get(
+            "baked_sources_sha256"
+        )
+        if recorded == baked_sources_digest():
+            return []
+        return [STALE_DEPLOYMENT_MESSAGE]
+    except (OSError, ValueError, ImportError) as exc:
+        return [f"the recorded deployment could not be checked against this tree: {exc}"]
 REQUIRED_REVIEWED_ARTIFACTS = {
     "config/openclaw.json",
     "tests/g3/routing_cases.jsonl",
@@ -238,7 +267,9 @@ def main() -> int:
         missing_artifacts = sorted(REQUIRED_REVIEWED_ARTIFACTS - set(artifacts))
         if missing_artifacts:
             errors.append(f"review.reviewed_artifacts is missing required files: {missing_artifacts}")
-        for relative, expected_hash in sorted(artifacts.items()):
+        # JSON object keys are always strings; str() states that locally so the
+        # path checks below operate on a proven str rather than an unknown.
+        for relative, expected_hash in sorted((str(name), value) for name, value in artifacts.items()):
             relative_path = Path(relative)
             if relative_path.is_absolute() or ".." in relative_path.parts or relative_path.as_posix() != relative:
                 errors.append(f"unsafe reviewed artifact path: {relative!r}")
@@ -289,6 +320,7 @@ def main() -> int:
     report = {
         "result": "PASS" if not errors else "FAIL",
         "errors": errors,
+        "notices": stale_deployment_notices(),
         "checked_file": str(path),
         "checked_environment": str(env_path) if env_path is not None else None,
     }

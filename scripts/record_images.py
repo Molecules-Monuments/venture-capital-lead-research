@@ -10,6 +10,7 @@ import json
 import re
 import stat
 import subprocess
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -22,6 +23,43 @@ LOCK_PATH = PACKAGE / "deployment-lock.json"
 SHA256_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 REPO_DIGEST_RE = re.compile(r"^[^@\s]+@sha256:[0-9a-f]{64}$")
 MIGRATION_RE = re.compile(r"^[0-9]{3}_.+\.sql$")
+
+# Dockerfile.openclaw COPYs the reviewed workspaces, the trusted-context
+# extension, the exec-approvals seed and the dependency locks into the derived
+# image and makes them read-only (`chmod -R a-w`). docker-compose.yml
+# bind-mounts none of them, deliberately: a model lane must not be able to
+# rewrite its own agent contracts, skills or helper entry points, and the exact
+# image gate (G6) can only prove image content it owns.
+#
+# The consequence for the operator is that these artifacts are a build-time
+# snapshot. Editing workspaces/vc-chief/vc/thesis.md on the host re-pins
+# cleanly and passes every package gate, yet changes nothing about a running
+# deployment until the image is rebuilt and the gateway recreated
+# (./scripts/bootstrap.sh does both). Every other gate here is deliberately
+# deployment-agnostic, so none of them can see that drift. Recording a digest
+# of exactly these inputs in the deployment lock is what makes it detectable
+# instead of silent.
+#
+# This is exactly the build context .dockerignore admits, including its
+# host-generated-state exclusions; tests/infrastructure pins the two together
+# so the build context and this contract cannot drift apart.
+#
+# config/exec-approvals.json is digested because it is image content, but note
+# that a rebuild alone does not apply a change to it: the initializer seeds it
+# into the state volume only when absent (it stays writable for OpenClaw's own
+# socket token). It is not customizable — tests/infrastructure pins its exact
+# allowlist, so an edit fails the offline gate rather than reaching a
+# deployment. STALE_DEPLOYMENT_MESSAGE states the exception.
+BAKED_SOURCE_FILES = (
+    "Dockerfile.openclaw",
+    "config/exec-approvals.json",
+    "requirements.lock",
+)
+BAKED_SOURCE_TREES = (
+    "runtime-extensions/vc-trusted-context",
+    "runtime-packages",
+    "workspaces",
+)
 
 
 class LockError(ValueError):
@@ -73,6 +111,58 @@ def _migration_inventory() -> list[dict[str, str]]:
             raise LockError(f"migration must be a regular, non-symlink file: {path}")
         inventory.append({"path": path.relative_to(PACKAGE).as_posix(), "sha256": _sha256(path)})
     return inventory
+
+
+def _is_host_generated(relative: str) -> bool:
+    """Mirror .dockerignore's exclusions for host-generated workspace state."""
+    if relative.endswith((".pyc", ".log")):
+        return True
+    parts = relative.split("/")
+    if "__pycache__" in parts:
+        return True
+    # workspaces/<agent>/.openclaw/** and workspaces/<agent>/memory/**
+    return len(parts) > 3 and parts[0] == "workspaces" and parts[2] in {".openclaw", "memory"}
+
+
+def baked_sources_digest(root: Path = PACKAGE) -> str:
+    """Digest the exact host artifacts that become read-only derived-image content."""
+    entries: list[str] = []
+
+    def add(path: Path, relative: str) -> None:
+        try:
+            info = path.lstat()
+        except OSError as exc:
+            raise LockError(f"image-baked artifact is unavailable: {relative}") from exc
+        if not stat.S_ISREG(info.st_mode) or stat.S_ISLNK(info.st_mode):
+            raise LockError(
+                f"image-baked artifact must be a regular, non-symlink file: {relative}"
+            )
+        # Git and the Docker build context both carry only the executable bit,
+        # so the rest of the mode is not part of this contract.
+        executable = "x" if info.st_mode & stat.S_IXUSR else "-"
+        entries.append(f"{relative}\0{executable}\0{_sha256(path)}")
+
+    for name in BAKED_SOURCE_FILES:
+        add(root / name, name)
+    for tree in BAKED_SOURCE_TREES:
+        base = root / tree
+        if not base.is_dir():
+            raise LockError(f"image-baked source tree is unavailable: {tree}")
+        for path in base.rglob("*"):
+            relative = path.relative_to(root).as_posix()
+            if _is_host_generated(relative):
+                continue
+            try:
+                info = path.lstat()
+            except OSError as exc:
+                raise LockError(f"image-baked artifact is unavailable: {relative}") from exc
+            if stat.S_ISDIR(info.st_mode):
+                continue
+            add(path, relative)
+    digest = hashlib.sha256()
+    for entry in sorted(entries):
+        digest.update(entry.encode("utf-8") + b"\n")
+    return digest.hexdigest()
 
 
 def _expected_images(upstream: dict[str, Any], package_version: str) -> dict[str, str]:
@@ -206,6 +296,8 @@ def validate_lock(
         raise LockError("deployment lock timestamp is invalid") from exc
     if parsed_time.tzinfo is None:
         raise LockError("deployment lock timestamp must include a timezone")
+    if not re.fullmatch(r"[0-9a-f]{64}", str(payload.get("baked_sources_sha256", ""))):
+        raise LockError("deployment lock image-baked source digest is invalid")
 
     contract = _validate_contract_shape(payload.get("release_contract"))
     if not structure_only:
@@ -276,6 +368,32 @@ def validate_live(path: Path, *, structure_only: bool = False) -> dict[str, Any]
     return payload
 
 
+STALE_DEPLOYMENT_MESSAGE = (
+    "the recorded deployment was built from different image-baked artifacts than this package "
+    "tree now contains. Dockerfile.openclaw bakes workspaces/, "
+    "runtime-extensions/vc-trusted-context/, config/exec-approvals.json, runtime-packages/ and "
+    "requirements.lock into the derived image read-only, and nothing bind-mounts them, so the "
+    "running gateway is still serving the previous version of whichever of those you changed. "
+    "Re-run ./scripts/bootstrap.sh: it rebuilds the image, recreates the gateway, and re-records "
+    "this lock. One exception a rebuild does not resolve: config/exec-approvals.json is seeded "
+    "into the state volume only when absent and is not customizable — see CUSTOMIZATION.md, "
+    "DO_NOT_CUSTOMIZE_DIRECTLY"
+)
+
+
+def validate_baked_sources(path: Path) -> dict[str, Any]:
+    """Prove the running deployment's image was built from the current package tree.
+
+    Deliberately structure-only and separate from validate_lock/validate_live: a
+    recovery point legitimately predates a policy edit, so this staleness check
+    must never be folded into the comparisons restore.sh and backup.sh depend on.
+    """
+    payload = validate_lock(path, structure_only=True)
+    if payload["baked_sources_sha256"] != baked_sources_digest():
+        raise LockError(STALE_DEPLOYMENT_MESSAGE)
+    return payload
+
+
 def lock_package_version(path: Path) -> str:
     """Return the package version from a structurally valid prior lock."""
     payload = validate_lock(path, structure_only=True)
@@ -289,11 +407,21 @@ def main() -> int:
     modes.add_argument("--validate-structure", type=Path)
     modes.add_argument("--validate-live", type=Path)
     modes.add_argument("--validate-live-structure", type=Path)
+    modes.add_argument("--validate-baked-sources", type=Path)
     modes.add_argument("--lock-package-version", type=Path)
     args = parser.parse_args()
     try:
         if args.lock_package_version:
             print(lock_package_version(args.lock_package_version))
+            return 0
+        if args.validate_baked_sources:
+            validate_baked_sources(args.validate_baked_sources)
+            print(
+                json.dumps(
+                    {"result": "PASS", "deployment_lock": str(args.validate_baked_sources)},
+                    sort_keys=True,
+                )
+            )
             return 0
         if args.validate_live or args.validate_live_structure:
             path = args.validate_live or args.validate_live_structure
@@ -324,6 +452,10 @@ def main() -> int:
         ]
         payload = {
             "lock_version": 1,
+            # Recorded at the end of bootstrap/update, immediately after
+            # `compose build`, so this is the digest the running image was
+            # actually built from.
+            "baked_sources_sha256": baked_sources_digest(),
             "created_at": datetime.now(timezone.utc).isoformat(),
             "release_contract": contract,
             "images": images,
@@ -332,7 +464,11 @@ def main() -> int:
         print(LOCK_PATH)
         return 0
     except (LockError, OSError, subprocess.CalledProcessError, json.JSONDecodeError, KeyError) as exc:
-        print(json.dumps({"result": "FAIL", "error": str(exc)}, sort_keys=True))
+        # stderr, like every sibling validator (authenticate_backup.py,
+        # validate_recovery_archive.py, verify_release.py): restore.sh and
+        # update.sh send this script's stdout to /dev/null, which used to
+        # discard the one diagnostic naming what actually differed.
+        print(json.dumps({"result": "FAIL", "error": str(exc)}, sort_keys=True), file=sys.stderr)
         return 1
 
 

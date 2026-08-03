@@ -16,6 +16,7 @@ from unittest.mock import patch
 ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 SPEC = importlib.util.spec_from_file_location("v3_render_search", ROOT / "scripts/render_channel_config.py")
+assert SPEC is not None and SPEC.loader is not None, "render_channel_config.py is not loadable"
 render = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(render)
 
@@ -119,7 +120,7 @@ class SearchProviderRenderTests(unittest.TestCase):
         # its logic: a re-implementation stays green when check_env regresses.
         # The assertions target exact search-block error strings, so unrelated
         # validation errors from the padded values cannot flip them.
-        base = {k: "x" for k in check_env.REQUIRED}
+        base = dict.fromkeys(check_env.REQUIRED, "x")
         base.update({
             "VC_MODEL_PROVIDER": "openai", "OPENAI_API_KEY": "sk-x",
             "VC_WEB_SEARCH_PROVIDER": "brave", "BRAVE_API_KEY": "brv-x",

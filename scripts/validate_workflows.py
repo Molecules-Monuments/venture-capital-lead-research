@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Any, Sequence
 
 import yaml
+import yaml.resolver
 
 
 # The inventory below is derived by loading vcops.py by path, which would
@@ -121,7 +122,13 @@ def _load_vcops_parser() -> tuple[argparse.ArgumentParser | None, list[Finding]]
 def _command_parsers(parser: argparse.ArgumentParser) -> dict[str, argparse.ArgumentParser]:
     for action in parser._actions:
         if isinstance(action, argparse._SubParsersAction):
-            return dict(action.choices)
+            # choices is typed loosely; every value is an ArgumentParser at
+            # runtime, and filtering states that instead of asserting it.
+            return {
+                name: sub
+                for name, sub in action.choices.items()
+                if isinstance(sub, argparse.ArgumentParser)
+            }
     return {}
 
 
@@ -287,7 +294,7 @@ def validate_workflow(
     # per-workflow lifecycle step inventory (workflow_start/running/succeed) is
     # enforced by scripts/validate_skill_system.py's EXPECTED_WORKFLOW_STEPS.
     try:
-        body = yaml.load(path.read_text(encoding="utf-8"), Loader=UniqueSafeLoader)
+        body = yaml.load(path.read_text(encoding="utf-8"), Loader=UniqueSafeLoader)  # noqa: S506  # SafeLoader subclass; adds duplicate-key rejection
     except (OSError, yaml.YAMLError, DuplicateKeyError) as exc:
         return [Finding("yaml_parse", f"workflow YAML rejected: {exc}")], {}
     if not isinstance(body, dict) or not isinstance(body.get("steps"), list):
@@ -296,7 +303,7 @@ def validate_workflow(
     findings: list[Finding] = []
     # Top-level `env:` and `cwd:` are merged into every step's environment and
     # base directory by Lobster, so they are execution surface too.
-    for key in sorted(set(body) - ALLOWED_WORKFLOW_KEYS):
+    for key in sorted(str(name) for name in set(body) - ALLOWED_WORKFLOW_KEYS):
         findings.append(
             Finding(
                 "workflow_key_unknown",
@@ -314,7 +321,7 @@ def validate_workflow(
             continue
         step_id = step.get("id")
         rendered_id = step_id if isinstance(step_id, str) else None
-        for key in sorted(set(step) - ALLOWED_STEP_KEYS):
+        for key in sorted(str(name) for name in set(step) - ALLOWED_STEP_KEYS):
             findings.append(
                 Finding(
                     "step_key_unknown",

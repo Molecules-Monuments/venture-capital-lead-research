@@ -7,6 +7,7 @@ import unittest
 from pathlib import Path
 
 from jsonschema import Draft202012Validator
+from jsonschema.protocols import Validator
 from jsonschema.exceptions import ValidationError
 
 
@@ -32,7 +33,7 @@ class SpecialistSchemaTests(unittest.TestCase):
         }
         cls.fixtures = json.loads(FIXTURES.read_text(encoding="utf-8"))
 
-    def validator(self, role: str) -> Draft202012Validator:
+    def validator(self, role: str) -> Validator:
         return Draft202012Validator(self.schemas[role])
 
     def test_all_schemas_are_valid_draft_2020_12_and_examples_validate(self) -> None:

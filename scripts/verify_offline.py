@@ -13,6 +13,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from typing import Any
 
 
 PACKAGE = Path(__file__).resolve().parent.parent
@@ -49,7 +50,7 @@ def run(command: list[str], *, timeout: int = 300) -> subprocess.CompletedProces
     )
 
 
-def test_suite(name: str, directory: str, pattern: str) -> dict[str, object]:
+def test_suite(name: str, directory: str, pattern: str) -> dict[str, Any]:
     process = run(
         [
             sys.executable,
@@ -77,7 +78,7 @@ def test_suite(name: str, directory: str, pattern: str) -> dict[str, object]:
     }
 
 
-def command_check(name: str, command: list[str], timeout: int = 300) -> dict[str, object]:
+def command_check(name: str, command: list[str], timeout: int = 300) -> dict[str, Any]:
     process = run(command, timeout=timeout)
     rendered = process.stderr + process.stdout
     return {
@@ -87,7 +88,7 @@ def command_check(name: str, command: list[str], timeout: int = 300) -> dict[str
     }
 
 
-def syntax_checks() -> list[dict[str, object]]:
+def syntax_checks() -> list[dict[str, Any]]:
     python_errors: list[str] = []
     for path in sorted(PACKAGE.rglob("*.py")):
         if "_internal" in path.parts:
@@ -96,7 +97,7 @@ def syntax_checks() -> list[dict[str, object]]:
             ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         except (OSError, SyntaxError, UnicodeError) as exc:
             python_errors.append(f"{path.relative_to(PACKAGE)}: {exc}")
-    checks: list[dict[str, object]] = [
+    checks: list[dict[str, Any]] = [
         {
             "name": "python-syntax",
             "result": "PASS" if not python_errors else "FAIL",
