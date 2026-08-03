@@ -70,7 +70,11 @@ EXPECTED_DEBIAN_PACKAGES = {
     "file": "1:5.44-3",
     "jq": "1.6-2.1+deb12u2",
     "libmagic1": "1:5.44-3",
-    "poppler-utils": "22.12.0-2+deb12u2",
+    # Keep this pair in lockstep with Dockerfile.openclaw: poppler-utils depends
+    # on exactly this libpoppler126 version, so pinning only the tool lets a
+    # security bump to the library break a fresh build.
+    "libpoppler126": "22.12.0-2+deb12u3",
+    "poppler-utils": "22.12.0-2+deb12u3",
     "python3": "3.11.2-1+b1",
     "python3-pip": "23.0.1+dfsg-1",
     "python3-venv": "3.11.2-1+b1",

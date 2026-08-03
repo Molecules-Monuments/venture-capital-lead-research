@@ -34,6 +34,16 @@ RUN npm ci --prefix /opt/openclaw-runtime \
 # and rebuild; or bump the pins here and re-run every release gate. The wrapper
 # below turns the otherwise-opaque "has no installation candidate" apt error into
 # that actionable message instead of a bare non-zero exit.
+# libpoppler126 is pinned alongside poppler-utils deliberately. poppler-utils
+# declares `Depends: libpoppler126 (= <same version>)`, and the library is a
+# separate binary package from the same source. Pinning only the tool left the
+# library unpinned, so when bookworm-security shipped 22.12.0-2+deb12u3 for the
+# pair, apt took the newer library as its candidate and refused the older pinned
+# tool with "held broken packages" — a fresh build broke while every cached one
+# kept working. Both names now move together, and a future security bump fails
+# on the pin itself with the actionable message below instead of a dependency
+# puzzle. Keep this pair in lockstep, and keep both in
+# scripts/run_g6_image.py and tests/infrastructure.
 RUN apt-get update \
   && { apt-get install -y --no-install-recommends \
         ca-certificates=20230311+deb12u1 \
@@ -41,14 +51,17 @@ RUN apt-get update \
         file=1:5.44-3 \
         jq=1.6-2.1+deb12u2 \
         libmagic1=1:5.44-3 \
-        poppler-utils=22.12.0-2+deb12u2 \
+        libpoppler126=22.12.0-2+deb12u3 \
+        poppler-utils=22.12.0-2+deb12u3 \
         python3=3.11.2-1+b1 \
         python3-pip=23.0.1+dfsg-1 \
         python3-venv=3.11.2-1+b1 \
-     || { echo "ERROR: a pinned Debian package version is no longer in the bookworm pool." >&2; \
-          echo "This is the reviewed exact-pin release contract. Rebuild reproducibly by pointing apt at a" >&2; \
-          echo "snapshot.debian.org timestamp that still carries these versions (see the RECOVERY comment in" >&2; \
-          echo "Dockerfile.openclaw and docs/RUNBOOK.md), or bump the pins and re-run every release gate." >&2; \
+     || { echo "ERROR: a pinned Debian package version is no longer installable from the bookworm pool." >&2; \
+          echo "Either the version was superseded and dropped, or a security update moved a package this" >&2; \
+          echo "one depends on. This is the reviewed exact-pin release contract. Rebuild reproducibly by" >&2; \
+          echo "pointing apt at a snapshot.debian.org timestamp that still carries these versions (see the" >&2; \
+          echo "RECOVERY comment in Dockerfile.openclaw and docs/RUNBOOK.md), or bump the pins together and" >&2; \
+          echo "re-run every release gate." >&2; \
           exit 1; }; } \
   && rm -rf /var/lib/apt/lists/*
 

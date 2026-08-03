@@ -815,6 +815,25 @@ Debian ships a newer point release those exact pins are eventually removed from
 `deb.debian.org` and `compose build --pull openclaw-gateway` (bootstrap/update)
 fails with `has no installation candidate`. The image build wraps the `apt-get
 install` step to turn that otherwise-opaque failure into an actionable message.
+
+There is a second, less obvious form of this. A pinned package can still be in
+the pool while an **unpinned package it depends on** has moved — typically when
+`bookworm-security` ships a coordinated update for a source package that
+produces several binaries. apt then takes the newer dependency as its candidate
+and refuses the older pinned name with:
+
+```text
+poppler-utils : Depends: libpoppler126 (= 22.12.0-2+deb12u2) but 22.12.0-2+deb12u3 is to be installed
+E: Unable to correct problems, you have held broken packages.
+```
+
+This breaks a *fresh* build while every machine holding a cached image layer
+keeps working, so it can go unnoticed. When it happens, pin the dependency
+alongside its sibling and move both to the same revision — as this release does
+for `libpoppler126` and `poppler-utils` — then re-run every release gate,
+including `run_g6_image.py`, whose provenance assertions must list both names.
+Verify a *fresh* build explicitly with `compose build --no-cache
+openclaw-gateway`; a cached build proves nothing about the pool.
 To recover a byte-reproducible build, point apt at a `snapshot.debian.org`
 timestamp that still carries the pinned versions before building:
 
