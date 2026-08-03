@@ -1144,6 +1144,13 @@ its own canonical argument payload against the digest stored on the run. Reusing
 a key with any changed argument is refused as `idempotency_payload_mismatch` and
 mutates nothing.
 
+Those two rules meet at the retry: **a retry presents the same arguments.** That
+is what "recover that same operation" means, and it covers the case reuse exists
+for — a network blip, a timeout, an interrupted runner. Correcting a rejected
+payload is *not* a retry: it is a different operation, so it takes a new key and
+is refused under the old one. When a retry runs, the failure you see is the
+current attempt's own step error, not a stale one.
+
 ## Testing
 
 The gates deliberately separate local software evidence from live deployment
