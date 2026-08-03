@@ -372,12 +372,14 @@ VC_FAST_MODEL=ollama/qwen3:8b
 VC_OLLAMA_BASE_URL=http://host.docker.internal:11434
 OPENAI_API_KEY=
 VC_WEB_SEARCH_PROVIDER=duckduckgo
-VC_MODEL_CONTEXT_WINDOW=32768
+VC_MODEL_CONTEXT_WINDOW=65536
+VC_MODEL_TIMEOUT_SECONDS=600
 ```
 
 The context window is part of the example because the shipped default (272000)
 describes a hosted model, and in Ollama mode this value is also what the server
-is asked to allocate.
+is asked to allocate. The timeout is part of it because the shipped default
+(300) is not enough for the first turn against a local model — see below.
 
 Applying that block to an already-reviewed deployment also requires the matching
 profile edit described under [Switching a model or search
@@ -392,6 +394,41 @@ it — a context far beyond what the host's memory supports will fail to load or
 run very slowly. The shipped default (272000) is sized for the hosted OpenAI
 default, not for a local model; set it to what your model and hardware actually
 support.
+
+**The server also clamps this value down, silently.** Ollama caps `num_ctx` at
+the model's own trained context (`n_ctx_train`) and reports no error when it
+does: asking `qwen2.5:1.5b` for 36796 loaded a context of 32768 and said nothing.
+The package would then pack prompts to a budget the server never allocated, and
+the overflow is truncated server-side — the same failure this alignment exists to
+prevent, arriving from the other direction. Check the model before choosing the
+window:
+
+```sh
+ollama show <model> | grep "context length"
+```
+
+Pick a model whose context length is at or above `VC_MODEL_CONTEXT_WINDOW`. On
+the floor below, that rules out every 32k model.
+
+There is a floor as well as a ceiling. The runtime reserves a fixed 20000 tokens
+of every context window for compaction headroom, and the chief's own assembled
+system prompt is about 12700 tokens, so a window has to clear both before an
+agent has any budget left to work in. `check_env.sh` enforces that floor. Below
+it the deployment still validates at the level of individual values, boots, and
+reports healthy — and then answers every message with `Context overflow: prompt
+too large for the model`, which the harness returns as an ordinary payload with
+`status: "ok"` and CLI exit code 0. Choose a model whose context comfortably
+exceeds the floor rather than one that only just clears it.
+
+**Timeouts against a local model.** `VC_MODEL_TIMEOUT_SECONDS` covers the whole
+request, and the first request after each model load has to prefill that entire
+system prompt on your own hardware. On a CPU-only host this measured 331 s for
+10847 tokens (32.7 tok/s) — past the shipped 300 s default, so the first turn
+after every gateway restart or model unload failed with `LLM request timed out`.
+Prompt caching then serves the retry in about 5 s, which makes the failure look
+like a one-off rather than a setting. Ollama mode therefore requires at least
+600 s. Raise it further if your host is slower or your prompt is larger; on a
+fast GPU host the ceiling simply never binds.
 
 ### Search configuration
 

@@ -68,6 +68,42 @@ CHANNEL_FIELDS = {
     ),
 }
 
+# Channels that this package installs, validates, and renders correctly, but
+# that the pinned harness image cannot actually run.
+#
+# The GHCR release prunes the Slack, Teams, and Discord distributions, so
+# Dockerfile.openclaw reinstalls them from the locked npm graph into
+# /opt/openclaw-runtime and render_channel_config.py names that directory in
+# plugins.load.paths. A path-loaded plugin is neither `origin: "bundled"` nor a
+# recorded `trustedOfficialInstall`, and the harness gates its keyed store on
+# exactly that pair, so any code path reaching openKeyedStore throws.
+#
+# msteams reaches it while *starting*: measured on a live deployment, the
+# provider exited 40 ms after "starting provider (port 3978)" with "openKeyedStore
+# is only available for trusted plugins in this release", then crash-looped
+# through its ten auto-restart attempts. Port 3978 was never bound, yet
+# bootstrap.sh exited 0 and the container stayed `healthy` — so selecting Teams
+# produced a deployment that looked correct and could not receive a single
+# message. Refusing it here is the honest outcome: this package would rather
+# fail commissioning loudly than hand over a silently dead channel.
+#
+# slack and discord are deliberately NOT listed. They carry the same
+# openKeyedStore call sites and the same non-bundled origin, so they are at risk
+# of the same failure once a real credential lets them past authentication — but
+# that has not been observed here, and refusing a channel on suspicion would cost
+# an operator a working integration. See docs/RUNBOOK.md.
+#
+# The upstream message says "in this release", so re-test this on the next image
+# bump and delete the entry once the provider starts.
+INOPERABLE_CHANNELS = {
+    "msteams": (
+        "the pinned image loads the Teams plugin from a path, which the harness "
+        "does not treat as a trusted plugin, so the provider crash-loops on "
+        "startup and never binds its webhook port while the gateway still reports "
+        "healthy (see docs/RUNBOOK.md)"
+    ),
+}
+
 DEPLOYMENT_FIELDS = {
     "TZ",
     "OPENCLAW_HOST",
@@ -123,6 +159,34 @@ ALLOWED_KEYS = REQUIRED | DEPLOYMENT_FIELDS | {
 }
 STATE_ARCHIVE_DEFAULT_BYTES = 2 * 1024 * 1024 * 1024
 STATE_ARCHIVE_MAX_BYTES = 100 * 1024 * 1024 * 1024
+# The harness reserves a fixed slice of every context window for compaction
+# headroom (`reserveTokensFloor ... ?? 2e4` in the pinned image's memory-core
+# extension). This package does not override it — its only
+# agents.defaults.compaction setting is memoryFlush.enabled — so the prompt
+# budget an agent actually gets is VC_MODEL_CONTEXT_WINDOW minus this number.
+MODEL_COMPACTION_RESERVE_TOKENS = 20_000
+# The chief's assembled system prompt measured 40,137 characters / 12,669
+# tokens on a live deployment (contextBudgetStatus.estimatedPromptTokens).
+# Rounded up so a small future addition to the reviewed policy artifacts does
+# not silently invalidate the floor below.
+CHIEF_SYSTEM_PROMPT_TOKENS = 12_700
+# Room for one document extract or tool result plus a few conversation turns.
+# Without this the deployment validates, boots, and then answers every message
+# with "Context overflow: prompt too large for the model" — which the harness
+# returns as a normal payload with status "ok" and CLI exit code 0, so nothing
+# an operator would check reports a failure.
+MODEL_MIN_WORKING_TOKENS = 4_096
+MODEL_CONTEXT_WINDOW_FLOOR = (
+    MODEL_COMPACTION_RESERVE_TOKENS + CHIEF_SYSTEM_PROMPT_TOKENS + MODEL_MIN_WORKING_TOKENS
+)
+# A local model is prompted with the same ~12.7k-token system prompt as a hosted
+# one, but prefills it on the deployment host's own CPU or GPU. Measured on a
+# CPU-only host: 331.4 s to prefill 10,847 tokens at 32.7 tok/s — over the
+# shipped 300 s default, so the *first* turn after every model load failed with
+# "FailoverError: LLM request timed out". Prompt caching then made the retry
+# succeed in 5.2 s, which is what makes it a commissioning trap rather than an
+# obvious failure. Hosted providers are unaffected: this is a ceiling, not a wait.
+OLLAMA_MIN_TIMEOUT_SECONDS = 600
 FORBIDDEN_AMBIENT_COMPOSE_KEYS = {
     "COMPOSE_FILE",
     "COMPOSE_PROJECT_NAME",
@@ -266,6 +330,11 @@ def validate_channel_selection(values: dict[str, str]) -> list[str]:
     if selected not in allowed:
         errors.append(f"PRIMARY_CHANNEL must be one of {sorted(allowed)}")
         return errors
+    if selected in INOPERABLE_CHANNELS:
+        errors.append(
+            f"PRIMARY_CHANNEL={selected} cannot be operated on the pinned image: "
+            + INOPERABLE_CHANNELS[selected]
+        )
 
     populated = {
         profile: [key for key in fields if values.get(key, "")]
@@ -464,7 +533,7 @@ def validate_runtime_selection(values: dict[str, str]) -> list[str]:
     if values.get("VC_MODEL_REASONING") not in {"true", "false"}:
         errors.append("VC_MODEL_REASONING must be true or false")
     for key, minimum, maximum in (
-        ("VC_MODEL_CONTEXT_WINDOW", 16_384, 4_000_000),
+        ("VC_MODEL_CONTEXT_WINDOW", MODEL_CONTEXT_WINDOW_FLOOR, 4_000_000),
         ("VC_MODEL_MAX_TOKENS", 1_024, 262_144),
         ("VC_MODEL_TIMEOUT_SECONDS", 30, 900),
     ):
@@ -472,6 +541,16 @@ def validate_runtime_selection(values: dict[str, str]) -> list[str]:
         parsed = _ascii_int(raw)
         if parsed is None or not minimum <= parsed <= maximum:
             errors.append(f"{key} must be an integer from {minimum} through {maximum}")
+            if key == "VC_MODEL_CONTEXT_WINDOW":
+                # The bare range is not actionable on its own: the floor is
+                # derived, and a window under it produces a deployment that
+                # validates and boots but cannot answer a single message.
+                errors.append(
+                    f"VC_MODEL_CONTEXT_WINDOW must leave the agent a usable prompt budget: "
+                    f"{MODEL_COMPACTION_RESERVE_TOKENS} tokens are reserved by the runtime for "
+                    f"compaction, the chief's system prompt is about {CHIEF_SYSTEM_PROMPT_TOKENS}, "
+                    f"and {MODEL_MIN_WORKING_TOKENS} are needed for a document or tool result"
+                )
     if mode == "openai":
         if not values.get("OPENAI_API_KEY"):
             errors.append("OPENAI_API_KEY is required when VC_MODEL_PROVIDER=openai")
@@ -486,6 +565,14 @@ def validate_runtime_selection(values: dict[str, str]) -> list[str]:
             )
         if any(values.get(key) for key in ("OPENAI_API_KEY", "VC_CUSTOM_PROVIDER_ID", "VC_CUSTOM_BASE_URL", "VC_CUSTOM_API", "VC_CUSTOM_API_KEY")):
             errors.append("Ollama mode requires OpenAI/custom model fields to remain empty")
+        timeout = _ascii_int(values.get("VC_MODEL_TIMEOUT_SECONDS", ""))
+        if timeout is not None and timeout < OLLAMA_MIN_TIMEOUT_SECONDS:
+            errors.append(
+                f"VC_MODEL_TIMEOUT_SECONDS must be at least {OLLAMA_MIN_TIMEOUT_SECONDS} in Ollama "
+                "mode: the first turn after each model load prefills the whole system prompt on the "
+                "deployment host, which measured 331 s on a CPU-only host and times out under the "
+                "shipped 300 s default"
+            )
     else:
         # Every adapter here authenticates with the single API key this renderer
         # emits. bedrock-converse-stream is deliberately absent: OpenClaw signs
