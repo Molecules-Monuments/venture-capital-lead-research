@@ -644,6 +644,20 @@ class TeamsIdentifierValidationTests(unittest.TestCase):
         values.update(overrides)
         return values
 
+    @staticmethod
+    def identifier_errors(values: dict[str, str]) -> list[str]:
+        """Channel-selection errors excluding the Teams operability refusal.
+
+        These cases are about how Entra directory object IDs are validated, and
+        they use msteams only as the channel that carries them. The pinned image
+        cannot run that provider (check_env.INOPERABLE_CHANNELS), so selecting it
+        always contributes one further error; filtering it keeps these assertions
+        pointed at the identifier rules they were written for.
+        """
+        refusal = "cannot be operated on the pinned image"
+        return [error for error in check_env.validate_channel_selection(values)
+                if refusal not in error]
+
     def test_a_guid_outside_rfc_4122_version_and_variant_bits_is_accepted(self) -> None:
         # Entra guarantees the 8-4-4-4-12 GUID format, not the RFC-4122 version
         # (1-5) and variant (8|9|a|b) nibbles, and historic tenants do hold
@@ -657,9 +671,7 @@ class TeamsIdentifierValidationTests(unittest.TestCase):
             ("uppercase", "3F2504E0-4F89-41D3-9A0C-0305E82C3301"),
         ):
             with self.subTest(case=label):
-                self.assertEqual(
-                    [], check_env.validate_channel_selection(self.teams_env(MSTEAMS_APP_ID=guid))
-                )
+                self.assertEqual([], self.identifier_errors(self.teams_env(MSTEAMS_APP_ID=guid)))
 
     def test_display_names_upns_and_the_nil_guid_are_still_refused(self) -> None:
         for label, value, marker in (
@@ -678,7 +690,7 @@ class TeamsIdentifierValidationTests(unittest.TestCase):
     def test_the_allowed_user_list_applies_the_same_rule(self) -> None:
         self.assertEqual(
             [],
-            check_env.validate_channel_selection(
+            self.identifier_errors(
                 self.teams_env(
                     MSTEAMS_ALLOWED_USER_IDS="3f2504e0-4f89-01d3-7a0c-0305e82c3301,"
                     "72f988bf-86f1-41af-91ab-2d7cd011db47"

@@ -65,6 +65,24 @@ def replace_line(body: str, key: str, value: str) -> str:
     return "\n".join(lines) + "\n"
 
 
+# Syntactically valid, deliberately inert credential families. These exist to
+# exercise selection logic, never to reach a provider.
+_MSTEAMS_FAMILY = {
+    "MSTEAMS_APP_ID": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+    "MSTEAMS_APP_PASSWORD": "inert-check-env-app-password",
+    "MSTEAMS_TENANT_ID": "72f988bf-86f1-41af-91ab-2d7cd011db47",
+    "MSTEAMS_ALLOWED_USER_IDS": "29f1c4de-9a1b-4d0e-8f2a-11bb22cc33dd",
+    "MSTEAMS_ALLOWED_TEAM_ID": "19:checkenvteam0000000@thread.tacv2",
+    "MSTEAMS_ALLOWED_CHANNEL_ID": "19:checkenvchannel00000@thread.tacv2",
+    "MSTEAMS_PUBLIC_WEBHOOK_URL": "https://teams.check-env.invalid/api/messages",
+}
+_TELEGRAM_FAMILY = {
+    "TELEGRAM_BOT_TOKEN": "123456789:AAHcheckenvinerttokenvalue0000000000",
+    "TELEGRAM_ALLOWED_USER_IDS": "123456789",
+    "TELEGRAM_ALLOWED_GROUP_ID": "-1001234567890",
+}
+
+
 class RuntimeProviderTests(unittest.TestCase):
     def render(self, body: str) -> dict[str, Any]:
         with tempfile.TemporaryDirectory(prefix="provider-render-") as raw:
@@ -157,6 +175,116 @@ class RuntimeProviderTests(unittest.TestCase):
                     parsed = check_env.parse_dotenv(probe)
                 self.assertNotEqual([], check_env.validate_runtime_selection(parsed), label)
                 self.render_expecting_failure(body)
+
+    def _errors_for(self, body: str) -> list[str]:
+        with tempfile.TemporaryDirectory(prefix="provider-bounds-") as raw:
+            probe = Path(raw) / "probe.env"
+            probe.write_text(body, encoding="utf-8")
+            probe.chmod(0o600)
+            return check_env.validate_runtime_selection(check_env.parse_dotenv(probe))
+
+    def _ollama_body(self, **overrides: str) -> str:
+        body = configured_example()
+        edits = {
+            "VC_MODEL_PROVIDER": "ollama",
+            "OPENAI_API_KEY": "",
+            "VC_OLLAMA_BASE_URL": "http://host.docker.internal:11434",
+            "VC_PRIMARY_MODEL": "ollama/qwen3:14b",
+            "VC_FAST_MODEL": "ollama/qwen3:14b",
+            "VC_WEB_SEARCH_PROVIDER": "duckduckgo",
+            "VC_MODEL_TIMEOUT_SECONDS": str(check_env.OLLAMA_MIN_TIMEOUT_SECONDS),
+        }
+        edits.update(overrides)
+        for key, value in edits.items():
+            body = replace_line(body, key, value)
+        return body
+
+    def test_context_window_must_clear_the_runtime_compaction_reserve(self) -> None:
+        # A window under the floor validated, bootstrapped, and reported healthy
+        # on a live deployment, and then answered every message with "Context
+        # overflow: prompt too large for the model" — returned as an ordinary
+        # payload with status "ok" and CLI exit code 0, so no signal an operator
+        # checks reported a failure. The floor is what makes that loud.
+        self.assertEqual(
+            check_env.MODEL_CONTEXT_WINDOW_FLOOR,
+            check_env.MODEL_COMPACTION_RESERVE_TOKENS
+            + check_env.CHIEF_SYSTEM_PROMPT_TOKENS
+            + check_env.MODEL_MIN_WORKING_TOKENS,
+        )
+        # The reserve alone is not enough: the chief's own prompt still has to fit.
+        for window in (16_384, check_env.MODEL_COMPACTION_RESERVE_TOKENS,
+                       check_env.MODEL_CONTEXT_WINDOW_FLOOR - 1):
+            with self.subTest(window=window):
+                errors = self._errors_for(
+                    replace_line(configured_example(), "VC_MODEL_CONTEXT_WINDOW", str(window))
+                )
+                self.assertTrue(
+                    any("VC_MODEL_CONTEXT_WINDOW" in error for error in errors),
+                    f"{window} must be refused: {errors}",
+                )
+                self.assertTrue(
+                    any("compaction" in error for error in errors),
+                    f"the refusal must say why: {errors}",
+                )
+        at_floor = replace_line(
+            configured_example(),
+            "VC_MODEL_CONTEXT_WINDOW",
+            str(check_env.MODEL_CONTEXT_WINDOW_FLOOR),
+        )
+        self.assertEqual([], self._errors_for(at_floor))
+
+    def test_ollama_mode_requires_a_timeout_that_covers_a_cold_prefill(self) -> None:
+        # The first turn after each model load prefills the whole system prompt
+        # on the deployment host: 331 s measured on a CPU-only host, past the
+        # shipped 300 s default. Prompt caching then answers the retry in about
+        # 5 s, so the failure looks like a flake and re-arms on every restart.
+        too_low = self._errors_for(self._ollama_body(VC_MODEL_TIMEOUT_SECONDS="300"))
+        self.assertTrue(
+            any("VC_MODEL_TIMEOUT_SECONDS" in error for error in too_low),
+            f"300 s must be refused in Ollama mode: {too_low}",
+        )
+        self.assertEqual([], self._errors_for(self._ollama_body()))
+        # The shipped default stays valid for hosted providers, which prefill
+        # on the vendor's hardware.
+        self.assertEqual([], self._errors_for(configured_example()))
+
+    def test_a_channel_the_image_cannot_run_is_refused_everywhere(self) -> None:
+        # Selecting Teams rendered a valid config, bootstrapped, and reported
+        # healthy while its provider crash-looped on "openKeyedStore is only
+        # available for trusted plugins" and never bound port 3978. Every
+        # lifecycle entry point has to refuse it, or the failure only shows up
+        # after handover.
+        self.assertIn("msteams", check_env.INOPERABLE_CHANNELS)
+        # Still a known channel name — this is an operability refusal, not a typo.
+        self.assertIn("msteams", check_env.CHANNEL_FIELDS)
+        body = configured_example()
+        body = replace_line(body, "PRIMARY_CHANNEL", "msteams")
+        for key in check_env.CHANNEL_FIELDS["msteams"]:
+            body = replace_line(body, key, _MSTEAMS_FAMILY[key])
+        with tempfile.TemporaryDirectory(prefix="channel-refusal-") as raw:
+            probe = Path(raw) / "probe.env"
+            probe.write_text(body, encoding="utf-8")
+            probe.chmod(0o600)
+            errors = check_env.validate_channel_selection(check_env.parse_dotenv(probe))
+        self.assertTrue(
+            any("cannot be operated on the pinned image" in error for error in errors),
+            f"check_env must refuse msteams: {errors}",
+        )
+        # And the renderer must not produce a config no validator would allow.
+        self.render_expecting_failure(body)
+        # A complete, otherwise-valid family for a channel that *is* operable
+        # stays acceptable, so this is not a blanket channel refusal.
+        telegram = configured_example()
+        telegram = replace_line(telegram, "PRIMARY_CHANNEL", "telegram")
+        for key, value in _TELEGRAM_FAMILY.items():
+            telegram = replace_line(telegram, key, value)
+        with tempfile.TemporaryDirectory(prefix="channel-ok-") as raw:
+            probe = Path(raw) / "probe.env"
+            probe.write_text(telegram, encoding="utf-8")
+            probe.chmod(0o600)
+            self.assertEqual(
+                [], check_env.validate_channel_selection(check_env.parse_dotenv(probe))
+            )
 
     def test_control_ui_origins_follow_the_configured_gateway_port(self) -> None:
         body = configured_example().replace(
@@ -270,6 +398,10 @@ class RuntimeProviderTests(unittest.TestCase):
             "OPENAI_API_KEY": "",
             "VC_OLLAMA_BASE_URL": "http://host.docker.internal:11434",
             "VC_WEB_SEARCH_PROVIDER": "duckduckgo",
+            # Ollama mode prefills the system prompt on the deployment host, so
+            # it carries a higher timeout floor than the hosted default this
+            # example otherwise inherits.
+            "VC_MODEL_TIMEOUT_SECONDS": str(check_env.OLLAMA_MIN_TIMEOUT_SECONDS),
         }.items():
             body = replace_line(body, key, value)
         config = self.render(body)

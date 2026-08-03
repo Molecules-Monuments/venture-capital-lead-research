@@ -19,7 +19,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 # validator stays safe to run even when someone omits `-B`.
 sys.dont_write_bytecode = True
 
-from check_env import parse_dotenv  # noqa: E402
+from check_env import INOPERABLE_CHANNELS, parse_dotenv  # noqa: E402
 
 
 REQUIRED_SECTIONS = {
@@ -229,6 +229,15 @@ def main() -> int:
     selected = sections["channels"].get("selected")
     if selected not in {"none", *CHANNEL_DESTINATION_FIELDS}:
         errors.append("channels.selected must be none, slack, msteams, discord, or telegram")
+    elif selected in INOPERABLE_CHANNELS:
+        # check_env.sh refuses the matching PRIMARY_CHANNEL, and bootstrap runs it
+        # first, so this is defence in depth for anyone validating a reviewed
+        # profile on its own — a profile that names a channel the image cannot run
+        # should never read as approved.
+        errors.append(
+            f"channels.selected={selected} cannot be operated on the pinned image: "
+            + INOPERABLE_CHANNELS[selected]
+        )
     allowed_channel_ids = approvals.get("allowed_channel_ids")
     if selected == "none":
         if allowed_channel_ids != []:

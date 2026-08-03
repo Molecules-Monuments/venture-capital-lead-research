@@ -750,6 +750,30 @@ record. Autonomous transcript review remains disabled.
 
 ## 10. Known release limitations
 
+- **Microsoft Teams cannot be selected in this release.** `check_env.sh`,
+  `check_customization.py`, and `render_channel_config.py` all refuse
+  `PRIMARY_CHANNEL=msteams`. The GHCR base image prunes the Slack, Teams, and
+  Discord distributions, so `Dockerfile.openclaw` reinstalls them from the locked
+  npm graph into `/opt/openclaw-runtime` and the renderer names that directory in
+  `plugins.load.paths`. The harness only grants its keyed store to a plugin that
+  is either `origin: "bundled"` or a recorded trusted official install, and a
+  path-loaded plugin is neither. The Teams provider reaches that store while
+  starting, so on a live deployment it exited 40 ms after
+  `[msteams] starting provider (port 3978)` with `openKeyedStore is only
+  available for trusted plugins in this release`, then crash-looped through its
+  ten auto-restart attempts. Port 3978 was never bound — while `bootstrap.sh`
+  exited 0 and the container reported `healthy`. The refusal exists so that
+  failure surfaces at commissioning instead of after handover. Re-test on the
+  next image bump: the upstream message says "in this release", and the entry in
+  `check_env.INOPERABLE_CHANNELS` should be deleted once the provider starts.
+- **Slack and Discord carry the same structural risk, unproven.** They are loaded
+  the same non-bundled way and contain the same `openKeyedStore` call sites, but
+  in their providers those sit past authentication rather than on the startup
+  path, so a run with deliberately invalid credentials stops earlier — at
+  `auth.test` — and never reaches the gate. Neither has been driven with a real
+  credential here. Treat the first live Slack or Discord activation as the test
+  of this, and if the provider exits with the trusted-plugin message, the cause
+  and the shape of the fix are the same as for Teams above.
 - The package does not provide hostile multi-tenant isolation or Docker-backed
   tool sandboxes inside the gateway container.
 - Direct Lobster and managed Lobster-to-Task-Flow mode remain disabled; the
