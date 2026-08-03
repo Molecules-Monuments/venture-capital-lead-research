@@ -245,7 +245,7 @@ def _handle_termination_signal(signum: int, _frame: Any) -> None:
             stream=sys.stderr,
         )
         sys.stderr.flush()
-    except Exception:
+    except Exception:  # noqa: S110  # about to os._exit; a second payload would break the one-object contract
         pass
     os._exit(130)
 

@@ -140,10 +140,14 @@ def require_pinned_postgres(initdb: str) -> None:
 
 @contextmanager
 def disposable_postgres() -> Iterator[str]:
-    tools = {name: shutil.which(name) for name in ("initdb", "pg_ctl", "psql")}
-    missing = [name for name, path in tools.items() if not path]
+    discovered = {name: shutil.which(name) for name in ("initdb", "pg_ctl", "psql")}
+    missing = [name for name, path in discovered.items() if not path]
     if missing:
         raise GateError(f"required PostgreSQL tools are missing: {', '.join(missing)}")
+    # Rebuilt rather than reused so the resolved paths carry their proven
+    # non-None type into every command below; shutil.which returns str | None
+    # and the check above is invisible to a reader of those call sites.
+    tools = {name: path for name, path in discovered.items() if path is not None}
     require_pinned_postgres(tools["initdb"])
     if hasattr(os, "geteuid") and os.geteuid() == 0:
         raise GateError("refusing to initialize PostgreSQL as root")
@@ -270,16 +274,32 @@ def main() -> int:
                     "G4_MIGRATION_CHECKSUMS": json.dumps(checksums, sort_keys=True),
                 }
             )
+            # Each suite carries its own timeout, so the inventory is declared
+            # rather than globbed — but a declared inventory silently stops
+            # covering a suite the moment someone adds one, and the gate would
+            # still report PASS with an unchanged test count. Derive the check
+            # from the directory and fail closed on any difference.
+            declared = {
+                "test_semantics.py": ("semantics", 120),
+                "test_document_security.py": ("document_security", 240),
+                "test_database_contract.py": ("database_contract", 240),
+                "test_helper_cli_database.py": ("helper_cli_database", 300),
+                "test_workflow_execution.py": ("workflow_execution", 300),
+                "test_research_intelligence.py": ("research_intelligence", 300),
+                "test_source_surveillance.py": ("source_surveillance", 300),
+            }
+            present = {path.name for path in (PACKAGE / "tests/g4").glob("test_*.py")}
+            if present != set(declared):
+                missing = sorted(set(declared) - present)
+                unrun = sorted(present - set(declared))
+                raise RuntimeError(
+                    "tests/g4 inventory does not match this gate's declared suites; "
+                    f"declared-but-absent={missing}, present-but-never-run={unrun}. "
+                    "Add the new suite to `declared` with an explicit timeout."
+                )
             checks.extend(
-                [
-                    run_suite("semantics", "test_semantics.py", environment, 120),
-                    run_suite("document_security", "test_document_security.py", environment, 240),
-                    run_suite("database_contract", "test_database_contract.py", environment, 240),
-                    run_suite("helper_cli_database", "test_helper_cli_database.py", environment, 300),
-                    run_suite("workflow_execution", "test_workflow_execution.py", environment, 300),
-                    run_suite("research_intelligence", "test_research_intelligence.py", environment, 300),
-                    run_suite("source_surveillance", "test_source_surveillance.py", environment, 300),
-                ]
+                run_suite(name, filename, environment, timeout)
+                for filename, (name, timeout) in sorted(declared.items())
             )
     except Exception as exc:
         checks.append({"name": "disposable_postgres", "ok": False, "tests": 0, "skipped": False, "error_tail": str(exc)})

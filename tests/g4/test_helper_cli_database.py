@@ -15,7 +15,7 @@ from pathlib import Path
 import psycopg
 
 
-DATABASE_URL = os.environ.get("G4_RUNTIME_DATABASE_URL")
+DATABASE_URL = os.environ.get("G4_RUNTIME_DATABASE_URL", "")
 HELPER = Path(os.environ.get("VCOPS_HELPER", ""))
 PYTHON = os.environ.get("G4_PYTHON", sys.executable)
 TEST_APPROVAL_PEPPER = "g4-test-only-approval-pepper-0000000000000000"
@@ -320,6 +320,64 @@ class HelperCliDatabaseTests(unittest.TestCase):
         document.write_text("metric,value\narr,9999999\n", encoding="utf-8")
         changed = self.invoke(extract_args, expect_ok=False)
         self.assertEqual(changed["error"]["code"], "idempotency_payload_mismatch")
+
+    def test_reingesting_bytes_under_a_different_classification_is_refused(self):
+        # evidence_artifacts is content-addressed, so the FIRST ingestion of a
+        # byte sequence fixes its governance classification. Re-ingesting the
+        # same bytes under a different trust boundary, confidentiality or
+        # retention class used to be discarded by an ON CONFLICT no-op while the
+        # command still reported ok — the operator's reclassification silently
+        # did nothing. It must be a typed refusal instead.
+        document = self.inbox / f"{self.prefix}-reclassified.csv"
+        document.write_text("metric,value\nheadcount,42\n", encoding="utf-8")
+        base = [
+            "document-extract", "--path", str(document), "--lead-id", str(self.lead_id),
+            "--trust-level", "untrusted_upload", "--confidentiality", "internal",
+            "--retention-class", "standard",
+        ]
+        first = self.invoke([*base, "--idempotency-key", self.prefix + "_reclass_a"])
+        self.assertFalse(first["reused"])
+        artifact_sha = first["sha256"]
+
+        for flag, value in (
+            ("--confidentiality", "confidential"),
+            ("--trust-level", "allowlisted_operator"),
+            ("--retention-class", "long"),
+        ):
+            diverged = list(base)
+            diverged[diverged.index(flag) + 1] = value
+            rejected = self.invoke(
+                [*diverged, "--idempotency-key", f"{self.prefix}_reclass_{flag.strip('-')}_{value}"],
+                expect_ok=False,
+            )
+            self.assertEqual(rejected["error"]["code"], "artifact_classification_conflict")
+            # The refusal must name both sides so the operator can act on it.
+            self.assertEqual(
+                rejected["error"]["details"]["recorded"],
+                {
+                    "trust_boundary": "untrusted_upload",
+                    "confidentiality": "internal",
+                    "retention_class": "standard",
+                },
+            )
+
+        # The stored classification is unchanged, and exactly one artifact row
+        # exists for these bytes: the refusal is not a partial write.
+        self.assertEqual(
+            self.query("SELECT count(*) FROM evidence_artifacts WHERE sha256=%s", (artifact_sha,)),
+            1,
+        )
+        self.assertEqual(
+            self.query(
+                "SELECT confidentiality FROM evidence_artifacts WHERE sha256=%s", (artifact_sha,)
+            ),
+            "internal",
+        )
+
+        # An unchanged classification still reuses the row rather than failing,
+        # which is the whole point of content addressing.
+        again = self.invoke([*base, "--idempotency-key", self.prefix + "_reclass_same"])
+        self.assertEqual(again["sha256"], artifact_sha)
 
     def test_entity_resolution_is_literal_private_and_atomically_consumed(self):
         resolution_rows_before = self.query("SELECT count(*) FROM entity_resolution_runs")

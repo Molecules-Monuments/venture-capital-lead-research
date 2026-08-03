@@ -516,7 +516,7 @@ class FailureReasonParityTests(unittest.TestCase):
         for node in ast.walk(tree):
             if isinstance(node, ast.Assign) and any(
                 isinstance(t, ast.Name) and t.id == "RUNNER_FAILURE_CLASSES" for t in node.targets
-            ):
+            ) and isinstance(node, ast.Assign) and isinstance(node.value, (ast.Set, ast.List, ast.Tuple)):
                 return {
                     element.value
                     for element in node.value.elts

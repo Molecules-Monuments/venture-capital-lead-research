@@ -82,6 +82,12 @@ DUMP_VERSION = re.compile(r"^-- Dumped (from database|by pg_dump) version.*\n", 
 
 def load_harness():
     spec = importlib.util.spec_from_file_location("run_g4", PACKAGE / "scripts/run_g4.py")
+    # spec_from_file_location returns None for an unreadable or non-module path,
+    # and a spec built without a loader has loader=None. Assert both rather than
+    # dereferencing them: a missing run_g4.py should say so here, not surface as
+    # an AttributeError on None two lines later.
+    if spec is None or spec.loader is None:
+        raise SystemExit("scripts/run_g4.py could not be loaded as a module")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module

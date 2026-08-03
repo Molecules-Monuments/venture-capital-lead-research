@@ -16,6 +16,7 @@ import unittest
 from pathlib import Path
 
 from jsonschema import Draft202012Validator, FormatChecker
+from typing import Any, ClassVar
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -239,7 +240,7 @@ class CrossSchemaConsistencyTests(unittest.TestCase):
     envelopes are covered by their own tests, not by these equality checks.
     """
 
-    CANONICAL_ERROR = {
+    CANONICAL_ERROR: ClassVar[dict[str, Any]] = {
         "oneOf": [
             {"type": "null"},
             {

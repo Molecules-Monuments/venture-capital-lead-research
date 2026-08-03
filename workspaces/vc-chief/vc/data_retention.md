@@ -55,9 +55,12 @@ tests pass (see the banner above):
   values stay in the table until an owner-run out-of-band procedure removes
   them. The function touches `facts`, `leads`, and `audit_events` only. These
   tables are **not** covered and are operator-run steps:
-  `compiled_truth.fact_history`, `memos` (including `content_uri` and the
-  rendered memo body), `memo_citations`, `lead_artifacts`,
-  `evidence_artifacts`, and `document_extractions`. Treat
+  `compiled_truth.fact_history` **and `compiled_truth.current_view`** (the
+  snapshot keeps the erased values verbatim, keyed by fact type and
+  definition), `memos` (including `content_uri` and the rendered memo body),
+  `memo_citations`, `lead_artifacts`, `evidence_artifacts`,
+  `document_extractions`, `evaluations`, `fact_sources`, and the company
+  identity rows themselves (`companies`, `company_domains`). Treat
   `vcops data-erase-lead` as the audited entry point to an erasure procedure,
   not as a complete right-to-erasure executor. What it does not reach is listed
   below, and covering that gap is outside the software; document and rehearse

@@ -14,6 +14,7 @@ import time
 import unittest
 from pathlib import Path
 from unittest.mock import patch
+from typing import Any
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -65,7 +66,7 @@ def replace_line(body: str, key: str, value: str) -> str:
 
 
 class RuntimeProviderTests(unittest.TestCase):
-    def render(self, body: str) -> dict[str, object]:
+    def render(self, body: str) -> dict[str, Any]:
         with tempfile.TemporaryDirectory(prefix="provider-render-") as raw:
             root = Path(raw)
             env_path = root / "runtime.env"
@@ -422,7 +423,9 @@ console.log(JSON.stringify({{direct: direct.prependContext, group: group.prepend
         # scope must still be minted for it.
         self.assertEqual([staged_doc], direct["media_paths"])
         path_hash = hashlib.sha256(staged_doc.encode("utf-8")).hexdigest()
-        self.assertIn(f"document.ingest:{path_hash}", direct["scopes"])
+        scopes = direct["scopes"]
+        assert isinstance(scopes, list)
+        self.assertIn(f"document.ingest:{path_hash}", scopes)
         for blocked_key in ("blockedByStagedMedia", "blockedByAttachment"):
             with self.subTest(blocked=blocked_key):
                 self.assertEqual("block", rendered[blocked_key]["outcome"])

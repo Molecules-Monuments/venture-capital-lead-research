@@ -1,3 +1,45 @@
+[lint]
+# Ruff's default selection is only E4/E7/E9/F — 59 of 927 rules — which reports
+# nothing on a clean tree and therefore proves very little. The families below
+# were each measured against this tree before being enabled: every rule in the
+# first group already had zero findings, so they lock in current quality rather
+# than importing a backlog.
+select = [
+    "E4", "E7", "E9", "F",  # ruff's default selection, unchanged
+    # Measured clean at the time of enabling. B is the standard bug-pattern
+    # family; DTZ matters because the evidence model is built on observed_at /
+    # valid_from / valid_to and a naive datetime would be a correctness defect;
+    # PGH forbids uncoded noqa/type-ignore directives; EXE keeps the shebang and
+    # the executable bit consistent.
+    "W", "B", "A", "ASYNC", "DTZ", "ERA", "EXE", "FA",
+    "FLY", "G", "ISC", "LOG", "PGH", "RSE", "SLOT", "TID", "YTT",
+    # Required a one-time cleanup. S is kept because this package treats all
+    # channel, web and document input as untrusted, so eval/exec, pickle,
+    # hardcoded credentials, missing request timeouts, verify=False, mktemp and
+    # unsafe YAML loaders must stay mechanically impossible to reintroduce.
+    "S", "C4", "PIE", "RUF",
+]
+# Ignored at the rule level, not per file: each of these fires on a pattern this
+# package uses deliberately and everywhere, so a per-file list would only record
+# the current file inventory rather than the decision.
+ignore = [
+    # assert is the assertion mechanism of every suite under tests/.
+    "S101",
+    # Flags subprocess calls that do NOT set shell=True — i.e. the safe form.
+    # Every call site passes an argv list and no site uses a shell.
+    "S603",
+    # Partial executable paths: the gate and lifecycle scripts resolve docker,
+    # psql, initdb and pg_ctl from PATH by design, and check that they did.
+    "S607",
+    # Hardcoded SQL. Every shipped site was reviewed: the interpolated fragments
+    # are module constants or literals chosen by a boolean, and every
+    # caller-supplied value is bound through a %s placeholder.
+    "S608",
+    # Hardcoded /tmp paths: the documented lifecycle and rotation locks, which
+    # are acquired with an atomic mkdir rather than by writing a known filename.
+    "S108",
+]
+
 [lint.per-file-ignores]
 # The parser inventory is intentionally compact and declarative. Its behavior
 # is derived and checked by the fixed-workflow validator and contract tests.

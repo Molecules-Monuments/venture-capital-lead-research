@@ -240,6 +240,53 @@ class RuntimeInfrastructureTests(unittest.TestCase):
         self.assertIn("!workspaces/**", dockerignore)
         self.assertIn("!runtime-packages/**", dockerignore)
 
+    def test_baked_source_contract_matches_the_build_context(self) -> None:
+        # record_images.py digests the host artifacts that become read-only image
+        # content so an operator can be told when their policy edit has not
+        # reached the running gateway. That digest is only trustworthy while its
+        # path set is exactly what the build context admits and the Dockerfile
+        # copies, so pin the three to each other.
+        spec = importlib.util.spec_from_file_location(
+            "infrastructure_record_images", PACKAGE / "scripts/record_images.py"
+        )
+        assert spec is not None and spec.loader is not None
+        recorder = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(recorder)
+        declared = set(recorder.BAKED_SOURCE_FILES) | set(recorder.BAKED_SOURCE_TREES)
+
+        admitted: set[str] = set()
+        for line in (PACKAGE / ".dockerignore").read_text(encoding="utf-8").splitlines():
+            entry = line.strip()
+            if not entry.startswith("!"):
+                continue
+            path = entry[1:].removesuffix("/**").removesuffix("/")
+            # `!runtime-extensions/` and `!runtime-packages/` only re-admit the
+            # directory so the nested `/**` rule can apply; the leaf path is what
+            # carries content.
+            admitted.add(path)
+        admitted = {
+            path
+            for path in admitted
+            if not any(other != path and other.startswith(path + "/") for other in admitted)
+        }
+        self.assertEqual(
+            declared,
+            admitted,
+            "record_images.BAKED_SOURCE_* and .dockerignore's allow-list have drifted",
+        )
+
+        for path in declared:
+            self.assertTrue((PACKAGE / path).exists(), path)
+        # Every declared path must actually enter the image, or the digest would
+        # gate on something the image never received. Dockerfile.openclaw is the
+        # exception by construction: it is the recipe rather than copied content,
+        # and it is digested because editing it changes the image just as surely.
+        copied = "\n".join(
+            line for line in self.dockerfile.splitlines() if line.startswith("COPY ")
+        )
+        for path in declared - {"Dockerfile.openclaw"}:
+            self.assertIn(path, copied, f"{path} is digested but never COPYd")
+
     def test_developer_lock_is_standalone_hashed_and_complete(self) -> None:
         lock = (PACKAGE / "requirements-dev.lock").read_text(encoding="utf-8")
         self.assertNotIn("-r requirements.lock", lock)

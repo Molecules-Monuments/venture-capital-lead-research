@@ -25,9 +25,10 @@ from pathlib import Path
 
 import psycopg
 import yaml
+from typing import Any, ClassVar
 
 
-DATABASE_URL = os.environ.get("G4_RUNTIME_DATABASE_URL")
+DATABASE_URL = os.environ.get("G4_RUNTIME_DATABASE_URL", "")
 HELPER = Path(os.environ.get("VCOPS_HELPER", ""))
 PYTHON = os.environ.get("G4_PYTHON", sys.executable)
 WORKFLOWS = Path(__file__).resolve().parent.parent.parent / "workspaces/vc-chief/vc/workflows"
@@ -129,6 +130,14 @@ class LobsterStepRunner:
 
 
 class WorkflowExecutionTests(unittest.TestCase):
+    # State handed from one ordered test to the next via type(self).<name>.
+    # Declared so the sharing is visible at the top of the class instead of
+    # being implied by an assignment several hundred lines down.
+    company_id: ClassVar[Any]
+    extraction_id: ClassVar[Any]
+    ingest_path_hash: ClassVar[Any]
+    lead_id: ClassVar[Any]
+
     @classmethod
     def setUpClass(cls):
         if not DATABASE_URL:

@@ -57,7 +57,8 @@ class SemanticContractTests(unittest.TestCase):
 
     def test_numeric_suffix_and_currency_normalization(self):
         function = getattr(self.helper, "parse_numeric_claim", None)
-        self.assertTrue(callable(function), "vcops.py must expose parse_numeric_claim(text)")
+        if not callable(function):
+            self.fail("vcops.py must expose parse_numeric_claim(text)")
         for case in CASES["numeric"]:
             with self.subTest(case=case["input"]):
                 result = function(case["input"])
@@ -67,7 +68,8 @@ class SemanticContractTests(unittest.TestCase):
 
     def test_fact_pair_classification_separates_contradiction_and_trajectory(self):
         function = getattr(self.helper, "classify_fact_pair", None)
-        self.assertTrue(callable(function), "vcops.py must expose classify_fact_pair(left, right)")
+        if not callable(function):
+            self.fail("vcops.py must expose classify_fact_pair(left, right)")
         for case in CASES["fact_pairs"]:
             with self.subTest(case=case["name"]):
                 result = function(case["left"], case["right"])
@@ -77,12 +79,13 @@ class SemanticContractTests(unittest.TestCase):
 
     def test_score_has_fixed_denominator_and_keeps_unknown_distinct_from_negative(self):
         function = getattr(self.helper, "calculate_score", None)
-        self.assertTrue(callable(function), "vcops.py must expose calculate_score(criteria, weights=None)")
+        if not callable(function):
+            self.fail("vcops.py must expose calculate_score(criteria, weights=None)")
         for case in CASES["scores"]:
             with self.subTest(case=case["name"]):
                 scores = case.get("criteria", {})
                 if "uniform_score" in case:
-                    scores = {name: case["uniform_score"] for name in CASES["weights"]}
+                    scores = dict.fromkeys(CASES["weights"], case["uniform_score"])
                 payload = {name: self.criterion(score) for name, score in scores.items()}
                 result = function(
                     payload,

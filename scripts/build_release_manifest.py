@@ -10,6 +10,7 @@ import json
 import stat
 import sys
 from pathlib import Path
+from typing import Any
 
 
 PACKAGE = Path(__file__).resolve().parent.parent
@@ -37,8 +38,8 @@ EXCLUDED_PREFIXES = {"_internal"}
 OPERATOR_DATA_ROOTS = {"inbox", "quarantine"}
 
 
-def inventory() -> list[dict[str, object]]:
-    entries: list[dict[str, object]] = []
+def inventory() -> list[dict[str, Any]]:
+    entries: list[dict[str, Any]] = []
     for path in sorted(PACKAGE.rglob("*")):
         relative = path.relative_to(PACKAGE).as_posix()
         if (
@@ -77,7 +78,7 @@ def inventory() -> list[dict[str, object]]:
     return entries
 
 
-def expected_manifest() -> dict[str, object]:
+def expected_manifest() -> dict[str, Any]:
     files = inventory()
     return {
         "manifest_version": 1,
@@ -124,14 +125,14 @@ def expected_manifest() -> dict[str, object]:
     }
 
 
-def manifest_differences(expected: dict[str, object], limit: int = 20) -> list[str]:
+def manifest_differences(expected: dict[str, Any], limit: int = 20) -> list[str]:
     """Summarize how the declared manifest differs from the current tree."""
     try:
         declared = json.loads(MANIFEST.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return ["manifest.json is missing or unreadable"]
     was = {entry["path"]: entry for entry in declared.get("files", [])}
-    now = {entry["path"]: entry for entry in expected["files"]}  # type: ignore[index]
+    now = {entry["path"]: entry for entry in expected["files"]}
     lines = [f"added: {path}" for path in sorted(set(now) - set(was))]
     lines += [f"removed: {path}" for path in sorted(set(was) - set(now))]
     lines += [
@@ -167,8 +168,29 @@ def main() -> int:
             return 1
         print(f"Manifest verified: {expected['file_count']} files")
         return 0
+    # Name what this write absorbs. docs/RUNBOOK.md §9 asks the operator to
+    # re-pin only changes they can account for, and they cannot do that if the
+    # write path reports a bare file count while silently promoting a stray
+    # backup, note or editor artifact into declared release content — which is
+    # exactly the debris `verify_release.py --pristine` rejected a moment
+    # earlier. Compute the delta before overwriting the declared inventory.
+    changes = (
+        []
+        if MANIFEST.is_file() and MANIFEST.read_text(encoding="utf-8") == rendered
+        else manifest_differences(expected)
+    )
     MANIFEST.write_text(rendered, encoding="utf-8")
     print(f"Manifest written: {expected['file_count']} files")
+    if changes:
+        print("Re-pinned against the current tree:", file=sys.stderr)
+        for line in changes:
+            print(f"  {line}", file=sys.stderr)
+        print(
+            "Each line above is now declared release content. If any of them is "
+            "not a change you made deliberately, treat it as an integrity "
+            "finding (docs/RUNBOOK.md §9) rather than a re-pin.",
+            file=sys.stderr,
+        )
     return 0
 
 

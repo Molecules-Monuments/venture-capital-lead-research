@@ -379,6 +379,10 @@ The context window is part of the example because the shipped default (272000)
 describes a hosted model, and in Ollama mode this value is also what the server
 is asked to allocate.
 
+Applying that block to an already-reviewed deployment also requires the matching
+profile edit described under [Switching a model or search
+provider](#switching-a-model-or-search-provider); `.env` alone fails closed.
+
 In Ollama mode `VC_MODEL_CONTEXT_WINDOW` sets two things: the prompt budget
 OpenClaw packs to, and the `num_ctx` the renderer sends with every request.
 Ollama otherwise applies its own default context, which is usually much smaller,
@@ -409,8 +413,41 @@ not call provider-specific search tools. Configuration controls the provider:
 Ollama and custom model modes must select an explicit search provider; `auto`
 is rejected so a local model does not silently lose research capability or
 route unpredictably. Only the selected search plugins and SecretRefs are added
-to the effective runtime configuration. Switching providers is an `.env`
-change followed by validation, render, image/config gate, and gateway recreate.
+to the effective runtime configuration.
+
+### Switching a model or search provider
+
+A provider switch is **not** an `.env` change alone. `check_customization.py`
+binds five reviewed profile values to the deployed environment —
+`models.provider`, `models.primary`, `models.fast`, `search.provider`, and
+`search.fetch_provider` — and every lifecycle path (`bootstrap.sh`,
+`update.sh`, `restore.sh`, `rotate_runtime_role.sh`) runs it. Editing `.env`
+without the matching `config/customization-profile.json` edit fails closed on
+the profile/environment mismatch before the re-rendered config can reach the
+gateway. This is the same rule [RUNBOOK.md](docs/RUNBOOK.md) §6 applies to a
+channel change, for the same reason: the reviewed selection and the deployed
+selection may never silently diverge.
+
+Change both in one reviewed change, then:
+
+```sh
+./scripts/check_env.sh .env
+python3 -B scripts/check_customization.py config/customization-profile.json .env
+python3 -B scripts/render_channel_config.py .env
+docker compose -f docker-compose.yml -p openclaw-lead-research-v3 --env-file .env config --quiet
+docker compose -f docker-compose.yml -p openclaw-lead-research-v3 --env-file .env run --rm --no-deps openclaw-state-init
+docker compose -f docker-compose.yml -p openclaw-lead-research-v3 --env-file .env up -d --wait --force-recreate --no-deps openclaw-gateway
+```
+
+The `openclaw-state-init` run is required: the gateway reads the rendered
+config from the runtime-config volume and that one-shot service is its only
+writer, so recreating the gateway alone keeps the previous provider mounted.
+Re-running `./scripts/bootstrap.sh` does the same thing. Record the benchmark
+that justified the switch in the profile's `models.benchmark_record` or
+`search.evaluation_record`, and re-run the affected research regressions and
+the exact-image/config gates. A non-bundled search provider additionally needs
+its plugin package pinned and the image rebuilt — see
+[CUSTOMIZATION.md](CUSTOMIZATION.md).
 
 Search providers receive queries and may retain or process them under their own
 terms. Search output is untrusted, time-dependent data. A provider switch can
@@ -893,6 +930,19 @@ python3 -B scripts/init_customization.py --update-hashes
 python3 -B scripts/build_release_manifest.py
 ```
 
+> [!IMPORTANT]
+> **On a deployment that has already been bootstrapped, re-run
+> `./scripts/bootstrap.sh` after editing any of these artifacts.** The reviewed
+> `workspaces/` tree is baked into the derived image read-only and is not
+> bind-mounted (see [Sandboxing and security design](#sandboxing-and-security-design)),
+> so a thesis or rubric edit re-pins cleanly and passes every package gate while
+> the running gateway keeps serving the previous version. Bootstrap rebuilds the
+> image, recreates the gateway and re-records the lock; it is safe to re-run
+> live. Assert the result with `python3 -B scripts/record_images.py
+> --validate-baked-sources deployment-lock.json`, which
+> [CUSTOMIZATION.md](CUSTOMIZATION.md#policy-edits-reach-the-deployment-only-through-a-rebuild)
+> explains in full.
+
 > [!NOTE]
 > The twenty review flags are attestations this package neither makes nor
 > evaluates: `check_customization.py` refuses the profile until each is `true`.
@@ -1195,6 +1245,7 @@ python3 -B scripts/verify_release.py --pristine
 ├── scripts/
 │   ├── bootstrap.sh                  # Install/readiness sequence
 │   ├── check_env.py / check_env.sh   # Non-evaluating fail-closed env validation
+│   ├── init_customization.py         # Scaffolds/re-pins the customization profile
 │   ├── check_customization.py        # Review/environment/artifact binding
 │   ├── render_channel_config.py      # Model/search/channel effective config
 │   ├── migrate.sh                    # Locked transactional migrations

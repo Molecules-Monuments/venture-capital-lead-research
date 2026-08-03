@@ -7,7 +7,7 @@ import unittest
 import uuid
 
 
-DATABASE_URL = os.environ.get("DATABASE_URL")
+DATABASE_URL = os.environ.get("DATABASE_URL", "")
 PSQL = shutil.which("psql")
 MIGRATION_CHECKSUMS = json.loads(os.environ.get("G4_MIGRATION_CHECKSUMS", "{}"))
 
@@ -49,7 +49,7 @@ class DatabaseContractTests(unittest.TestCase):
     @classmethod
     def query(cls, sql, expect_ok=True):
         proc = subprocess.run(
-            [PSQL, "-X", "-q", "-A", "-t", "-v", "ON_ERROR_STOP=1", DATABASE_URL, "-c", sql],
+            [str(PSQL), "-X", "-q", "-A", "-t", "-v", "ON_ERROR_STOP=1", DATABASE_URL, "-c", sql],
             text=True,
             capture_output=True,
             timeout=30,

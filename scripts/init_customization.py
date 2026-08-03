@@ -31,6 +31,39 @@ sys.dont_write_bytecode = True
 PACKAGE = Path(__file__).resolve().parent.parent
 EXAMPLE = PACKAGE / "config/customization-profile.example.json"
 TARGET = PACKAGE / "config/customization-profile.json"
+LOCK = PACKAGE / "deployment-lock.json"
+
+REBUILD_STEP = (
+    "A deployment is already recorded and its image predates this edit. The governed "
+    "artifacts under workspaces/ are baked into the derived image read-only and are not "
+    "bind-mounted, so this edit does not reach the running gateway until the image is "
+    "rebuilt: run ./scripts/bootstrap.sh. Confirm with `python3 -B "
+    "scripts/record_images.py --validate-baked-sources deployment-lock.json`."
+)
+
+
+def stale_deployment_step() -> str | None:
+    """Return the rebuild instruction when a recorded deployment predates this edit.
+
+    A tree that is ahead of its deployment is a normal intermediate state, so this
+    is a required next step rather than a failure — but it must be stated, because
+    no other gate in this package can see it (see record_images.py).
+    """
+    if not LOCK.is_file() or LOCK.is_symlink():
+        return None
+    try:
+        # Imported here, not at module scope: keeps the scaffold usable when
+        # record_images cannot be loaded.
+        from record_images import baked_sources_digest
+
+        recorded = json.loads(LOCK.read_text(encoding="utf-8")).get("baked_sources_sha256")
+        if recorded == baked_sources_digest():
+            return None
+    except (OSError, ValueError, ImportError):
+        # An unreadable or pre-3.0.0 lock cannot prove the image is current
+        # either, so say the same thing rather than staying silent.
+        pass
+    return REBUILD_STEP
 
 
 class DuplicateKeyError(ValueError):
@@ -108,6 +141,7 @@ def main() -> int:
             handle.write(rendered)
     TARGET.chmod(0o600)
 
+    rebuild_step = stale_deployment_step()
     print(
         json.dumps(
             {
@@ -115,7 +149,8 @@ def main() -> int:
                 "written": str(TARGET.relative_to(PACKAGE)),
                 "source": source,
                 "artifact_hashes_pinned": len(pinned),
-                "next_steps": [
+                "next_steps": ([rebuild_step] if rebuild_step else [])
+                + [
                     "Read every governed artifact listed in review.reviewed_artifacts; "
                     "the hashes only record which bytes you are attesting to.",
                     "Replace every <PLACEHOLDER> value, including organization, "
