@@ -78,8 +78,8 @@
     {
       "executable": false,
       "path": "Dockerfile.openclaw",
-      "sha256": "94e9c88afe104933b9113617955adb95246ec787102ac1bad57d697f018626ff",
-      "size": 4664
+      "sha256": "6ff00b3beacc793ff9f603ae5d6c49b2bb2911b6f155a9d4fdd034484dd1340e",
+      "size": 5623
     },
     {
       "executable": false,
@@ -210,8 +210,8 @@
     {
       "executable": false,
       "path": "docs/RUNBOOK.md",
-      "sha256": "a69fa4e437a929a68c235a36ddc8ce173a1f6bf5e8a13c37c54fc90fb24bcebd",
-      "size": 48622
+      "sha256": "4c7becb3c16fec05dc38965f27cb31f5f54f4496e3e2671ac8bedbe44f000628",
+      "size": 49674
     },
     {
       "executable": false,
@@ -612,8 +612,8 @@
     {
       "executable": true,
       "path": "scripts/run_g6_image.py",
-      "sha256": "e3f8103377715f0c63be042d6805c137ccc23965d466e9b4ef0d10e8294e70e7",
-      "size": 14815
+      "sha256": "f766225f3def68f116b1c92a99bd2b34263a2a8d3a159479388911ee8bf9746c",
+      "size": 15071
     },
     {
       "executable": true,
@@ -822,8 +822,8 @@
     {
       "executable": false,
       "path": "tests/infrastructure/test_infrastructure_contract.py",
-      "sha256": "da6cf56ee62d75937e4fdf42777ab02982627772fe17e47db1049e5a5fe1b47d",
-      "size": 34656
+      "sha256": "d889f36578a662c089d0a1b609b13d9493515f203d90903e228ae306872a29b3",
+      "size": 34703
     },
     {
       "executable": false,
