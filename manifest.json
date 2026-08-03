@@ -72,8 +72,8 @@
     {
       "executable": false,
       "path": "CLAUDE.md",
-      "sha256": "fb29a74bcc9ad9ae56a33a8345e434bf7c60198690bbf4451d0ad303b9367452",
-      "size": 4913
+      "sha256": "b768652e736e7a3c956d008e585c3f44fc0ab7ed55ea6e3f2ea650e077abd22b",
+      "size": 5452
     },
     {
       "executable": false,
@@ -372,14 +372,14 @@
     {
       "executable": false,
       "path": "requirements-dev.in",
-      "sha256": "b48c718a80383a9a4b5e3b43135afd74ad2dad4a8893dfe041e1ebaea3be1934",
-      "size": 331
+      "sha256": "427811ecad97793dff97976861f9ec62b6c4c22952ebcad733bfff1c490b9828",
+      "size": 342
     },
     {
       "executable": false,
       "path": "requirements-dev.lock",
-      "sha256": "8a8b80b16446c5c2a09a68a9fc4b070d85614c9c44869ef0074accd05e99643c",
-      "size": 34305
+      "sha256": "bbbf19e76787fbce63e03b451d84177ddc21696157b6fc56ef3a1d0f2c7e55e1",
+      "size": 35879
     },
     {
       "executable": false,
