@@ -1141,9 +1141,12 @@ python3 -B scripts/verify_offline.py
 
 This runs agent/schema, provider/context, resolution, infrastructure,
 image-gate base contract, workflow/runner, recovery/release, scoring, and
-hostile-document suites, plus Python/shell syntax, Ruff, the skill/agent/router
-system validation, fixed-workflow validation, manifest currency, and pristine
-release inventory. It needs no live provider credential.
+hostile-document suites, plus Python/shell syntax, Ruff, the ty type checker,
+the skill/agent/router system validation, fixed-workflow validation, manifest
+currency, and pristine release inventory. Both checkers are pinned with hashes
+in `requirements-dev.lock` and are resolved from the gate's own virtualenv
+before `PATH`, so a differently-versioned copy cannot decide the result. It
+needs no live provider credential.
 
 ### Disposable PostgreSQL gate
 

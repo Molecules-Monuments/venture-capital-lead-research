@@ -37,7 +37,7 @@ Every gate below was executed after those changes:
 
 | Surface | Result | Command |
 | --- | ---: | --- |
-| Offline verification (all suites, ruff, shell syntax, fixed workflows, skill system, manifest currency, pristine) | **PASS — 216 tests, 24/24 checks** | `python3 -B scripts/verify_offline.py` |
+| Offline verification (all suites, ruff, ty, shell syntax, fixed workflows, skill system, manifest currency, pristine) | **PASS — 216 tests, 25/25 checks** | `python3 -B scripts/verify_offline.py` |
 | Disposable Postgres hard gate | **PASS — 85/85** across seven suites, migrations 001–017 applied twice | `python3 -B scripts/run_g4.py` |
 | Exact-image gate against the image rebuilt from this tree | **PASS — 8/8** (provenance, workshop guard, all five channel schemas, unknown-field fail-closed) | `python3 -B scripts/run_g6_image.py --image openclaw-lead-research:3.0.0` |
 | Real deployment gate (bootstrap → negative-auth proof → live fixed workflows → teardown) | **PASS** | `python3 -B scripts/run_g8_deployment.py` |

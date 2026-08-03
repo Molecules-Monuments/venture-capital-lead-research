@@ -90,8 +90,8 @@
     {
       "executable": false,
       "path": "README.md",
-      "sha256": "e08f0f7322ba1f81fd35967907c54146d3965e24776bc71f5fc915a0551b5073",
-      "size": 81643
+      "sha256": "26887d570c40cdd174780fe8903f04854e925d9b139b2ebe04d3de7333ca9c4c",
+      "size": 81849
     },
     {
       "executable": false,
@@ -228,8 +228,8 @@
     {
       "executable": false,
       "path": "docs/V3_RELEASE_EVIDENCE.md",
-      "sha256": "8b700df1b263f61b87eb95b987831cd364882d23d17d0109fa355645c1814bd8",
-      "size": 10201
+      "sha256": "1a92be82bb1ca8b8a2c490ac627eb7f9071b76d2267edda7659182972681b305",
+      "size": 10205
     },
     {
       "executable": false,
@@ -654,8 +654,8 @@
     {
       "executable": true,
       "path": "scripts/verify_offline.py",
-      "sha256": "771962f9e4ab8f764f7044232b7b9c5f52ca2e6e00adf1caed87ef26d4447ba3",
-      "size": 7942
+      "sha256": "d5b274c935bfd87cfc10a4907bbbdcce69b77bf071ba339002c814a4acabe3ff",
+      "size": 9208
     },
     {
       "executable": true,
