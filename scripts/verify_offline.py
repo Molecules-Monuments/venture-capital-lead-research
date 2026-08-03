@@ -110,6 +110,28 @@ def syntax_checks() -> list[dict[str, Any]]:
     return checks
 
 
+def locked_tool(name: str) -> Path:
+    """Resolve a checker from this gate's own virtualenv, then from PATH.
+
+    The virtualenv is tried first on purpose: both checkers are pinned with
+    hashes in requirements-dev.lock, and a PATH copy of a different version
+    would silently decide what this gate reports.
+    """
+    tool = Path(sys.executable).with_name(name)
+    if tool.is_file():
+        return tool
+    discovered = shutil.which(name)
+    return Path(discovered) if discovered else tool
+
+
+def missing_tool(name: str, label: str) -> dict[str, Any]:
+    return {
+        "name": name,
+        "result": "FAIL",
+        "detail": f"{label} is missing; install the complete hash-locked requirements-dev.lock",
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -143,20 +165,33 @@ def main() -> int:
     args = parser.parse_args()
     checks = [test_suite(*suite) for suite in SUITES]
     checks.extend(syntax_checks())
-    ruff = Path(sys.executable).with_name("ruff")
-    if not ruff.is_file():
-        discovered_ruff = shutil.which("ruff")
-        ruff = Path(discovered_ruff) if discovered_ruff else ruff
+    ruff = locked_tool("ruff")
     checks.append(
         command_check(
             "ruff", [str(ruff), "check", ".", "--exclude", "_internal", "--no-cache"]
         )
         if ruff.is_file()
-        else {
-            "name": "ruff",
-            "result": "FAIL",
-            "detail": "Ruff is missing; install the complete hash-locked requirements-dev.lock",
-        }
+        else missing_tool("ruff", "Ruff")
+    )
+    # ty resolves third-party imports from the interpreter it is given, so it is
+    # pointed at this gate's own interpreter — the locked virtualenv — rather
+    # than at whatever is on PATH. --python-version pins the deployed floor
+    # (Debian Python 3.11 in the derived image) instead of inferring it from the
+    # host, and --extra-search-path mirrors the sys.path insert several suites
+    # perform before importing check_env as a first-party module.
+    ty = locked_tool("ty")
+    checks.append(
+        command_check(
+            "ty",
+            [
+                str(ty), "check", ".",
+                "--python", sys.executable,
+                "--python-version", "3.11",
+                "--extra-search-path", "scripts",
+            ],
+        )
+        if ty.is_file()
+        else missing_tool("ty", "ty")
     )
     checks.extend(
         (
