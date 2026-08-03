@@ -19,6 +19,12 @@ args:
     default: ""
   company_domain:
     default: ""
+  # Injected by vcrun after argument validation (never caller-supplied):
+  # the sha256 of the canonical argument payload, which binds this run row
+  # to exactly these arguments so a reused key with changed arguments fails
+  # closed instead of silently sharing the earlier run.
+  input_digest:
+    default: ""
 
 steps:
   - id: preflight
@@ -79,6 +85,7 @@ steps:
       --lead-id "$VCOPS_LEAD_ID"
       --company-id "$VCOPS_COMPANY_ID"
       --idempotency-key "$LOBSTER_ARG_IDEMPOTENCY_KEY"
+      --input-digest "$LOBSTER_ARG_INPUT_DIGEST"
     timeout_ms: 20000
   - id: workflow_running
     env:

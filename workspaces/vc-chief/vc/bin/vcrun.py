@@ -9,6 +9,7 @@ pipeline, file-path, environment, working-directory, or command override.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -164,6 +165,13 @@ WORKFLOWS: dict[str, dict[str, Any]] = {
     },
 }
 
+# Added to the Lobster argument payload by the runner after validation, and
+# never accepted from the caller: `validate_workflow_args` has no such key in
+# any contract, so a caller that supplies one is rejected as an extra field.
+# Every fixed workflow declares it in its `args:` map and forwards it to
+# `workflow-start`, which stores it as the run's immutable argument binding.
+INJECTED_ARG_KEYS = frozenset({"input_digest"})
+
 IDEMPOTENCY_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$")
 DOMAIN_RE = re.compile(
     r"^(?=.{1,253}\Z)(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+"
@@ -173,6 +181,18 @@ DOMAIN_RE = re.compile(
 
 class VCRunError(RuntimeError):
     """Expected, structured command failure."""
+
+
+class _ProbeRefusal(Exception):
+    """A typed helper refusal from the pre-flight replay probe.
+
+    Carries the helper's own error object so a tampered replay and an
+    operator-cancelled run stay distinguishable from a runner malfunction.
+    """
+
+    def __init__(self, error: dict[str, Any]):
+        super().__init__(str(error.get("message", "workflow replay refused")))
+        self.error = error
 
 
 class _UsageError(Exception):
@@ -573,6 +593,80 @@ def _normalize_lobster_output(
     )
 
 
+def _run_helper(argv: list[str], *, label: str) -> tuple[int, dict[str, Any]]:
+    """Run one bounded vcops-workflow command and return its JSON envelope.
+
+    Shared by the pre-flight replay probe and the failure reconciliation: both
+    are short, single-object helper calls made outside the Lobster child, with
+    the same scrubbed environment and output bound.
+    """
+    try:
+        helper = subprocess.run(
+            ["/workspaces/vc-chief/vc/bin/vcops-workflow", *argv],
+            env={"PATH": "/usr/bin:/bin"},
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=30,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise VCRunError(f"Postgres {label} timed out") from exc
+    if len(helper.stdout.encode("utf-8")) > MAX_RECONCILIATION_BYTES:
+        raise VCRunError(f"Postgres {label} output exceeded its bound")
+    try:
+        result = json.loads(helper.stdout, object_pairs_hook=_unique_object)
+    except (json.JSONDecodeError, VCRunError) as exc:
+        raise VCRunError(f"Postgres {label} returned invalid JSON") from exc
+    if not isinstance(result, dict):
+        raise VCRunError(f"Postgres {label} returned invalid JSON")
+    return helper.returncode, result
+
+
+def _probe_workflow_replay(
+    *,
+    workflow: str,
+    idempotency_key: str,
+    input_digest: str,
+) -> dict[str, Any]:
+    """Classify a reused idempotency key before any workflow step runs.
+
+    This is what makes an unchanged retry of a completed operation the
+    documented no-op instead of a second execution: several intake workflows
+    create their company and lead rows before `workflow-start`, so the decision
+    has to be taken here, ahead of Lobster, not inside the graph.
+    """
+    contract = WORKFLOWS.get(workflow)
+    if contract is None:
+        raise VCRunError("cannot probe an unknown fixed workflow")
+    return_code, result = _run_helper(
+        [
+            "workflow-replay-probe",
+            "--workflow",
+            contract["database_workflow"],
+            "--idempotency-key",
+            idempotency_key,
+            "--input-digest",
+            input_digest,
+        ],
+        label="workflow replay probe",
+    )
+    if return_code != 0 or result.get("ok") is not True:
+        error = result.get("error")
+        if isinstance(error, dict) and isinstance(error.get("code"), str):
+            # A typed refusal (tampered replay, cancelled/lost run) is the
+            # answer, not a runner malfunction: surface it verbatim so the two
+            # cases stay distinguishable.
+            raise _ProbeRefusal(error)
+        raise VCRunError("Postgres workflow replay probe failed")
+    probe = result.get("workflow_replay_probe")
+    if not isinstance(probe, dict) or probe.get("outcome") not in {
+        "absent", "in_progress", "completed", "retried", "unverifiable",
+    }:
+        raise VCRunError("Postgres workflow replay probe returned an invalid outcome")
+    return probe
+
+
 def _reconcile_workflow_failure(
     *,
     workflow: str,
@@ -582,34 +676,19 @@ def _reconcile_workflow_failure(
     contract = WORKFLOWS.get(workflow)
     if contract is None:
         raise VCRunError("cannot reconcile failure for an unknown fixed workflow")
-    try:
-        helper = subprocess.run(
-            [
-                "/workspaces/vc-chief/vc/bin/vcops-workflow",
-                "workflow-reconcile-failure",
-                "--workflow",
-                contract["database_workflow"],
-                "--idempotency-key",
-                idempotency_key,
-                "--reason",
-                reason,
-            ],
-            env={"PATH": "/usr/bin:/bin"},
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            timeout=30,
-        )
-    except subprocess.TimeoutExpired as exc:
-        raise VCRunError("Postgres workflow-failure reconciliation timed out") from exc
-    if len(helper.stdout.encode("utf-8")) > MAX_RECONCILIATION_BYTES:
-        raise VCRunError("Postgres workflow-failure reconciliation output exceeded its bound")
-    try:
-        result = json.loads(helper.stdout, object_pairs_hook=_unique_object)
-    except (json.JSONDecodeError, VCRunError) as exc:
-        raise VCRunError("Postgres workflow-failure reconciliation returned invalid JSON") from exc
-    if helper.returncode != 0 or not isinstance(result, dict) or result.get("ok") is not True:
+    return_code, result = _run_helper(
+        [
+            "workflow-reconcile-failure",
+            "--workflow",
+            contract["database_workflow"],
+            "--idempotency-key",
+            idempotency_key,
+            "--reason",
+            reason,
+        ],
+        label="workflow-failure reconciliation",
+    )
+    if return_code != 0 or result.get("ok") is not True:
         raise VCRunError("Postgres workflow-failure reconciliation failed")
     reconciliation = result.get("workflow_failure_reconciliation")
     if not isinstance(reconciliation, dict):
@@ -632,16 +711,37 @@ def _attach_failure_reconciliation(
     failure_hook: Any,
     reason: str,
 ) -> None:
+    """Record the cleanup outcome on the failure payload without replacing it.
+
+    A reconciliation that itself fails used to be raised as a VCRunError, which
+    discarded `payload` — including the Lobster envelope naming the step that
+    actually failed — and left the operator with only the second, downstream
+    message. The original failure is the diagnostic one, so both are reported:
+    the run still exits non-zero, and `postgres_reconciliation` says whether the
+    database was left reconciled.
+    """
     try:
         reconciliation = failure_hook(reason)
     except (OSError, subprocess.SubprocessError, VCRunError) as exc:
-        raise VCRunError(
-            f"Lobster failed and Postgres workflow-failure reconciliation also failed: {exc}"
-        ) from exc
+        payload["postgres_reconciliation"] = {
+            "ok": False,
+            "reason": reason,
+            "error": {
+                "code": "reconciliation_failed",
+                "message": f"Postgres workflow-failure reconciliation did not complete: {exc}",
+            },
+        }
+        return
     if not isinstance(reconciliation, dict) or reconciliation.get("ok") is not True:
-        raise VCRunError(
-            "Lobster failed and Postgres workflow-failure reconciliation returned an invalid result"
-        )
+        payload["postgres_reconciliation"] = {
+            "ok": False,
+            "reason": reason,
+            "error": {
+                "code": "reconciliation_invalid",
+                "message": "Postgres workflow-failure reconciliation returned an invalid result",
+            },
+        }
+        return
     payload["postgres_reconciliation"] = reconciliation
 
 
@@ -843,6 +943,14 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if args.command in {"run", "dry-run"}:
             payload = validate_workflow_args(args.workflow, args.args_json)
+            # The canonical argument digest binds the run row to exactly these
+            # arguments. It is computed here, over the validated and normalized
+            # payload, and injected rather than accepted: a caller-supplied
+            # digest would be self-certifying.
+            input_digest = hashlib.sha256(payload.encode("utf-8")).hexdigest()
+            parsed_payload = json.loads(payload, object_pairs_hook=_unique_object)
+            parsed_payload["input_digest"] = input_digest
+            payload = json.dumps(parsed_payload, sort_keys=True, separators=(",", ":"))
             workflow_path = WORKFLOW_ROOT / WORKFLOWS[args.workflow]["file"]
             command = [
                 str(LOBSTER_BIN),
@@ -855,9 +963,27 @@ def main(argv: list[str] | None = None) -> int:
             command.extend(["--file", str(workflow_path), "--args-json", payload])
             failure_hook = None
             if args.command == "run":
-                idempotency_key = json.loads(payload, object_pairs_hook=_unique_object)[
-                    "idempotency_key"
-                ]
+                idempotency_key = parsed_payload["idempotency_key"]
+                _validate_install()
+                probe = _probe_workflow_replay(
+                    workflow=args.workflow,
+                    idempotency_key=idempotency_key,
+                    input_digest=input_digest,
+                )
+                if probe["outcome"] == "completed":
+                    # The documented idempotent replay: this exact operation
+                    # already succeeded, so its records are the result and no
+                    # step runs a second time.
+                    _emit(
+                        {
+                            "ok": True,
+                            "runner": "vcrun",
+                            "exit_code": 0,
+                            "workflow": args.workflow,
+                            "idempotent_replay": probe,
+                        }
+                    )
+                    return 0
 
                 def failure_hook(reason: str) -> dict[str, Any]:
                     return _reconcile_workflow_failure(
@@ -890,6 +1016,12 @@ def main(argv: list[str] | None = None) -> int:
         # thread); still honor the JSON contract and reap any supervised child.
         _kill_current_child()
         return _error("interrupted", "vcrun interrupted")
+    except _ProbeRefusal as exc:
+        return _error(
+            str(exc.error.get("code") or "workflow_replay_refused"),
+            str(exc.error.get("message") or "workflow replay refused"),
+            details=exc.error.get("details"),
+        )
     except VCRunError as exc:
         return _error("vcrun_error", str(exc))
     except OSError as exc:

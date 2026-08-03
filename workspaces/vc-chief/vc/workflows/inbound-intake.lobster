@@ -20,6 +20,12 @@ args:
     default: ""
   channel_event_id:
     default: ""
+  # Injected by vcrun after argument validation (never caller-supplied):
+  # the sha256 of the canonical argument payload, which binds this run row
+  # to exactly these arguments so a reused key with changed arguments fails
+  # closed instead of silently sharing the earlier run.
+  input_digest:
+    default: ""
 
 steps:
   - id: preflight
@@ -90,6 +96,7 @@ steps:
       --lead-id "$VCOPS_LEAD_ID"
       --company-id "$VCOPS_COMPANY_ID"
       --idempotency-key "$LOBSTER_ARG_IDEMPOTENCY_KEY"
+      --input-digest "$LOBSTER_ARG_INPUT_DIGEST"
     timeout_ms: 20000
 
   - id: workflow_running
@@ -103,6 +110,16 @@ steps:
       --expected-revision "$VCOPS_EXPECTED_REVISION"
     timeout_ms: 20000
 
+  # --confidentiality is `internal`, not `confidential`, and that is specific to
+  # this lane. The file was placed on the deployment host by the operator,
+  # through a read-only mount no channel can reach, precisely so this deployment
+  # could analyse it; unlike a channel attachment there is no second principal to
+  # withhold it from. Classifying it above the model ceiling made the lead's own
+  # deck invisible to `lead-show` and unreadable by every lane, which silently
+  # ended the documented document-to-memo path. Channel attachments
+  # (document-ingest) stay `confidential`: those are bound to one verified sender
+  # and are read only with that sender's capability. --trust-level is unchanged —
+  # the CONTENT remains untrusted input whose instructions are never followed.
   - id: document_extract
     env:
       VCOPS_LEAD_ID: "$create_lead.json.lead.id"
@@ -116,7 +133,7 @@ steps:
       --workflow-request-id "$VCOPS_WORKFLOW_REQUEST_ID"
       --idempotency-key "$LOBSTER_ARG_IDEMPOTENCY_KEY"
       --trust-level untrusted_upload
-      --confidentiality confidential
+      --confidentiality internal
       --retention-class standard
     timeout_ms: 120000
 

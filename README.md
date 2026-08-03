@@ -777,7 +777,7 @@ Design decisions:
   identity, expiry, and hashes are consumed in the same transaction as the
   governed mutation.
 
-Migrations `001` through `017` are immutable forward migrations and are
+Migrations `001` through `018` are immutable forward migrations and are
 checksum registered. Add a new migration; never edit one already deployed.
 See [DATA_MODEL.md](docs/DATA_MODEL.md); for a single-file view of the whole
 schema, [docs/SCHEMA.sql](docs/SCHEMA.sql) is a generated, read-only DDL
@@ -1128,6 +1128,22 @@ docker compose --env-file .env exec openclaw-gateway \
 Use a serializer for real JSON. Use a new opaque idempotency key for a new
 logical operation and reuse a key only to recover that same operation.
 
+Reusing a key is always safe, and what it does depends on the state of the run
+it names:
+
+| State of the earlier run | Reusing the key |
+| --- | --- |
+| never started | opens the run and executes normally |
+| still in progress | resumes the same run; nothing is duplicated |
+| reconciled as `failed` | reopens that same run for a fresh attempt (`attempt` increments) |
+| `succeeded` | executes nothing and returns the existing records as `idempotent_replay` |
+| `cancelled` or `lost` | refused with `workflow_run_not_retryable`; a new operation needs a new key |
+
+The runner decides this *before* the first step runs, by comparing a sha256 of
+its own canonical argument payload against the digest stored on the run. Reusing
+a key with any changed argument is refused as `idempotency_payload_mismatch` and
+mutates nothing.
+
 ## Testing
 
 The gates deliberately separate local software evidence from live deployment
@@ -1244,7 +1260,7 @@ python3 -B scripts/verify_release.py --pristine
 │   └── runtime/                      # Generated effective config; not hand-edited
 ├── migrations/
 │   ├── 000_roles.sh                  # Owner/runtime role reconciliation
-│   └── 001_*.sql ... 017_*.sql       # Immutable forward migrations
+│   └── 001_*.sql ... 018_*.sql       # Immutable forward migrations
 ├── scripts/
 │   ├── bootstrap.sh                  # Install/readiness sequence
 │   ├── check_env.py / check_env.sh   # Non-evaluating fail-closed env validation
@@ -1310,6 +1326,16 @@ Adversarial-audit narratives, source-analysis helpers, and the derivation
 baseline are retained locally under `_internal/` — excluded from both the
 deployable manifest and the published repository (see `.gitignore`). Runtime
 authority lives in config, workspaces, migrations, and code.
+
+The published inventory is the *source* package, not a deployable-files-only
+subset, so it also carries the material needed to change it safely and to audit
+how it was built: `CLAUDE.md`, `ruff.toml`, the four numbered planning
+documents, `research/`, `evals/`, and `tests/`. None of it is read at runtime,
+and all of it is declared in `manifest.json` and covered by
+`verify_release.py`. Anything at the package root that is *not* declared —
+including your own working notes — is reported by `verify_release.py
+--pristine` as an unexpected file; keep such notes outside the package, or
+expect that one line until you remove them.
 
 ## Operations and recovery
 

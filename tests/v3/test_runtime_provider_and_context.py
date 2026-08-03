@@ -95,6 +95,69 @@ class RuntimeProviderTests(unittest.TestCase):
             self.assertEqual(0, process.returncode, process.stdout + process.stderr)
             return json.loads(output_path.read_text(encoding="utf-8"))
 
+    def render_expecting_failure(self, body: str) -> str:
+        with tempfile.TemporaryDirectory(prefix="provider-reject-") as raw:
+            root = Path(raw)
+            env_path = root / "runtime.env"
+            output_path = root / "openclaw.json"
+            env_path.write_text(body, encoding="utf-8")
+            env_path.chmod(0o600)
+            process = subprocess.run(
+                [
+                    sys.executable, "-B", str(ROOT / "scripts/render_channel_config.py"),
+                    str(env_path), str(output_path),
+                ],
+                cwd=ROOT, text=True, capture_output=True, check=False,
+                env={"PATH": os.environ.get("PATH", ""), "PYTHONDONTWRITEBYTECODE": "1"},
+            )
+            self.assertEqual(1, process.returncode, process.stdout + process.stderr)
+            self.assertFalse(output_path.exists(), "a rejected render must write no config")
+            return process.stdout + process.stderr
+
+    def test_renderer_refuses_every_runtime_selection_check_env_refuses(self) -> None:
+        # The renderer is invoked directly in documented snippets, so it cannot
+        # rely on check_env.sh having run first. Each case below was accepted by
+        # the renderer while check_env rejected it, which meant a stale or
+        # partial .env rendered a runtime config that no lifecycle path would
+        # have allowed.
+        cases = {
+            "plain-HTTP custom provider": [
+                ("VC_MODEL_PROVIDER", "custom"), ("OPENAI_API_KEY", ""),
+                ("VC_CUSTOM_PROVIDER_ID", "acme"), ("VC_CUSTOM_BASE_URL", "http://models.acme.example/v1"),
+                ("VC_CUSTOM_API", "anthropic-messages"), ("VC_CUSTOM_API_KEY", "test-only-key"),
+                ("VC_PRIMARY_MODEL", "acme/model-a"), ("VC_FAST_MODEL", "acme/model-a"),
+                ("VC_WEB_SEARCH_PROVIDER", "duckduckgo"),
+            ],
+            "public Ollama origin": [
+                ("VC_MODEL_PROVIDER", "ollama"), ("OPENAI_API_KEY", ""),
+                ("VC_OLLAMA_BASE_URL", "http://ollama.public.example:11434"),
+                ("VC_PRIMARY_MODEL", "ollama/llama4"), ("VC_FAST_MODEL", "ollama/llama4"),
+                ("VC_WEB_SEARCH_PROVIDER", "duckduckgo"),
+            ],
+            "auto search under a local model": [
+                ("VC_MODEL_PROVIDER", "ollama"), ("OPENAI_API_KEY", ""),
+                ("VC_OLLAMA_BASE_URL", "http://host.docker.internal:11434"),
+                ("VC_PRIMARY_MODEL", "ollama/llama4"), ("VC_FAST_MODEL", "ollama/llama4"),
+                ("VC_WEB_SEARCH_PROVIDER", "auto"),
+            ],
+            "Tavily without its key": [
+                ("VC_WEB_SEARCH_PROVIDER", "tavily"), ("TAVILY_API_KEY", ""),
+            ],
+        }
+        for label, edits in cases.items():
+            with self.subTest(case=label):
+                body = configured_example()
+                for key, value in edits:
+                    body = replace_line(body, key, value)
+                # Precondition: check_env genuinely refuses this environment.
+                with tempfile.TemporaryDirectory(prefix="provider-precheck-") as raw:
+                    probe = Path(raw) / "probe.env"
+                    probe.write_text(body, encoding="utf-8")
+                    probe.chmod(0o600)
+                    parsed = check_env.parse_dotenv(probe)
+                self.assertNotEqual([], check_env.validate_runtime_selection(parsed), label)
+                self.render_expecting_failure(body)
+
     def test_control_ui_origins_follow_the_configured_gateway_port(self) -> None:
         body = configured_example().replace(
             "OPENCLAW_GATEWAY_PORT=18789", "OPENCLAW_GATEWAY_PORT=28789"

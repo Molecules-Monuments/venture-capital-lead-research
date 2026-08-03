@@ -279,7 +279,7 @@ def trusted_context(key: str, *, scopes: list[str], media_paths: list[str]) -> s
     return f"{encoded}.{signature}"
 
 
-def vcrun(workflow: str, arguments: dict[str, str]) -> dict:
+def vcrun(workflow: str, arguments: dict[str, str], *, expect_ok: bool = True) -> dict:
     process = run(
         compose(
             "exec", "-T", "openclaw-gateway", "/workspaces/vc-chief/vc/bin/agent/vcrun",
@@ -301,10 +301,15 @@ def vcrun(workflow: str, arguments: dict[str, str]) -> dict:
                 f"vcrun {workflow} produced no JSON envelope: rc={process.returncode} "
                 f"stderr tail={process.stderr[-2000:]!r}"
             ) from None
-    if process.returncode != 0 or payload.get("ok") is not True:
+    succeeded = process.returncode == 0 and payload.get("ok") is True
+    if expect_ok and not succeeded:
         raise GateError(
             f"vcrun {workflow} failed: rc={process.returncode} payload={json.dumps(payload)[:4000]} "
             f"stderr tail={process.stderr[-1000:]!r}"
+        )
+    if not expect_ok and succeeded:
+        raise GateError(
+            f"vcrun {workflow} unexpectedly succeeded: payload={json.dumps(payload)[:4000]}"
         )
     return payload
 
@@ -382,9 +387,12 @@ def workflow_proofs(secrets_map: dict[str, str]) -> str:
             media_paths=[MEDIA_DOCUMENT],
         ),
     })
+    # Bound once, not inline: the replay assertions below re-send exactly these
+    # arguments, and a freshly generated name would be a *changed* payload.
+    scout_company = f"G8 Scouted {uuid.uuid4().hex[:10]}"
     vcrun("outbound-scout", {
         "idempotency_key": f"{prefix}-scout",
-        "company_name": f"G8 Scouted {uuid.uuid4().hex[:10]}",
+        "company_name": scout_company,
         "company_domain": f"{prefix}-scout.invalid",
         "lead_title": "G8 scouted lead",
     })
@@ -408,9 +416,49 @@ def workflow_proofs(secrets_map: dict[str, str]) -> str:
     ).split()
     if len(counts) != 3 or any(value == "0" for value in counts):
         raise GateError(f"autonomous run left an empty knowledge base: facts/sources/links={counts}")
+
+    # Replay semantics through the real runner, against the run the scout above
+    # committed. The step-interpreter suites cover the helper contract; only this
+    # gate proves what an operator actually sees from `vcrun run`.
+    scout_arguments = {
+        "idempotency_key": f"{prefix}-scout",
+        "company_name": scout_company,
+        "company_domain": f"{prefix}-scout.invalid",
+        "lead_title": "G8 scouted lead",
+    }
+    replay = vcrun("outbound-scout", scout_arguments)
+    if replay.get("idempotent_replay", {}).get("outcome") != "completed":
+        raise GateError(
+            "an unchanged retry of a succeeded workflow must report an idempotent "
+            f"replay, not re-execute: payload={json.dumps(replay)[:2000]}"
+        )
+    leads_after_replay = owner_sql(f"SELECT count(*) FROM leads WHERE idempotency_key='{prefix}-scout'")
+    if leads_after_replay != "1":
+        raise GateError(f"idempotent replay duplicated business rows: leads={leads_after_replay}")
+
+    # Same key, different arguments: refused, distinctly from the replay above,
+    # and without mutating anything.
+    tampered = vcrun(
+        "outbound-scout",
+        {**scout_arguments, "lead_title": "G8 tampered replay"},
+        expect_ok=False,
+    )
+    if tampered.get("error", {}).get("code") != "idempotency_payload_mismatch":
+        raise GateError(
+            "a reused key with changed arguments must fail closed as "
+            f"idempotency_payload_mismatch: payload={json.dumps(tampered)[:2000]}"
+        )
+    runs_after_tamper = owner_sql(
+        f"SELECT count(*) FROM workflow_runs WHERE idempotency_key='{prefix}-scout'"
+    )
+    if runs_after_tamper != "1":
+        raise GateError(f"a refused replay created workflow rows: runs={runs_after_tamper}")
+
     return (
         "runtime-preflight, preference-observe, preference-forget, document-ingest, "
         "outbound-scout, evidence-record succeeded via real vcrun/Lobster; "
+        "unchanged retry returned an idempotent replay and a changed-argument "
+        "retry failed closed without mutation; "
         f"knowledge base non-empty (facts/sources/links={'/'.join(counts)})"
     )
 

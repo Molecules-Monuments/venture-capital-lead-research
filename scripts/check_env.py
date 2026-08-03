@@ -136,10 +136,21 @@ FORBIDDEN_AMBIENT_COMPOSE_KEYS = {
     "COMPOSE_PROJECT_DIR",
 }
 
-UUID_RE = re.compile(
-    r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-"
-    r"[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}"
+# Microsoft directory object IDs (app, tenant, user) are GUIDs in the plain
+# 8-4-4-4-12 hexadecimal form. This deliberately does NOT demand the RFC-4122
+# version (1-5) and variant (8|9|a|b) nibbles: Entra guarantees the format, not
+# those bits, and historic tenants do contain GUIDs that do not conform. Every
+# such value would have been refused as "not a stable UUID" — a message pointing
+# at the wrong cause, for an identifier that is perfectly stable.
+#
+# What this check exists to reject is a display name or a UPN in place of an
+# immutable object ID, and the shape alone establishes that. The all-zero GUID
+# is refused separately: it is well-formed but never a real principal.
+MSTEAMS_GUID_RE = re.compile(
+    r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-"
+    r"[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
 )
+NIL_GUID = "00000000-0000-0000-0000-000000000000"
 
 OPENCLAW_IMAGE = (
     "ghcr.io/openclaw/openclaw:2026.7.1@"
@@ -300,11 +311,21 @@ def validate_channel_selection(values: dict[str, str]) -> list[str]:
 
     if selected == "msteams" and complete[selected]:
         for key in ("MSTEAMS_APP_ID", "MSTEAMS_TENANT_ID"):
-            if not UUID_RE.fullmatch(values[key]):
-                errors.append(f"{key} must be a stable UUID, not a display name or UPN")
+            if not MSTEAMS_GUID_RE.fullmatch(values[key]):
+                errors.append(
+                    f"{key} must be a directory object GUID in 8-4-4-4-12 hexadecimal form, "
+                    "not a display name or UPN"
+                )
+            elif values[key].lower() == NIL_GUID:
+                errors.append(f"{key} must not be the all-zero GUID")
         users = _comma_list(values["MSTEAMS_ALLOWED_USER_IDS"], "MSTEAMS_ALLOWED_USER_IDS", errors)
-        if any(not UUID_RE.fullmatch(item) for item in users):
-            errors.append("MSTEAMS_ALLOWED_USER_IDS must contain stable UUIDs, not display names or UPNs")
+        if any(not MSTEAMS_GUID_RE.fullmatch(item) for item in users):
+            errors.append(
+                "MSTEAMS_ALLOWED_USER_IDS must contain directory object GUIDs in 8-4-4-4-12 "
+                "hexadecimal form, not display names or UPNs"
+            )
+        elif any(item.lower() == NIL_GUID for item in users):
+            errors.append("MSTEAMS_ALLOWED_USER_IDS must not contain the all-zero GUID")
         if len(values["MSTEAMS_APP_PASSWORD"]) < 16 or re.search(r"\s", values["MSTEAMS_APP_PASSWORD"]):
             errors.append("MSTEAMS_APP_PASSWORD must contain at least 16 non-whitespace characters")
         conversation_id = re.compile(r"19:[^\s/]{5,}@thread\.(?:tacv2|skype)")

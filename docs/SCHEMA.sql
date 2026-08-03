@@ -3,7 +3,7 @@
 --
 -- This file is NOT a migration and is applied by nothing: migrate.sh only reads
 -- migrations/NNN_*.sql, and this file lives under docs/. It is a schema-only
--- snapshot of the database after the 17 forward migrations 001-017 are
+-- snapshot of the database after the 18 forward migrations 001-018 are
 -- applied in order (against a cluster with the openclaw_runtime role the
 -- migrations' grants reference), provided as a single-file view so the whole
 -- schema can be read and audited in one place.
@@ -1163,7 +1163,8 @@ BEGIN
      OR NEW.workflow_version IS DISTINCT FROM OLD.workflow_version
      OR NEW.policy_version IS DISTINCT FROM OLD.policy_version
      OR NEW.idempotency_key IS DISTINCT FROM OLD.idempotency_key
-     OR NEW.input_hash IS DISTINCT FROM OLD.input_hash THEN
+     OR NEW.input_hash IS DISTINCT FROM OLD.input_hash
+     OR NEW.input_digest IS DISTINCT FROM OLD.input_digest THEN
     RAISE EXCEPTION 'workflow identity and version binding are immutable'
       USING ERRCODE = '23514';
   END IF;
@@ -1205,6 +1206,15 @@ BEGIN
   ELSIF OLD.status = 'waiting' AND NEW.status IN ('running', 'blocked', 'succeeded', 'failed', 'cancelled', 'lost') THEN
     allowed := true;
   ELSIF OLD.status = 'blocked' AND NEW.status IN ('running', 'waiting', 'failed', 'cancelled', 'lost') THEN
+    allowed := true;
+  -- Recovery retry. Bound to the full reset performed by retry_workflow_run()
+  -- so that no other writer can reach it: a transition that merely relabels the
+  -- status leaves attempt, finished_at, and error_class untouched and is
+  -- refused below exactly as before.
+  ELSIF OLD.status = 'failed' AND NEW.status = 'queued'
+        AND NEW.attempt = OLD.attempt + 1
+        AND NEW.finished_at IS NULL
+        AND NEW.error_class IS NULL THEN
     allowed := true;
   END IF;
 
@@ -1617,11 +1627,15 @@ CREATE TABLE public.workflow_runs (
     result jsonb DEFAULT '{}'::jsonb NOT NULL,
     created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
     updated_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
+    attempt integer DEFAULT 1 NOT NULL,
+    input_digest text,
+    CONSTRAINT workflow_runs_attempt_positive CHECK ((attempt >= 1)),
     CONSTRAINT workflow_runs_check1 CHECK (((status <> 'cancelled'::text) OR (cancel_requested_at IS NOT NULL))),
     CONSTRAINT workflow_runs_check2 CHECK (((status <> ALL (ARRAY['succeeded'::text, 'failed'::text, 'cancelled'::text, 'lost'::text])) OR (finished_at IS NOT NULL))),
     CONSTRAINT workflow_runs_check3 CHECK (((status <> 'failed'::text) OR (error_class IS NOT NULL))),
     CONSTRAINT workflow_runs_flow_revision_check CHECK ((flow_revision >= 0)),
     CONSTRAINT workflow_runs_idempotency_key_check CHECK ((btrim(idempotency_key) <> ''::text)),
+    CONSTRAINT workflow_runs_input_digest_shape CHECK (((input_digest IS NULL) OR (input_digest ~ '^[0-9a-f]{64}$'::text))),
     CONSTRAINT workflow_runs_input_hash_check CHECK (((input_hash IS NULL) OR (input_hash ~ '^[0-9a-f]{64}$'::text))),
     CONSTRAINT workflow_runs_record_version_check CHECK ((record_version > 0)),
     CONSTRAINT workflow_runs_result_check CHECK ((jsonb_typeof(result) = 'object'::text)),
@@ -1631,6 +1645,20 @@ CREATE TABLE public.workflow_runs (
     CONSTRAINT workflow_runs_version_nonempty CHECK (((btrim(workflow_version) <> ''::text) AND (btrim(policy_version) <> ''::text))),
     CONSTRAINT workflow_runs_workflow_id_check CHECK ((btrim(workflow_id) <> ''::text))
 );
+
+
+--
+-- Name: COLUMN workflow_runs.attempt; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.workflow_runs.attempt IS 'Recovery attempt counter. 1 for a run that has never been retried; incremented only by retry_workflow_run().';
+
+
+--
+-- Name: COLUMN workflow_runs.input_digest; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.workflow_runs.input_digest IS 'sha256 of the fixed runner canonical argument payload for this run. Immutable after insert.';
 
 
 --
@@ -1682,6 +1710,71 @@ BEGIN
     jsonb_build_object('status', prior.status, 'record_version', prior.record_version),
     jsonb_build_object('status', changed.status, 'record_version', changed.record_version,
       'cancel_requested_at', changed.cancel_requested_at)
+  );
+
+  RETURN NEXT changed;
+END;
+$$;
+
+
+--
+-- Name: retry_workflow_run(text, bigint, text, text); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.retry_workflow_run(p_run_id text, p_expected_record_version bigint, p_actor_id text DEFAULT 'vcops'::text, p_reason text DEFAULT NULL::text) RETURNS SETOF public.workflow_runs
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'pg_catalog', 'public'
+    AS $$
+DECLARE
+  prior workflow_runs%ROWTYPE;
+  changed workflow_runs%ROWTYPE;
+BEGIN
+  SELECT * INTO prior FROM workflow_runs WHERE run_id = p_run_id FOR UPDATE;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'workflow run not found: %', p_run_id USING ERRCODE = 'P0002';
+  END IF;
+  IF prior.record_version <> p_expected_record_version THEN
+    RAISE EXCEPTION 'workflow record version conflict: expected %, actual %',
+      p_expected_record_version, prior.record_version USING ERRCODE = '40001';
+  END IF;
+  IF prior.status <> 'failed' THEN
+    RAISE EXCEPTION 'only a failed workflow run can be retried (run_id=%, status=%)',
+      p_run_id, prior.status USING ERRCODE = '55000';
+  END IF;
+  IF prior.cancel_requested_at IS NOT NULL THEN
+    RAISE EXCEPTION 'a cancel-requested workflow run cannot be retried (run_id=%)', p_run_id
+      USING ERRCODE = '55000';
+  END IF;
+
+  UPDATE workflow_runs
+  SET status = 'queued',
+      attempt = prior.attempt + 1,
+      started_at = NULL,
+      heartbeat_at = NULL,
+      finished_at = NULL,
+      error_class = NULL,
+      error_message = NULL,
+      waiting_reason = NULL,
+      blocked_reason = NULL,
+      result = '{}'::jsonb
+  WHERE id = prior.id
+  RETURNING * INTO changed;
+
+  INSERT INTO audit_events (
+    event_type, actor_id, actor_type, workflow_run_id, entity_table, entity_id,
+    before_state, after_state, details
+  ) VALUES (
+    'workflow.retry', p_actor_id, 'service', changed.id, 'workflow_runs', changed.id::text,
+    jsonb_build_object(
+      'status', prior.status, 'attempt', prior.attempt,
+      'record_version', prior.record_version,
+      'error_class', prior.error_class, 'error_message', prior.error_message
+    ),
+    jsonb_build_object(
+      'status', changed.status, 'attempt', changed.attempt,
+      'record_version', changed.record_version
+    ),
+    jsonb_build_object('reason', p_reason)
   );
 
   RETURN NEXT changed;
@@ -4596,7 +4689,7 @@ CREATE TRIGGER workflow_runs_guard_transition BEFORE UPDATE ON public.workflow_r
 -- Name: workflow_runs workflow_runs_identity_immutable; Type: TRIGGER; Schema: public; Owner: -
 --
 
-CREATE TRIGGER workflow_runs_identity_immutable BEFORE UPDATE OF workflow_id, workflow_version, policy_version, idempotency_key, input_hash ON public.workflow_runs FOR EACH ROW EXECUTE FUNCTION public.guard_workflow_run_identity();
+CREATE TRIGGER workflow_runs_identity_immutable BEFORE UPDATE OF workflow_id, workflow_version, policy_version, idempotency_key, input_hash, input_digest ON public.workflow_runs FOR EACH ROW EXECUTE FUNCTION public.guard_workflow_run_identity();
 
 
 --
@@ -5587,6 +5680,14 @@ GRANT SELECT,INSERT ON TABLE public.workflow_runs TO openclaw_runtime;
 
 REVOKE ALL ON FUNCTION public.request_workflow_cancel(p_run_id text, p_expected_record_version bigint, p_actor_id text, p_reason text) FROM PUBLIC;
 GRANT ALL ON FUNCTION public.request_workflow_cancel(p_run_id text, p_expected_record_version bigint, p_actor_id text, p_reason text) TO openclaw_runtime;
+
+
+--
+-- Name: FUNCTION retry_workflow_run(p_run_id text, p_expected_record_version bigint, p_actor_id text, p_reason text); Type: ACL; Schema: public; Owner: -
+--
+
+REVOKE ALL ON FUNCTION public.retry_workflow_run(p_run_id text, p_expected_record_version bigint, p_actor_id text, p_reason text) FROM PUBLIC;
+GRANT ALL ON FUNCTION public.retry_workflow_run(p_run_id text, p_expected_record_version bigint, p_actor_id text, p_reason text) TO openclaw_runtime;
 
 
 --

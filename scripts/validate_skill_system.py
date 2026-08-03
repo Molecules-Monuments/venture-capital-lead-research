@@ -494,17 +494,17 @@ def validate_resolver_routing(config: dict[str, Any], workflows: dict[str, Any],
                 f"resolver routes `{skill}` to `{agent}` but that agent is not granted the skill")
 
 
-def load_vcrun(findings: list[Finding]) -> dict[str, Any]:
+def load_vcrun(findings: list[Finding]) -> tuple[dict[str, Any], set[str]]:
     try:
         spec = importlib.util.spec_from_file_location("v3_skill_system_vcrun", VCRUN_PATH)
         if spec is None or spec.loader is None:
             raise RuntimeError("cannot construct module specification")
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
-        return module.WORKFLOWS
+        return module.WORKFLOWS, set(module.INJECTED_ARG_KEYS)
     except Exception as exc:  # bounded validator error
         add(findings, "vcrun_import", VCRUN_PATH, f"{type(exc).__name__}: {exc}")
-        return {}
+        return {}, set()
 
 
 def validate_workflows(findings: list[Finding]) -> None:
@@ -512,7 +512,7 @@ def validate_workflows(findings: list[Finding]) -> None:
     actual = {path.stem: path for path in workflow_root.glob("*.lobster")}
     if set(actual) != set(EXPECTED_WORKFLOW_STEPS):
         add(findings, "workflow_inventory", workflow_root, f"expected={sorted(EXPECTED_WORKFLOW_STEPS)} actual={sorted(actual)}")
-    contracts = load_vcrun(findings)
+    contracts, injected_args = load_vcrun(findings)
     if set(contracts) != set(EXPECTED_WORKFLOW_STEPS):
         add(findings, "workflow_selector", VCRUN_PATH, "vcrun selectors differ from the fixed workflow inventory")
     for workflow, expected_steps in EXPECTED_WORKFLOW_STEPS.items():
@@ -538,7 +538,11 @@ def validate_workflows(findings: list[Finding]) -> None:
         if actual_steps[-1] != "workflow_succeeded":
             add(findings, "workflow_terminal", path, "workflow inventory lacks a terminal success step")
         contract = contracts.get(workflow, {})
-        contract_args = set(contract.get("keys", set())) | set(contract.get("optional_keys", set()))
+        contract_args = (
+            set(contract.get("keys", set()))
+            | set(contract.get("optional_keys", set()))
+            | injected_args
+        )
         workflow_args = body.get("args")
         if isinstance(workflow_args, dict):
             if set(workflow_args) != contract_args:
@@ -610,7 +614,7 @@ def main() -> int:
     validate_router_and_hook(findings)
     validate_workflows(findings)
     validate_agent_exec_paths(findings)
-    validate_resolver_routing(config, load_vcrun(findings), findings)
+    validate_resolver_routing(config, load_vcrun(findings)[0], findings)
     report = {
         "result": "PASS" if not findings else "FAIL",
         "skills": len(list(SKILLS_ROOT.glob("*/SKILL.md"))),

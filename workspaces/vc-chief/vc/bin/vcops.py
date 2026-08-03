@@ -116,10 +116,17 @@ RUNNER_FAILURE_CLASSES = {
     # in 'running'. The g5 reason-parity test asserts vcrun and vcops agree here.
     "lobster_no_exit",
 }
-# Must stay in exact parity with guard_workflow_run_transition in
-# migrations/001_initial_v2.sql: a looser row here would pass the local gate
-# and surface as a generic constraint_violation from the trigger instead of
-# the typed invalid_transition envelope.
+# The edges reachable through transition_workflow_run. These must stay in exact
+# parity with guard_workflow_run_transition in migrations/001_initial_v2.sql (as
+# replaced by migration 018): a looser row here would pass the local gate and
+# surface as a generic constraint_violation from the trigger instead of the
+# typed invalid_transition envelope.
+#
+# The trigger admits one edge that is deliberately absent here: the recovery
+# retry failed -> queued added by migration 018. It is reachable only through
+# retry_workflow_run(), which also increments attempt and clears the previous
+# attempt's outcome, and it must NOT become a workflow-transition target — that
+# would let any caller relabel a terminal run.
 RUN_TRANSITIONS = {
     "queued": {"started", "running", "cancelled", "failed", "lost"},
     "started": {"running", "waiting", "blocked", "succeeded", "failed", "cancelled", "lost"},
@@ -170,6 +177,7 @@ WORKFLOW_COMMANDS = {
     "entity-resolve",
     "workflow-request-claim",
     "workflow-start",
+    "workflow-replay-probe",
     "workflow-transition",
     "workflow-cancel",
     "workflow-reconcile-failure",
@@ -2103,7 +2111,12 @@ def cmd_lead_show(args: argparse.Namespace) -> dict[str, Any]:
     """Read a lead and its attached evidence artifacts (agent lane).
 
     In model-facing lanes both the lead and its artifacts are filtered to the
-    public/internal confidentiality ceiling.
+    public/internal confidentiality ceiling. Each returned artifact carries the
+    id of its succeeded extraction, so a caller that may see the document can
+    read its text with `document-extraction-show` instead of having to discover
+    the identifier out of band. `withheld_artifacts` reports how many the ceiling
+    removed: an empty list on a lead that does have documents is otherwise
+    indistinguishable from a lead that has none.
     """
     lead_id = _positive_bigint(args.lead_id, "lead_id")
     model_limited = AGENT_MODE or WORKFLOW_MODE
@@ -2119,13 +2132,25 @@ def cmd_lead_show(args: argparse.Namespace) -> dict[str, Any]:
         artifact_filter = " AND ea.confidentiality IN ('public','internal')" if model_limited else ""
         cur.execute(
             """SELECT la.*,ea.sha256,ea.mime_type,ea.size_bytes,ea.storage_uri,
-                      ea.confidentiality
+                      ea.confidentiality,
+                      (SELECT de.id FROM document_extractions de
+                        WHERE de.artifact_id=la.artifact_id AND de.status='succeeded'
+                        ORDER BY de.id LIMIT 1) AS extraction_id
                FROM lead_artifacts la JOIN evidence_artifacts ea ON ea.id=la.artifact_id
                WHERE la.lead_id=%s""" + artifact_filter + " ORDER BY la.created_at,la.id",
             (lead_id,),
         )
         artifacts = [dict(row) for row in cur.fetchall()]
-    return {"ok": True, "lead": lead, "artifacts": artifacts}
+        withheld = 0
+        if model_limited:
+            cur.execute(
+                """SELECT count(*) AS withheld
+                   FROM lead_artifacts la JOIN evidence_artifacts ea ON ea.id=la.artifact_id
+                   WHERE la.lead_id=%s AND ea.confidentiality NOT IN ('public','internal')""",
+                (lead_id,),
+            )
+            withheld = int(fetch_one(cur)["withheld"])
+    return {"ok": True, "lead": lead, "artifacts": artifacts, "withheld_artifacts": withheld}
 
 
 def _confidentiality_allowed(classification: str, maximum: str) -> bool:
@@ -3003,14 +3028,96 @@ def cmd_document_request_claim(args: argparse.Namespace) -> dict[str, Any]:
     return {"ok": True, "workflow_request": row, "reused": reused}
 
 
+WORKFLOW_RUN_COLUMNS = (
+    "id,run_id,workflow_id,workflow_version,policy_version,lead_id,company_id,status,"
+    "flow_revision,record_version,attempt,idempotency_key,input_hash,input_digest,created_at"
+)
+_WORKFLOW_RUN_FIELDS = frozenset(WORKFLOW_RUN_COLUMNS.split(","))
+
+
+def _require_input_digest(value: str | None) -> str | None:
+    """Validate the runner's canonical argument digest, when one was supplied.
+
+    Optional because the helper is also driven directly (gates, operator
+    recovery) without the fixed runner in front of it. When present it is the
+    sha256 of vcrun's canonical argument payload and becomes part of the run's
+    immutable identity.
+    """
+    if value is None:
+        return None
+    digest = require_text(value, "input_digest", maximum=64)
+    if not re.fullmatch(r"[0-9a-f]{64}", digest):
+        raise VcopsError("invalid_hash", "input_digest must be a lowercase SHA-256 digest")
+    return digest
+
+
+def _assert_replay_matches(row: Mapping[str, Any], *, request_hash: str | None, input_digest: str | None) -> None:
+    """Refuse a reused idempotency key whose payload is not the committed one.
+
+    Two independent bindings: input_hash covers the run's lineage and metadata,
+    input_digest covers the runner's full canonical argument payload. Either
+    difference is a tampered or mistaken replay, and neither mutates anything.
+    """
+    if request_hash is not None and row.get("input_hash") != request_hash:
+        raise VcopsError(
+            "idempotency_payload_mismatch",
+            "workflow replay payload differs from the committed request",
+            exit_code=1,
+        )
+    stored_digest = row.get("input_digest")
+    if input_digest is not None and stored_digest is not None and stored_digest != input_digest:
+        raise VcopsError(
+            "idempotency_payload_mismatch",
+            "workflow replay arguments differ from the committed request",
+            exit_code=1,
+        )
+
+
+def _classify_workflow_replay(cur: Any, row: Mapping[str, Any], *, reason: str) -> tuple[str, dict[str, Any]]:
+    """Decide what reusing this idempotency key means, and prepare the run.
+
+    Returns the outcome and the (possibly reopened) run row:
+
+      in_progress — a non-terminal run; reusing the key resumes it.
+      completed   — the operation already succeeded; the caller must not repeat
+                    its mutations, and the existing records are the result.
+      retried     — a reconciled failure, reopened here for a fresh attempt.
+
+    A cancelled or lost run is refused: reusing the key would undo a deliberate
+    operator decision, so a new logical operation needs a new key.
+    """
+    status = row["status"]
+    if status == "succeeded":
+        return "completed", dict(row)
+    if status in {"cancelled", "lost"}:
+        raise VcopsError(
+            "workflow_run_not_retryable",
+            f"this idempotency key belongs to a {status} workflow run; issue a new key for a new operation",
+            details={"run_id": row["run_id"], "status": status},
+            exit_code=1,
+        )
+    if status == "failed":
+        cur.execute(
+            "SELECT * FROM retry_workflow_run(%s,%s,%s,%s)",
+            (row["run_id"], int(row["record_version"]), _runtime_actor(), reason),
+        )
+        reopened = fetch_one(cur, not_found="workflow run could not be reopened for retry")
+        return "retried", {key: reopened[key] for key in reopened if key in _WORKFLOW_RUN_FIELDS}
+    return "in_progress", dict(row)
+
+
 def cmd_workflow_start(args: argparse.Namespace) -> dict[str, Any]:
     """Idempotently open a workflow run in the 'queued' state.
 
     Validates lead/company lineage, restricts to reviewed fixed workflow IDs in
     workflow mode, and is replay-safe on (workflow_id, idempotency_key) with a
-    fail-closed input-hash check.
+    fail-closed input-hash and argument-digest check. Reusing the key of a
+    reconciled failure reopens that same run for a controlled retry; reusing the
+    key of a succeeded run reports 'completed' and asks the caller to execute
+    nothing further.
     """
     metadata = parse_json(args.metadata, default={}, expected=dict)
+    input_digest = _require_input_digest(args.input_digest)
     run_id = str(uuid4())
     with connection() as conn, conn.cursor() as cur:
         company_id = args.company_id
@@ -3024,41 +3131,78 @@ def cmd_workflow_start(args: argparse.Namespace) -> dict[str, Any]:
         if WORKFLOW_MODE and workflow not in FIXED_WORKFLOW_IDS:
             raise VcopsError("unsupported_workflow", "workflow mode accepts only reviewed fixed workflow IDs")
         idempotency_key = require_text(args.idempotency_key, "idempotency_key", maximum=300)
-        request_hash = sha256_json(
-            {
-                "workflow": workflow,
-                "workflow_version": WORKFLOW_VERSION,
-                "policy_version": POLICY_VERSION,
-                "lead_id": str(args.lead_id) if args.lead_id is not None else None,
-                "company_id": str(company_id) if company_id is not None else None,
-                "external_flow_id": args.external_flow_id,
-                "metadata": metadata,
-            }
-        )
+        hashed: dict[str, Any] = {
+            "workflow": workflow,
+            "workflow_version": WORKFLOW_VERSION,
+            "policy_version": POLICY_VERSION,
+            "lead_id": str(args.lead_id) if args.lead_id is not None else None,
+            "company_id": str(company_id) if company_id is not None else None,
+            "external_flow_id": args.external_flow_id,
+            "metadata": metadata,
+        }
+        if input_digest is not None:
+            hashed["input_digest"] = input_digest
+        request_hash = sha256_json(hashed)
         cur.execute(
-            """INSERT INTO workflow_runs
-                 (run_id,workflow_id,workflow_version,policy_version,lead_id,company_id,external_flow_id,idempotency_key,input_hash,status,flow_revision,record_version,result)
-               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,'queued',0,1,%s)
+            f"""INSERT INTO workflow_runs
+                 (run_id,workflow_id,workflow_version,policy_version,lead_id,company_id,external_flow_id,idempotency_key,input_hash,input_digest,status,flow_revision,record_version,result)
+               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'queued',0,1,%s)
                ON CONFLICT (workflow_id,idempotency_key) DO NOTHING
-               RETURNING id,run_id,workflow_id,workflow_version,policy_version,lead_id,company_id,status,flow_revision,record_version,idempotency_key,input_hash,created_at""",
+               RETURNING {WORKFLOW_RUN_COLUMNS}""",
             (
                 run_id, workflow, WORKFLOW_VERSION, POLICY_VERSION, args.lead_id,
-                company_id, args.external_flow_id, idempotency_key, request_hash, db_json(metadata),
+                company_id, args.external_flow_id, idempotency_key, request_hash,
+                input_digest, db_json(metadata),
             ),
         )
         row = cur.fetchone()
-        if row is None:
-            cur.execute(
-                """SELECT id,run_id,workflow_id,workflow_version,policy_version,lead_id,company_id,status,flow_revision,record_version,idempotency_key,input_hash,created_at
-                   FROM workflow_runs WHERE workflow_id=%s AND idempotency_key=%s""",
-                (workflow, idempotency_key),
-            )
-            row = fetch_one(cur, not_found="workflow idempotency conflict")
-            if row.get("input_hash") != request_hash:
-                raise VcopsError("idempotency_payload_mismatch", "workflow replay payload differs from the committed request", exit_code=1)
-        else:
-            row = dict(row)
-    return {"ok": True, "workflow_run": row}
+        if row is not None:
+            return {"ok": True, "workflow_run": dict(row), "replay": "opened", "execute": True}
+        cur.execute(
+            f"""SELECT {WORKFLOW_RUN_COLUMNS}
+               FROM workflow_runs WHERE workflow_id=%s AND idempotency_key=%s""",
+            (workflow, idempotency_key),
+        )
+        existing = fetch_one(cur, not_found="workflow idempotency conflict")
+        _assert_replay_matches(existing, request_hash=request_hash, input_digest=input_digest)
+        outcome, row = _classify_workflow_replay(cur, existing, reason="workflow_start_retry")
+    return {"ok": True, "workflow_run": row, "replay": outcome, "execute": outcome != "completed"}
+
+
+def cmd_workflow_replay_probe(args: argparse.Namespace) -> dict[str, Any]:
+    """Classify a reused idempotency key before the workflow mutates anything.
+
+    The fixed runner calls this ahead of Lobster so that an unchanged retry of a
+    completed operation returns the existing records instead of re-running
+    steps, a reconciled failure is reopened for a controlled retry, and a
+    tampered replay (same key, different arguments) is refused while the graph
+    is still untouched. It is deliberately the only pre-mutation lane that can
+    reopen a failed run, because several intake workflows create their company
+    and lead rows before workflow-start.
+    """
+    workflow = require_text(args.workflow, "workflow", maximum=200)
+    if workflow not in FIXED_WORKFLOW_IDS:
+        raise VcopsError("workflow_not_fixed", "replay probing is limited to fixed release workflows", exit_code=1)
+    idempotency_key = require_text(args.idempotency_key, "idempotency_key", maximum=300)
+    input_digest = _require_input_digest(args.input_digest)
+    with connection() as conn, conn.cursor() as cur:
+        cur.execute(
+            f"""SELECT {WORKFLOW_RUN_COLUMNS}
+               FROM workflow_runs WHERE workflow_id=%s AND idempotency_key=%s""",
+            (workflow, idempotency_key),
+        )
+        existing = cur.fetchone()
+        if existing is None:
+            return {"ok": True, "workflow_replay_probe": {"outcome": "absent", "workflow_run": None}}
+        existing = dict(existing)
+        if input_digest is not None and existing.get("input_digest") is None:
+            # Opened outside the fixed runner, so there is nothing to compare the
+            # arguments against. Report that rather than assert a match, and let
+            # the run's own workflow-start decide on the lineage hash.
+            return {"ok": True, "workflow_replay_probe": {"outcome": "unverifiable", "workflow_run": existing}}
+        _assert_replay_matches(existing, request_hash=None, input_digest=input_digest)
+        outcome, row = _classify_workflow_replay(cur, existing, reason="runner_replay_probe")
+    return {"ok": True, "workflow_replay_probe": {"outcome": outcome, "workflow_run": row}}
 
 
 def _runtime_actor() -> str:
@@ -5592,19 +5736,52 @@ def cmd_document_extract(args: argparse.Namespace) -> dict[str, Any]:
     return {**base_result, "artifact": artifact, "association": association, "extraction": extraction, "persistence": "postgres", "reused": False}
 
 
-def cmd_document_extraction_show(args: argparse.Namespace) -> dict[str, Any]:
-    """Return a succeeded document extraction's content to its verified channel
-    principal (agent lane, read-only).
+def _authorize_host_intake_extraction(row: Mapping[str, Any], trusted_context: str | None) -> None:
+    """Authorize reading an extraction that has no verified channel principal.
 
-    Access is capability-bound: the caller's trusted context must match the
-    extraction's own principal, and the returned content is flagged as untrusted
-    document input whose instructions must never be followed.
+    A host-operator `/inbox` document cannot be capability-bound: `manual` is
+    deliberately not a signable trusted-context provider, so no valid capability
+    can ever name it. Its authority is the deployment host itself — the operator
+    placed the file through a read-only mount no channel can reach — and there is
+    no second principal for the content to leak to.
+
+    So this lane is governed by the ordinary confidentiality ceiling instead of a
+    capability: the operator lane reads it unconditionally, and a model lane
+    reads it only while the artifact stays within `MODEL_DATA_CEILING`. Passing a
+    channel capability here is refused rather than ignored, so a caller can never
+    believe a capability was checked when it was not.
+    """
+    if trusted_context:
+        raise VcopsError(
+            "channel_context_not_applicable",
+            "this extraction is host-operator intake and is not read with a channel capability",
+            exit_code=1,
+        )
+    if OPERATOR_MODE:
+        return
+    if not _confidentiality_allowed(str(row["confidentiality"]), MODEL_DATA_CEILING):
+        raise VcopsError(
+            "confidentiality_denied",
+            "extraction artifact exceeds the model confidentiality ceiling",
+            exit_code=1,
+        )
+
+
+def cmd_document_extraction_show(args: argparse.Namespace) -> dict[str, Any]:
+    """Return a succeeded document extraction's content (read-only).
+
+    Two intake lanes, two authorities. A channel attachment is capability-bound:
+    the caller's trusted context must match the extraction's own verified
+    principal. A host-operator `/inbox` document has no such principal and is
+    governed by the confidentiality ceiling instead. Either way the returned
+    content is flagged as untrusted document input whose instructions must never
+    be followed.
     """
     extraction_id = _positive_bigint(args.extraction_id, "extraction_id")
     with connection() as conn, conn.cursor() as cur:
         cur.execute(
             """SELECT de.id,de.output_uri,de.extracted_sha256,de.extraction_summary,
-                      ea.sha256 AS artifact_sha256,ea.mime_type
+                      ea.sha256 AS artifact_sha256,ea.mime_type,ea.confidentiality
                FROM document_extractions de
                JOIN evidence_artifacts ea ON ea.id=de.artifact_id
                WHERE de.id=%s AND de.status='succeeded'""",
@@ -5614,15 +5791,27 @@ def cmd_document_extraction_show(args: argparse.Namespace) -> dict[str, Any]:
         summary = row.get("extraction_summary") or {}
         path_hash = summary.get("intake_path_sha256")
         expected_principal = summary.get("trusted_principal_id")
-        if not isinstance(path_hash, str) or not re.fullmatch(r"[0-9a-f]{64}", path_hash) or expected_principal is None:
-            raise VcopsError("channel_extraction_required", "extraction is not a verified channel attachment", exit_code=1)
-        scope = f"document.read:{path_hash}"
-        context = verify_trusted_context(args.trusted_context, scope)
-        principal_id = consume_trusted_context(
-            cur, context, scope, f"document-extraction-show:{extraction_id}"
+        channel_bound = (
+            isinstance(path_hash, str)
+            and re.fullmatch(r"[0-9a-f]{64}", path_hash) is not None
+            and expected_principal is not None
         )
-        if principal_id != int(expected_principal):
-            raise VcopsError("principal_mismatch", "extraction belongs to a different verified channel principal", exit_code=1)
+        if not channel_bound:
+            _authorize_host_intake_extraction(row, args.trusted_context)
+        else:
+            if not args.trusted_context:
+                raise VcopsError(
+                    "trusted_context_required",
+                    "this extraction is a verified channel attachment and requires its capability",
+                    exit_code=1,
+                )
+            scope = f"document.read:{path_hash}"
+            context = verify_trusted_context(args.trusted_context, scope)
+            principal_id = consume_trusted_context(
+                cur, context, scope, f"document-extraction-show:{extraction_id}"
+            )
+            if principal_id != int(expected_principal):
+                raise VcopsError("principal_mismatch", "extraction belongs to a different verified channel principal", exit_code=1)
     output_uri = str(row["output_uri"])
     prefix = "state://extractions/"
     if not output_uri.startswith(prefix):
@@ -5923,7 +6112,13 @@ def build_parser() -> argparse.ArgumentParser:
     child = sub.add_parser("workflow-start")
     child.add_argument("--workflow", required=True); add_common_lead_id(child)
     child.add_argument("--external-flow-id"); child.add_argument("--idempotency-key", required=True); child.add_argument("--metadata")
+    child.add_argument("--input-digest")
     child.set_defaults(handler=cmd_workflow_start)
+    child = sub.add_parser("workflow-replay-probe")
+    child.add_argument("--workflow", required=True, choices=tuple(sorted(FIXED_WORKFLOW_IDS)))
+    child.add_argument("--idempotency-key", required=True)
+    child.add_argument("--input-digest", required=True)
+    child.set_defaults(handler=cmd_workflow_replay_probe)
     child = sub.add_parser("workflow-transition"); child.add_argument("--run-id", required=True)
     child.add_argument("--status", required=True, choices=sorted(set().union(*RUN_TRANSITIONS.values())))
     child.add_argument("--expected-revision", type=int, required=True); child.add_argument("--error"); child.add_argument("--result")
@@ -6077,7 +6272,10 @@ def build_parser() -> argparse.ArgumentParser:
     child.set_defaults(handler=cmd_document_extract)
     child = sub.add_parser("document-extraction-show")
     child.add_argument("--extraction-id", required=True)
-    child.add_argument("--trusted-context", required=True)
+    # Required for a channel attachment and refused for host-operator /inbox
+    # intake, so the flag cannot be optional at the parser level; which of the
+    # two applies is decided from the extraction's own recorded principal.
+    child.add_argument("--trusted-context")
     child.set_defaults(handler=cmd_document_extraction_show)
     return parser
 

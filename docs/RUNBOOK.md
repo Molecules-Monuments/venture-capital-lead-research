@@ -65,7 +65,8 @@ Use a dedicated Linux host inside one organizational trust boundary. Require:
   backups, and expected retention;
 - working DNS, UTC-synchronized time, outbound TLS to the selected model
   provider, optional search/fetch providers, image/package registries, approved
-  research endpoints, and only the selected channel provider;
+  research endpoints, the OpenClaw update channel (see below), and only the
+  selected channel provider;
 - loopback or private access to the gateway; a hardened TLS reverse proxy that
   exposes only `/api/messages` if Teams is selected; and
 - a POSIX shell plus host `python3` **3.9 or newer** — the lifecycle scripts
@@ -80,6 +81,20 @@ Use a dedicated Linux host inside one organizational trust boundary. Require:
 - `openssl`, used to generate the six deployment secrets; and
 - a non-root deployment operator with exclusive control of the package and
   `.env`.
+
+**The OpenClaw update channel.** The gateway contacts its own update channel at
+startup and logs, for example, `[gateway] update available (latest):
+v2026.7.1-2 (current v2026.7.1). Run: openclaw update`. It is a version check
+only — nothing is downloaded or installed, and the log line is informational.
+It is listed here because an operator sizing a firewall allowlist would
+otherwise not expect it. Two consequences:
+
+- **Do not run `openclaw update`.** The image is pinned by digest in `.env` and
+  `deployment-lock.json`; upgrading in place would break the pinned-digest
+  contract and every provenance gate that depends on it. Upgrades go through
+  `scripts/update.sh` with a reviewed release, per §8.
+- If your egress policy denies it, the check fails and logs a warning. That is
+  a supported configuration: nothing else in the deployment depends on it.
 
 Do not mount the Docker socket, enable privileged mode, publish Postgres, expose
 the Control UI publicly, or share this gateway across hostile trust domains.
@@ -315,15 +330,59 @@ The restore drill in §5.4 is the one item no gate covers.
 
   A correctly configured shipped deployment still reports some findings, and
   §5.6's "a warning is not a pass" rule does not mean commissioning is blocked
-  by them — it means each one must be dispositioned. The expected set and its
-  disposition:
+  by them — it means each one must be dispositioned. The expected set below was
+  recorded against a real deployment of this release; if you see a finding that
+  is **not** on this list, treat it as a genuine deviation and investigate it.
 
-  - the `data-steward` exec permission: the reviewed design, see "Sandboxing
-    and security design" in `README.md`;
+  From `openclaw security audit --deep`:
+
+  - `tools.exec.fs_tools_disabled_but_exec_enabled` — the `data-steward` exec
+    permission: the reviewed design, see "Sandboxing and security design" in
+    `README.md`. `data-steward` holds exec for exactly two allowlisted launcher
+    paths (`config/exec-approvals.json`) and no filesystem tools, which is the
+    combination this check flags generically.
+  - `gateway.probe_failed` (`missing scope: operator.read`) — expected. The
+    audit's own probe authenticates with no operator scope against a
+    token-authenticated gateway. It is the access control working, not a fault.
+
+  You should **not** see `gateway.auth_no_rate_limit`. `gateway.bind` is `lan`
+  because Docker forwards a published port to the container's network
+  interface, so a loopback bind inside the container would make the gateway
+  unreachable; host exposure is constrained by the Compose loopback publish
+  (`127.0.0.1:…`). Brute-force mitigation is configured separately as
+  `gateway.auth.rateLimit` (10 attempts / 60 s, 300 s lockout, no loopback
+  exemption). If this finding appears, that block has been removed from
+  `config/openclaw.json` or the rendered runtime config is stale.
+
+  From `openclaw secrets audit`:
+
   - `gateway.auth.token` reported as plaintext: a false positive — the rendered
-    value is a SecretRef to `OPENCLAW_GATEWAY_TOKEN`, not a literal;
-  - `plugins.allow` and memory-provider migration hints: legacy-key advice that
-    does **not** apply to this configuration and must not be applied.
+    value is a SecretRef to `OPENCLAW_GATEWAY_TOKEN`, not a literal.
+
+  From `openclaw doctor`:
+
+  - one `Model "${VC_PRIMARY_MODEL}" specified without provider. Falling back to
+    "openai/${VC_PRIMARY_MODEL}"` line per agent, and `openclaw models status`
+    showing the harness default `openai/gpt-5.5` — a diagnostic artifact, not a
+    misconfiguration. `doctor` reads the config text without the environment
+    substitution the runtime performs, so it sees the literal `${VC_PRIMARY_MODEL}`.
+    Confirm the real behaviour instead of the diagnostic: a live agent run
+    resolves the configured model (`requested=openai/<your VC_PRIMARY_MODEL>`),
+    which is the evidence for this row. `plugins.allow` and memory-provider
+    migration hints are legacy-key advice that does **not** apply to this
+    configuration and must not be applied.
+
+  In the gateway log at every start and every config reload:
+
+  - `failed to promote config last-known-good backup: Error: EROFS: read-only
+    file system, open '/home/node/.openclaw-config/openclaw.json.last-good'` —
+    expected, and logged at error level by the harness. The runtime config is
+    mounted read-only by design (§5.1 below proves that mount), so the harness
+    cannot write its last-known-good copy beside it. Nothing is degraded: the
+    config the gateway loaded is the one the initializer validated.
+  - `update available (latest): v… (current v2026.7.1). Run: openclaw update` —
+    the harness checks its own update channel at startup. See §2's egress list;
+    do not run `openclaw update`, which would break the pinned-digest contract.
 
   **Never run `openclaw doctor --fix` here.** The runtime config is mounted
   read-only by design, so it fails with `EROFS`, and its suggested edits are

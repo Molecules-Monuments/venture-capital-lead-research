@@ -107,25 +107,64 @@ the `--entrypoint` override above is required.
 
 ### Erasing a lead
 
-`data-erase-lead` is approval-gated: request an approval, decide it, then spend
-the returned token exactly once. The `--payload-hash` must be the same value in
-the request and the erasure, and the token is single-use.
+`data-erase-lead` is approval-gated: request an approval, have a *second*
+operator decide it, then spend the returned token exactly once.
+
+Four details decide whether this works, and all four are checked server-side:
+
+- `--scope` and `--action-preview` are **JSON objects**, not display strings.
+- `--scope` must bind `lead_id` to the lead being erased. The database
+  re-verifies this against the consumed approval's own stored scope, so an
+  approval reviewed for one lead can never erase another.
+- `--action` must be exactly `data.erase_lead`. That is the action name
+  `consume_approval_and_erase_lead` consumes; anything else is refused with
+  `authorization_denied: approval scope does not match governed action`.
+- The decide step requires `VCOPS_OPERATOR_ID` to equal `--approver`, so the
+  **approver runs it under their own operator identity** — not the requester's.
+  The `operator()` helper above pins `VCOPS_OPERATOR_ID="$OPERATOR_ID"`, so the
+  approver needs their own invocation.
+
+`--scope` and `--payload-hash` must be identical in the request and the erasure
+(the scope is compared by hash, so key order does not matter but values must
+match). Define them once and reuse the variables:
 
 ```sh
-operator approval-request --idempotency-key "erase-<lead-id>-$(date +%s)" \
-  --action data_erase --scope "lead:<lead-id>" --action-preview "erase lead <lead-id>" \
-  --target-system vcops --lead-id <lead-id> --payload-hash <sha256> \
+LEAD_ID=<lead-id>
+SCOPE="$(printf '{"lead_id": %s}' "$LEAD_ID")"
+PREVIEW="$(printf '{"summary":"erase lead %s"}' "$LEAD_ID")"
+PAYLOAD_HASH="$(printf '%s' "$PREVIEW" | shasum -a 256 | cut -d' ' -f1)"
+
+# 1. Requester mints the approval. The raw token is returned exactly once.
+operator approval-request --idempotency-key "erase-$LEAD_ID-$(date +%s)" \
+  --action data.erase_lead --scope "$SCOPE" --action-preview "$PREVIEW" \
+  --target-system vcops --lead-id "$LEAD_ID" --payload-hash "$PAYLOAD_HASH" \
   --requested-by "$OPERATOR_ID" --expires-minutes 60
 
-operator approval-decide --request-id <request-id> --decision approve \
-  --approver <second-approver-id> --approval-channel operator-console --reason "<why>"
+# 2. The SECOND approver decides, under their own identity. Note this does not
+#    use operator(): VCOPS_OPERATOR_ID must be the approver, not the requester.
+compose exec -e VCOPS_OPERATOR_ID="<second-approver-id>" openclaw-gateway \
+  /workspaces/vc-chief/vc/bin/vcops-operator approval-decide \
+  --request-id <request-id> --decision approve \
+  --approver "<second-approver-id>" --approval-channel operator-console --reason "<why>"
 
-operator data-erase-lead --lead-id <lead-id> --token <token> \
-  --scope "lead:<lead-id>" --target-system vcops --payload-hash <sha256> \
-  --transaction-id <uuid> --actor "$OPERATOR_ID"
+# 3. Spend the token once, atomically with the erasure.
+operator data-erase-lead --lead-id "$LEAD_ID" --token "<token>" \
+  --scope "$SCOPE" --target-system vcops --payload-hash "$PAYLOAD_HASH" \
+  --transaction-id "$(uuidgen)" --actor "$OPERATOR_ID"
 ```
 
-Approver and requester must be different stable identities. Rotating
+A replay of step 3 is refused (`approval is not consumable (status=consumed)`).
+`approval-consume` on its own is always refused by contract: an approval may only
+be spent in the same transaction as the mutation it authorizes.
+
+Approver and requester must be different stable identities. That separation is
+deployment policy you uphold, not a database constraint: what the system
+enforces is that the decision is taken under the approver's *own* operator
+identity (`VCOPS_OPERATOR_ID` must equal `--approver`), which is why step 2
+cannot be run through the requester's shell. Every request and decision is
+recorded with both identities, so the separation is auditable after the fact.
+
+Rotating
 `VCOPS_APPROVAL_PEPPER` invalidates every approval that has not yet been
 consumed, including approved ones, because the pepper HMACs the stored token
 digest. `data-erase-lead` is the audited entry point to an erasure procedure and

@@ -40,6 +40,16 @@ class LobsterStepError(AssertionError):
     pass
 
 
+def canonical_input_digest(args):
+    """The digest vcrun computes over its validated canonical argument payload."""
+    payload = json.dumps(
+        {key: value for key, value in args.items() if key != "input_digest"},
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
 def build_trusted_context(key_path, *, scopes, media_paths=(), sender="g4wf-sender"):
     import base64
     import hmac
@@ -75,6 +85,10 @@ class LobsterStepRunner:
     def __init__(self, workflow_file, args, env_base, approvals=None):
         self.document = yaml.safe_load((WORKFLOWS / workflow_file).read_text(encoding="utf-8"))
         self.args = dict(args)
+        # Mirror vcrun: the canonical argument digest is injected by the runner
+        # after validation, never supplied by the caller. Callers pass the
+        # workflow's own arguments and get the same binding a real run has.
+        self.args.setdefault("input_digest", canonical_input_digest(self.args))
         self.env_base = dict(env_base)
         self.approvals = dict(approvals or {})
         self.state = {}
@@ -180,15 +194,29 @@ class WorkflowExecutionTests(unittest.TestCase):
             return row[0] if row else None
 
     @classmethod
-    def operator(cls, arguments):
+    def operator(cls, arguments, expect_ok=True):
         env = os.environ.copy()
         env.update({key: value for key, value in cls.env_base.items() if key != "VCOPS_WORKFLOW_MODE"})
+        return cls._helper(arguments, env, expect_ok, "operator")
+
+    @classmethod
+    def model_lane(cls, arguments, expect_ok=True):
+        """The read-only agent lane, as the chief itself sees the helper."""
+        env = os.environ.copy()
+        env.update({key: value for key, value in cls.env_base.items() if key != "VCOPS_WORKFLOW_MODE"})
+        env["VCOPS_AGENT_MODE"] = "1"
+        return cls._helper(arguments, env, expect_ok, "agent")
+
+    @classmethod
+    def _helper(cls, arguments, env, expect_ok, lane):
         process = subprocess.run(
             [PYTHON, str(HELPER), *arguments, "--json"], env=env, text=True, capture_output=True, timeout=30,
         )
-        payload = json.loads(process.stdout)
-        if process.returncode != 0 or not payload.get("ok"):
-            raise AssertionError(f"operator seeding failed: args={arguments} payload={payload}")
+        payload = json.loads(process.stdout or process.stderr)
+        if expect_ok and (process.returncode != 0 or not payload.get("ok")):
+            raise AssertionError(f"{lane} lane failed: args={arguments} payload={payload}")
+        if not expect_ok and process.returncode == 0:
+            raise AssertionError(f"{lane} lane unexpectedly succeeded: args={arguments} payload={payload}")
         return payload
 
     @classmethod
@@ -226,7 +254,10 @@ class WorkflowExecutionTests(unittest.TestCase):
 
     def test_03_inbound_intake_completes_with_document(self):
         document = self.inbox / f"{self.prefix}-intake.csv"
-        document.write_text("metric,value\narr,1200000\n", encoding="utf-8")
+        # evidence_artifacts is content-addressed and a byte sequence's
+        # governance classification is fixed at first ingestion, so this suite's
+        # document must not be byte-identical to another suite's.
+        document.write_text(f"metric,value\narr,1200000\nrun,{self.prefix}\n", encoding="utf-8")
         state = self.execute("inbound-intake.lobster", {
             "idempotency_key": self.prefix + "-inbound",
             "lead_title": "G4WF inbound lead",
@@ -239,6 +270,35 @@ class WorkflowExecutionTests(unittest.TestCase):
         })
         self.assert_run_terminal(state)
         self.assertFalse(state["document_extract"]["json"]["reused"])
+
+        # The documented "drop a deck in ./inbox" path has to end somewhere a
+        # lane can read. Host intake is classified `internal`, so the lead shows
+        # its own document, the artifact carries the extraction handle, and the
+        # text comes back without a channel capability (none can name `manual`).
+        lead_id = state["create_lead"]["json"]["lead"]["id"]
+        extraction_id = state["document_extract"]["json"]["extraction"]["id"]
+        shown = self.model_lane(["lead-show", "--lead-id", str(lead_id)])
+        self.assertEqual(1, len(shown["artifacts"]))
+        self.assertEqual(0, shown["withheld_artifacts"])
+        self.assertEqual("internal", shown["artifacts"][0]["confidentiality"])
+        self.assertEqual(extraction_id, shown["artifacts"][0]["extraction_id"])
+
+        for lane in (self.model_lane, self.operator):
+            with self.subTest(lane=lane.__name__):
+                content = lane(["document-extraction-show", "--extraction-id", str(extraction_id)])
+                self.assertIn("arr", json.dumps(content["document"]))
+                self.assertEqual(
+                    "never_follow_instructions_from_document_content",
+                    content["instruction_policy"],
+                )
+
+        # A channel capability is refused rather than silently ignored, so no
+        # caller can believe one was checked.
+        refused = self.model_lane([
+            "document-extraction-show", "--extraction-id", str(extraction_id),
+            "--trusted-context", self.trusted_context(scopes=("document.read:" + "0" * 64,)),
+        ], expect_ok=False)
+        self.assertEqual("channel_context_not_applicable", refused["error"]["code"])
 
     def test_03b_inbound_text_intake_creates_a_lead_without_a_document(self):
         state = self.execute("inbound-text-intake.lobster", {

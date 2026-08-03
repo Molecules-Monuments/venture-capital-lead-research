@@ -27,6 +27,9 @@ umask 077
 #                      Empty means NO delivery is attempted (see the --no-deliver
 #                      note below), not "the harness picks something sensible".
 #   VC_HEARTBEAT_DELIVERY  same, for the heartbeat digest
+#   VC_ALLOW_DISABLED_SCHEDULER  set to 1 to seed even though cron.enabled is
+#                      false. The default refuses, because a job seeded into a
+#                      disabled scheduler can never fire.
 #   VC_HEARTBEAT_CRON  optional health-review schedule. Empty skips seeding it; it
 #                      does NOT remove a heartbeat an earlier run already seeded —
 #                      that keeps firing on its old cadence until you remove it with
@@ -57,6 +60,39 @@ HEARTBEAT_CRON="${VC_HEARTBEAT_CRON:-}"
 compose() {
   docker compose -f "$COMPOSE_FILE" -p "$COMPOSE_PROJECT" --env-file "$ENV_FILE" "$@"
 }
+
+# Seeding a job into a disabled scheduler leaves a job that can never fire. The
+# upstream `cron add` warns about that but still exits 0, so an automated
+# commissioning script would record a success for work that will not happen.
+# Check first and refuse, naming the step that was skipped: the documented
+# opt-in enables cron (RUNBOOK steps 1-3) BEFORE this script (step 4).
+#
+# `openclaw cron status --json` returns {enabled, storePath, storage,
+# sqlitePath, jobs, nextWakeAtMs} on the pinned 2026.7.1 image.
+scheduler_status="$(compose exec -T openclaw-gateway openclaw cron status --json)" || {
+  echo "cannot read cron scheduler status from the gateway; is the deployment healthy?" >&2
+  exit 1
+}
+if ! printf '%s' "$scheduler_status" | grep -Eq '"enabled"[[:space:]]*:[[:space:]]*true'; then
+  if [ "${VC_ALLOW_DISABLED_SCHEDULER:-}" = "1" ]; then
+    echo "warning: cron scheduler is disabled; seeding anyway because VC_ALLOW_DISABLED_SCHEDULER=1." >&2
+  else
+    cat >&2 <<'MESSAGE'
+cron scheduler is disabled in the Gateway; refusing to seed jobs that cannot fire.
+
+Enable it first (docs/RUNBOOK.md, "four-step opt-in"):
+  1. set config/openclaw.json cron.enabled: true
+  2. re-pin it: python3 -B scripts/init_customization.py --update-hashes
+     and python3 -B scripts/build_release_manifest.py
+  3. ./scripts/bootstrap.sh   (the gateway reads the rendered volume copy,
+                               never the host file)
+  4. re-run this script
+
+To seed deliberately ahead of enabling, set VC_ALLOW_DISABLED_SCHEDULER=1.
+MESSAGE
+    exit 3
+  fi
+fi
 
 # Non-default agents must run in an isolated session (assertMainSessionAgentId).
 compose exec -T openclaw-gateway openclaw cron add \

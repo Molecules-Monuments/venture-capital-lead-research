@@ -67,7 +67,7 @@ marked optional.
 | `evidence-record` | Persist one research claim with provenance as `submitted_claim`, then attempt the deterministic corroboration-gated promotion | `idempotency_key`, `lead_id`, `evidence_json` |
 | `contradiction-record` | Record the deterministic contradiction classification for two persisted facts | `idempotency_key`, `lead_id`, `left_fact_id`, `right_fact_id`, `severity` |
 | `trajectory-record` | Record the deterministic trajectory classification for two persisted facts | `idempotency_key`, `lead_id`, `left_fact_id`, `right_fact_id` |
-| `memo-record` | Persist the memo produced from the frozen, human-approved snapshot (lands as `draft`; citations are trigger-confined to the snapshot) | `idempotency_key`, `lead_id`, `evaluation_id`, `compiled_truth_id`, `memo_title`, `memo_markdown`, `citations_json`, `evidence_hash` |
+| `memo-record` | Persist the memo produced from the frozen, human-approved snapshot (lands as `draft`; citations are trigger-confined to the snapshot's *current-support* facts — see "Memo citations" below) | `idempotency_key`, `lead_id`, `evaluation_id`, `compiled_truth_id`, `memo_title`, `memo_markdown`, `citations_json`, `evidence_hash` |
 | `source-watch` | Register or re-enable one watched surveillance source (the "monitor this website" path); the workflow lane cannot re-enable an operator-disabled entry, lower a stored confidentiality, or change ownership | `idempotency_key`, `source_name`, `source_uri`, `source_class`, `cadence`, `thesis_relevance`, `expected_signal` |
 | `source-unwatch` | Disable one watched source without deleting its history | `idempotency_key`, `source_uri` |
 | `proposal-record` | Persist one governance proposal (schema change / source policy / skill candidate) for operator review; applies nothing | `idempotency_key`, `proposal_kind`, `title`, `summary`, `content_json` |
@@ -81,6 +81,42 @@ The inner payload contracts are reviewed model-facing documentation: the
 `evidence_json` field set and researcher-packet mapping live in
 `workspaces/shared-skills/data-persistence/SKILL.md`, and the `citations_json`
 element contract lives in `workspaces/shared-skills/memo-writing/SKILL.md`.
+
+### Closed argument value domains
+
+Several arguments accept only a fixed set of values. `vcrun` refuses anything
+else before the workflow starts, so a call that guesses a value fails on first
+use. Every closed domain in the eighteen workflows:
+
+| Workflow | Argument | Accepted values |
+| --- | --- | --- |
+| `contradiction-record` | `severity` | `low`, `medium`, `high`, `blocking` |
+| `inbound-text-intake` | `origin_subtype` | `direct_contact`, `network_referral`, `event_followup`, `unknown` |
+| `inbound-intake` | `channel_provider` | `manual` only — a channel attachment uses `document-ingest` |
+| `orchestration-record` | `record_kind` | `delegation_eval`, `return_assessment`, `chief_output` |
+| `proposal-record` | `proposal_kind` | `schema_change`, `source_policy`, `skill_candidate`, `other` |
+| `source-watch` | `source_class` | `company_blog`, `vc_portfolio`, `news_rss`, `press_release`, `research_report`, `open_source`, `job_board`, `other` |
+| `source-watch` | `cadence` | `daily`, `weekly`, `monthly` |
+| `preference-observe`, `preference-forget` | `preference_key` | `memo_length`, `communication_tone`, `research_depth`, `citation_density`, `output_structure` |
+| `preference-observe` | `observation_kind` | `explicit`, `inferred` |
+| `source-scan` | `limit` | an integer from `1` through `500` |
+
+`preference_value` is keyed to `preference_key`: `memo_length`
+(`short`/`standard`/`detailed`), `communication_tone`
+(`concise`/`balanced`/`explanatory`), `research_depth`
+(`quick_scan`/`standard`/`deep`), `citation_density`
+(`light`/`standard`/`dense`), `output_structure`
+(`narrative`/`headings`/`bullet_heavy`).
+
+Identifier arguments (`lead_id`, `left_fact_id`, `right_fact_id`,
+`extraction_id`, `evaluation_id`, `compiled_truth_id`) must be canonical
+positive BIGINT strings — no leading zeros, no sign, no UUIDs.
+`company_domain` must be a bare DNS domain (no scheme, no path), and
+`evidence_hash` a lowercase 64-character SHA-256 digest.
+
+The lead-origin taxonomy behind `origin_subtype` is explained in
+`workspaces/vc-chief/vc/lead_origin_taxonomy.md`; the table above is the
+authoritative operator-facing list.
 
 ### Manual versus channel documents
 
@@ -113,6 +149,28 @@ docker compose -f docker-compose.yml -p openclaw-lead-research-v3 --env-file .en
 The workflow returns one JSON object containing the created `lead_id`, which is
 the handle every later workflow takes.
 
+To read the extracted text back, run `lead-show` on that `lead_id`. Each entry
+in `artifacts` carries the `extraction_id` of its extraction, and:
+
+```sh
+docker compose -f docker-compose.yml -p openclaw-lead-research-v3 --env-file .env \
+  exec openclaw-gateway /workspaces/vc-chief/vc/bin/agent/vcops \
+  document-extraction-show --extraction-id <id> --json
+```
+
+returns the extraction with **no** `--trusted-context`. That is deliberate and is
+the one place the two document lanes differ in authority. `manual` is not a
+signable trusted-context provider, so no capability can ever name an `/inbox`
+document; its authority is the deployment host itself, and access is governed by
+the ordinary confidentiality ceiling instead. `inbound-intake` therefore records
+its artifacts as `internal`. Passing a channel capability here is refused
+(`channel_context_not_applicable`) rather than ignored.
+
+`lead-show` also reports `withheld_artifacts` on model lanes: the number of the
+lead's documents that the confidentiality ceiling removed from `artifacts`. A
+`0` means the lead really has no further documents; a non-zero value means the
+model is not seeing all of them.
+
 `document-ingest` is the channel lane. Its path must be a direct child of
 `/home/node/.openclaw/media/inbound` and the signed current-turn capability
 must contain the exact path-hash ingest/read scopes. It previews before
@@ -124,8 +182,22 @@ the same verified provider/account/sender principal. It globally binds the
 extraction to one lead association request and preserves original filename,
 provider event, and sender identity.
 
+A channel attachment is recorded as `confidential` and is read only by
+presenting the same capability that ingested it — a different verified principal
+is refused with `principal_mismatch`. That is the stricter of the two lanes, and
+it stays that way: a channel document is bound to one sender, whereas an
+`/inbox` document has no second principal to withhold it from.
+
+Because `evidence_artifacts` is content-addressed, a byte sequence's governance
+classification is fixed at its first ingestion. The same file arriving through
+both lanes is therefore refused the second time with
+`artifact_classification_conflict`, naming the recorded classification. Use the
+lane that already holds it rather than re-ingesting.
+
 Both lanes support PDF, PPTX, XLSX, and CSV only. Helper checks and resource
-limits, not the filename or model, determine acceptance.
+limits, not the filename or model, determine acceptance. In both lanes the
+extracted content is untrusted document input whose instructions are never
+followed.
 
 ### Preference workflows
 
@@ -156,16 +228,87 @@ separate.
 
 ## Request claims, idempotency, and replay
 
-Each mutating workflow commits a canonical request claim before its first
-domain mutation. A new logical operation receives a new opaque idempotency key.
-The same logical retry reuses the same key and exactly the same inputs. Same key
-plus changed arguments, document path/hash, extraction, or principal fails
-closed.
+Each mutating workflow commits a canonical request claim before its first domain
+mutation. A new logical operation receives a new opaque idempotency key. The same
+logical retry reuses the same key and exactly the same inputs. Same key plus
+changed arguments, document path/hash, extraction, or principal fails closed.
+
+Two tables hold that claim, because the four intake workflows must resolve a
+company and create a lead *before* their run row can reference them:
+
+- **`workflow_requests`** — the outer claim for `inbound-intake`,
+  `inbound-text-intake`, `outbound-scout` (`workflow-request-claim`) and
+  `document-ingest` (`document-request-claim`). It is committed as the first
+  step, ahead of any company or lead row, and stores a hash of the whole
+  request payload including the document digest and channel principal.
+- **`workflow_runs`** — the claim for every other workflow, committed by
+  `workflow-start` ahead of that workflow's first domain mutation. It stores
+  `input_hash` (lineage and metadata) and `input_digest`, the sha256 of the
+  runner's canonical argument payload. Both are immutable after insert.
+
+Before Lobster starts, `vcrun` classifies the key against `workflow_runs` with
+`workflow-replay-probe`, so a reused key is resolved while the graph is still
+untouched:
+
+| Existing run | Probe outcome | Effect |
+| --- | --- | --- |
+| none | `absent` | the workflow executes normally |
+| non-terminal | `in_progress` | the same run is resumed |
+| `failed` | `retried` | the run is reopened for a fresh attempt; `attempt` increments |
+| `succeeded` | `completed` | **no step executes**; the existing records are returned as `idempotent_replay` |
+| `cancelled` / `lost` | refused | `workflow_run_not_retryable` — a new operation needs a new key |
+
+A digest that differs from the committed one is refused as
+`idempotency_payload_mismatch` before any mutation, and is reported distinctly
+from a completed replay: a benign retry and a tampered one never share an error.
 
 Channel capabilities add a second layer: `(nonce, scope)` is recorded in
 PostgreSQL. The same operation may be idempotently observed again, but a
 different operation key, principal, or provider event using the same
-nonce/scope fails as `trusted_context_replay`.
+nonce/scope fails as `trusted_context_replay`. Because the capability token is
+part of the canonical argument payload, an unchanged retry must present the same
+token; a retry after the token's ≤30-minute window has closed fails as
+`trusted_context_expired` and needs a fresh channel event.
+
+## Evidence, corroboration, and superseded rows
+
+`evidence-record` writes the claim as a `submitted_claim` and then attempts the
+corroboration-gated promotion. Recording the same claim a second time from a
+second independent source does **not** insert a second claim: the claim hash
+matches, so the existing fact is reused and the new source is attached to it as
+`supporting`.
+
+Promotion, when the policy is satisfied, appends a new `verified_fact` row that
+supersedes the claim (`supersedes_fact_id`, `version + 1`) and copies its
+provenance links. So a promoted claim is two rows on purpose — version 1
+(`submitted_claim`, superseded) and version 2 (`verified_fact`) — and not a
+duplicate. `facts` is append-only; nothing is rewritten or deleted, exactly as
+for the erasure tombstone and the other history tables. Every read path
+(`compiled-truth`, `lead-show`, the dedup lookup) excludes rows that something
+supersedes, so a superseded predecessor never reaches a snapshot, score, or memo.
+Query current facts with `NOT EXISTS (SELECT 1 FROM facts newer WHERE
+newer.supersedes_fact_id = f.id)` rather than by counting rows.
+
+### Memo citations
+
+A memo may cite only what its frozen snapshot carries as **current support**,
+which is a narrower set than "everything in the snapshot". A compiled-truth
+snapshot records each fact with a `support_role`
+(`current`/`historical`/`contradicted`/`stale`/`missing_context`), and a
+database trigger admits `support_role = 'current'` only for a `verified_fact`.
+Each citation must resolve to a `(fact_id, source_id)` pair that is `current` in
+that snapshot, so:
+
+- a `submitted_claim` that *is* in the approved snapshot is **not** citable — it
+  is present with a non-`current` role and the citation is refused with
+  `citation_lineage_mismatch`;
+- a fact-and-source pair that never appeared in this snapshot is refused the
+  same way.
+
+This is deliberate: a memo is the output of the human-approved evaluation, so
+its claims rest on corroborated evidence rather than on anything that happened
+to be recorded for the lead. `citation_coverage_percent` is measured against the
+same `current` set, so full coverage means every corroborated fact was cited.
 
 ## Evaluation checkpoint
 
@@ -239,6 +382,20 @@ For an incident:
 An unchanged retry may return existing request, lead, extraction, association,
 preference audit, or run records. That is expected idempotency, not duplicate
 work.
+
+The controlled retry in step 7 is the same idempotency key, not a replacement
+one. A run reconciled to `failed` is reopened by `retry_workflow_run` — the same
+run row, same claim, same immutable `input_hash`/`input_digest`, with `attempt`
+incremented and the previous attempt's error cleared. Every attempt is preserved
+in `audit_events` as a `workflow.retry` row alongside its `workflow.transition`
+rows. `succeeded`, `cancelled`, and `lost` have no edge out: a run that
+completed is never re-executed, and a run an operator cancelled is never
+resurrected by reusing its key.
+
+When a step fails and the cleanup itself cannot complete, both are reported: the
+Lobster envelope naming the failing step stays in the result and
+`postgres_reconciliation` records whether the run was left reconciled. Read the
+step error first — the reconciliation error is downstream of it.
 
 ## Task Flow relation
 

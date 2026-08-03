@@ -20,7 +20,11 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 # renderer stays safe to run even when someone omits `-B`.
 sys.dont_write_bytecode = True
 
-from check_env import parse_dotenv, validate_channel_selection  # noqa: E402
+from check_env import (  # noqa: E402
+    parse_dotenv,
+    validate_channel_selection,
+    validate_runtime_selection,
+)
 
 
 PACKAGE_DIR = Path(__file__).resolve().parent.parent
@@ -491,7 +495,16 @@ def main() -> int:
                 ".env; pass an explicit output path for a validation render"
             )
         values = parse_dotenv(env_path)
-        errors = validate_channel_selection(values)
+        # Both selection validators, not just the channel one. The renderer is
+        # invoked directly in several documented snippets (README "Switching a
+        # model or search provider", RUNBOOK 6, OPERATIONS "Secrets"), so it
+        # cannot assume check_env.sh already ran: without the runtime selection
+        # it would render a plain-HTTP custom provider, a public Ollama origin,
+        # `auto` search under a local model, or Tavily with no key, and report
+        # PASS. This is not a substitute for check_env.sh — that validator also
+        # covers secrets, images, ports, volumes, and ambient-environment
+        # shadowing — but no configuration either one rejects is rendered.
+        errors = validate_channel_selection(values) + validate_runtime_selection(values)
         if errors:
             raise ValueError("; ".join(errors))
         selected = values["PRIMARY_CHANNEL"]
