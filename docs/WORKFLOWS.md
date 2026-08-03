@@ -383,10 +383,24 @@ An unchanged retry may return existing request, lead, extraction, association,
 preference audit, or run records. That is expected idempotency, not duplicate
 work.
 
-The controlled retry in step 7 is the same idempotency key, not a replacement
-one. A run reconciled to `failed` is reopened by `retry_workflow_run` — the same
-run row, same claim, same immutable `input_hash`/`input_digest`, with `attempt`
-incremented and the previous attempt's error cleared. Every attempt is preserved
+The controlled retry in step 7 is the same idempotency key **and the same
+arguments**, not a replacement key and not a corrected payload. A run reconciled
+to `failed` is reopened by `retry_workflow_run` — the same run row, same claim,
+same immutable `input_hash`/`input_digest`, with `attempt` incremented and the
+previous attempt's error cleared.
+
+Because the arguments are part of the run's identity, the two rules in the
+previous section meet here:
+
+- **same key, same arguments** → the run is reopened and re-executed. This is
+  the case key reuse exists for: a network blip, a timeout, an interrupted
+  runner. If it fails again you get *this* attempt's step error, not the
+  previous one.
+- **same key, corrected arguments** → refused as `idempotency_payload_mismatch`.
+  Fixing a rejected payload is a different logical operation and takes a new
+  key. That is not a gap in recovery: a payload the helpers rejected never
+  produced a partial effect to recover from, which is exactly why reusing the
+  key would be meaningless. Every attempt is preserved
 in `audit_events` as a `workflow.retry` row alongside its `workflow.transition`
 rows. `succeeded`, `cancelled`, and `lost` have no edge out: a run that
 completed is never re-executed, and a run an operator cancelled is never

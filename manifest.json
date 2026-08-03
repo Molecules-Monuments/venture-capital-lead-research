@@ -90,8 +90,8 @@
     {
       "executable": false,
       "path": "README.md",
-      "sha256": "18732ae0bef73f2703c792bbc32f6d9fe66b53924fbaf590ec0ce3cb43f09b29",
-      "size": 83307
+      "sha256": "bff2804c97dc38676caffed17ccd35fece479eac78ba68bc1d9ebed8c8e69c8c",
+      "size": 83758
     },
     {
       "executable": false,
@@ -234,8 +234,8 @@
     {
       "executable": false,
       "path": "docs/WORKFLOWS.md",
-      "sha256": "8feae9c4377f494cec2008772fb890ad76a8ef8543b82d4ad7b27568ea917ae7",
-      "size": 25056
+      "sha256": "5ecfab9f8489b623e247c075a794ad69a13a02fc9916292c942f08cff6e5c687",
+      "size": 25801
     },
     {
       "executable": false,
