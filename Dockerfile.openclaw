@@ -21,7 +21,31 @@ RUN npm ci --prefix /opt/openclaw-runtime \
   && test "$(node -p "require('/app/extensions/ollama/package.json').version")" = "2026.7.1" \
   && test "$(node -p "require('/app/extensions/telegram/package.json').version")" = "2026.7.1" \
   && ln -s /opt/openclaw-runtime/node_modules/@clawdbot/lobster/bin/lobster.js /usr/local/bin/openclaw-lobster \
-  && ln -s /opt/openclaw-runtime /opt/openclaw-channel-plugins
+  && ln -s /opt/openclaw-runtime /opt/openclaw-channel-plugins \
+# Put the three reinstalled channel distributions where the harness's own
+# extension scanner looks, which is what the complete upstream distribution
+# does; the GHCR release only prunes them.
+#
+# This is not cosmetic. The harness grants its keyed store only to a plugin
+# whose registry record is `origin: "bundled"` or a recorded trusted official
+# install. A plugin named in `plugins.load.paths` is neither, so it resolves as
+# a path/config origin and every code path that reaches openKeyedStore throws
+# "openKeyedStore is only available for trusted plugins in this release". The
+# Teams provider reaches it while *starting*: measured on a live deployment it
+# exited 40 ms after "starting provider (port 3978)", crash-looped through all
+# ten auto-restarts, and never bound its webhook port — while bootstrap.sh
+# exited 0 and the container reported healthy. Slack and Discord carry the same
+# call sites past authentication.
+#
+# Moved, not copied: /opt/openclaw-runtime keeps one source of truth for
+# everything else (Lobster, the search plugins), and duplicating these three
+# would add ~159 MB to the image. The version assertions above run first and
+# still gate exactly which bytes get moved, so the hash-locked npm graph remains
+# the only provenance for this code. run_g6_image.py reads them from the new
+# location.
+  && mv /opt/openclaw-runtime/node_modules/@openclaw/slack /app/dist/extensions/slack \
+  && mv /opt/openclaw-runtime/node_modules/@openclaw/msteams /app/dist/extensions/msteams \
+  && mv /opt/openclaw-runtime/node_modules/@openclaw/discord /app/dist/extensions/discord
 
 # Exact Debian point-release pins are a deliberate part of the reviewed release
 # contract (a byte-reproducible runtime). The bookworm main pool keeps only the

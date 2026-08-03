@@ -84,8 +84,8 @@
     {
       "executable": false,
       "path": "Dockerfile.openclaw",
-      "sha256": "6ff00b3beacc793ff9f603ae5d6c49b2bb2911b6f155a9d4fdd034484dd1340e",
-      "size": 5623
+      "sha256": "31e22fdd42e43873d29c2614192981118ee3ae5ba71f5bc6744912e99457199c",
+      "size": 7228
     },
     {
       "executable": false,
@@ -216,8 +216,8 @@
     {
       "executable": false,
       "path": "docs/RUNBOOK.md",
-      "sha256": "136f9fdbd97c116abbde9d908b3a542d4fa21d1f4caa6b59bef2f71f866dd29a",
-      "size": 51519
+      "sha256": "29f05464614daa945d082bc3f864ddc7f0f23e3aa1c056231a3a99cdd6a1a3c8",
+      "size": 51089
     },
     {
       "executable": false,
@@ -552,14 +552,14 @@
     {
       "executable": true,
       "path": "scripts/check_customization.py",
-      "sha256": "47c24d9fe446a69d5fe48bb4f0ddf1d852795affe7cf7d5a759da985334b3c81",
-      "size": 15856
+      "sha256": "d08581d58d4fd5019caa6536334c7a0fa79735f13a55d358bf5389afc675da9d",
+      "size": 15344
     },
     {
       "executable": true,
       "path": "scripts/check_env.py",
-      "sha256": "b444aa428f4fcea2892886c1d8007ebb47286a85efc73623464cc3446bef5ba3",
-      "size": 40864
+      "sha256": "9af987b99ab990b26cc1bbbe0d11f325746fb631ed4be96741cb3a7360fbfd54",
+      "size": 38628
     },
     {
       "executable": true,
@@ -594,8 +594,8 @@
     {
       "executable": true,
       "path": "scripts/render_channel_config.py",
-      "sha256": "cf23bdda696fde4aac33c698560bf924aa4d5ae86b09c6ec741ad14b19c5a1cf",
-      "size": 27286
+      "sha256": "a042f50306e633a1de1a2c46696043e653ca8606dfbfff5be12524568ae2ac4c",
+      "size": 27176
     },
     {
       "executable": true,
@@ -618,8 +618,8 @@
     {
       "executable": true,
       "path": "scripts/run_g6_image.py",
-      "sha256": "f766225f3def68f116b1c92a99bd2b34263a2a8d3a159479388911ee8bf9746c",
-      "size": 15071
+      "sha256": "19df4fc7ec8ee914bf19fb94aea39a0a7a96553819ebbb67828d285dd15a68d5",
+      "size": 14999
     },
     {
       "executable": true,
@@ -828,8 +828,8 @@
     {
       "executable": false,
       "path": "tests/infrastructure/test_infrastructure_contract.py",
-      "sha256": "310a9be56f98907d791e1a565bb6aa87c48042888df006d06197ca16c33eb45d",
-      "size": 35378
+      "sha256": "d889f36578a662c089d0a1b609b13d9493515f203d90903e228ae306872a29b3",
+      "size": 34703
     },
     {
       "executable": false,
@@ -858,8 +858,8 @@
     {
       "executable": false,
       "path": "tests/v3/test_runtime_provider_and_context.py",
-      "sha256": "9d11c9b58f20cc0270d44cfb5658ce7475bc4014fd954a2055975d425f3fe559",
-      "size": 39055
+      "sha256": "c3d45d3bb1d2b5ec4a59e840c27f84c504e8048eb4f94d1a135d88ccd2966e60",
+      "size": 38571
     },
     {
       "executable": false,
