@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: 0BSD
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import json
 import os
@@ -8,7 +9,10 @@ import subprocess
 import sys
 import unittest
 from pathlib import Path
+from typing import Any, ClassVar
 from unittest.mock import patch
+
+import yaml
 
 
 PACKAGE = Path(__file__).resolve().parents[2]
@@ -291,7 +295,7 @@ class FixedRunnerTests(unittest.TestCase):
                 "workflow_run": {"status": "failed"},
             },
         }
-        payload = {"ok": False, "error": {"code": "lobster_timeout"}}
+        payload: dict[str, Any] = {"ok": False, "error": {"code": "lobster_timeout"}}
         vcrun._attach_failure_reconciliation(
             payload,
             failure_hook=lambda reason: reconciliation,
@@ -299,14 +303,280 @@ class FixedRunnerTests(unittest.TestCase):
         )
         self.assertEqual(reconciliation, payload["postgres_reconciliation"])
 
-        with self.assertRaisesRegex(vcrun.VCRunError, "reconciliation also failed"):
-            vcrun._attach_failure_reconciliation(
-                {"ok": False},
-                failure_hook=lambda reason: (_ for _ in ()).throw(
-                    vcrun.VCRunError("revision conflict")
-                ),
-                reason="lobster_step_failure",
+        # A cleanup that itself fails must not replace the original failure:
+        # the Lobster envelope naming the step that broke is the diagnostic
+        # one, and reporting only the downstream reconciliation error is what
+        # made a failed retry look like a broken deployment.
+        original: dict[str, Any] = {
+            "ok": False,
+            "error": {"code": "lobster_step_failure"},
+            "lobster": {"ok": False, "error": {"code": "invalid_transition"}},
+        }
+        vcrun._attach_failure_reconciliation(
+            original,
+            failure_hook=lambda reason: (_ for _ in ()).throw(
+                vcrun.VCRunError("revision conflict")
+            ),
+            reason="lobster_step_failure",
+        )
+        self.assertEqual("invalid_transition", original["lobster"]["error"]["code"])
+        cleanup = original["postgres_reconciliation"]
+        self.assertFalse(cleanup["ok"])
+        self.assertEqual("reconciliation_failed", cleanup["error"]["code"])
+        self.assertIn("revision conflict", cleanup["error"]["message"])
+
+        invalid: dict[str, Any] = {"ok": False, "error": {"code": "lobster_timeout"}}
+        vcrun._attach_failure_reconciliation(
+            invalid,
+            failure_hook=lambda reason: {"ok": False},
+            reason="lobster_timeout",
+        )
+        self.assertEqual("reconciliation_invalid", invalid["postgres_reconciliation"]["error"]["code"])
+
+
+class DocumentedValueDomainTests(unittest.TestCase):
+    """Every closed argument domain is enforced AND written down.
+
+    Following docs/WORKFLOWS.md verbatim used to fail on first use for
+    `contradiction-record --severity` and `inbound-text-intake --origin_subtype`:
+    the accepted values existed only in vcrun.py. This binds the three together —
+    if a domain changes in code, the behavioural half fails; if the table is not
+    updated, the documentation half fails.
+    """
+
+    DOMAINS: ClassVar[dict[tuple[str, str], tuple[str, ...]]] = {
+        ("contradiction-record", "severity"): ("low", "medium", "high", "blocking"),
+        ("inbound-text-intake", "origin_subtype"): (
+            "direct_contact", "network_referral", "event_followup", "unknown",
+        ),
+        ("orchestration-record", "record_kind"): (
+            "delegation_eval", "return_assessment", "chief_output",
+        ),
+        ("proposal-record", "proposal_kind"): (
+            "schema_change", "source_policy", "skill_candidate", "other",
+        ),
+        ("source-watch", "source_class"): (
+            "company_blog", "vc_portfolio", "news_rss", "press_release",
+            "research_report", "open_source", "job_board", "other",
+        ),
+        ("source-watch", "cadence"): ("daily", "weekly", "monthly"),
+        ("preference-observe", "preference_key"): (
+            "memo_length", "communication_tone", "research_depth",
+            "citation_density", "output_structure",
+        ),
+        ("preference-observe", "observation_kind"): ("explicit", "inferred"),
+    }
+
+    BASE: ClassVar[dict[str, dict[str, str]]] = {
+        "contradiction-record": {
+            "idempotency_key": "g5-domain", "lead_id": "1",
+            "left_fact_id": "1", "right_fact_id": "2", "severity": "low",
+        },
+        "inbound-text-intake": {
+            "idempotency_key": "g5-domain", "lead_title": "Lead", "company_name": "Acme",
+            "company_domain": "acme.example", "origin_subtype": "direct_contact",
+        },
+        "orchestration-record": {
+            "idempotency_key": "g5-domain", "lead_id": "1", "record_kind": "chief_output",
+            "specialist": "founder-researcher", "payload_json": "{}",
+        },
+        "proposal-record": {
+            "idempotency_key": "g5-domain", "proposal_kind": "other", "title": "T",
+            "summary": "S", "content_json": "{}",
+        },
+        "source-watch": {
+            "idempotency_key": "g5-domain", "source_name": "Blog",
+            "source_uri": "https://acme.example/blog", "source_class": "company_blog",
+            "cadence": "daily", "thesis_relevance": "relevant", "expected_signal": "launches",
+        },
+        "preference-observe": {
+            "idempotency_key": "g5-domain", "trusted_context": "opaque.capability",
+            "preference_key": "memo_length", "preference_value": "short",
+            "observation_kind": "explicit",
+        },
+    }
+
+    def test_each_documented_value_is_accepted_and_others_are_refused(self) -> None:
+        for (workflow, argument), values in self.DOMAINS.items():
+            for value in values:
+                payload = {**self.BASE[workflow], argument: value}
+                with self.subTest(workflow=workflow, argument=argument, value=value):
+                    rendered = json.loads(
+                        vcrun.validate_workflow_args(workflow, json.dumps(payload))
+                    )
+                    self.assertEqual(value, rendered[argument])
+            with self.subTest(workflow=workflow, argument=argument, value="<outside>"):
+                payload = {**self.BASE[workflow], argument: "not-a-reviewed-value"}
+                with self.assertRaises(vcrun.VCRunError):
+                    vcrun.validate_workflow_args(workflow, json.dumps(payload))
+
+    def test_every_accepted_value_appears_in_the_operator_documentation(self) -> None:
+        workflows_doc = (PACKAGE / "docs/WORKFLOWS.md").read_text(encoding="utf-8")
+        for (workflow, argument), values in self.DOMAINS.items():
+            for value in values:
+                with self.subTest(workflow=workflow, argument=argument, value=value):
+                    self.assertIn(
+                        f"`{value}`",
+                        workflows_doc,
+                        f"{workflow} --{argument} accepts {value!r} but docs/WORKFLOWS.md "
+                        "does not list it",
+                    )
+
+    def test_preference_values_match_the_helper_schema(self) -> None:
+        # preference_value is enforced by vcops, not vcrun, so bind the doc to
+        # the helper's own table rather than to a second copy of it.
+        workflows_doc = (PACKAGE / "docs/WORKFLOWS.md").read_text(encoding="utf-8")
+        spec = importlib.util.spec_from_file_location(
+            "vcops_preferences", PACKAGE / "workspaces/vc-chief/vc/bin/vcops.py"
+        )
+        assert spec is not None and spec.loader is not None
+        vcops = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(vcops)
+        for key, values in vcops.PREFERENCE_VALUES.items():
+            for value in values:
+                with self.subTest(preference_key=key, value=value):
+                    self.assertIn(f"`{value}`", workflows_doc)
+
+
+class ReplayProbeTests(unittest.TestCase):
+    """The pre-flight classification that makes an unchanged retry a no-op."""
+
+    ARGS: ClassVar[str] = json.dumps(
+        {
+            "idempotency_key": "g5-replay",
+            "lead_id": "7",
+            "evidence_json": '{"claim":"arr","value":"1"}',
+        }
+    )
+
+    def _probe_result(self, outcome: str) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(
+            args=[],
+            returncode=0,
+            stdout=json.dumps(
+                {
+                    "ok": True,
+                    "workflow_replay_probe": {
+                        "outcome": outcome,
+                        "workflow_run": {"run_id": "r-1", "status": "succeeded"},
+                    },
+                }
+            ),
+            stderr="",
+        )
+
+    def test_the_injected_digest_covers_the_whole_argument_payload(self) -> None:
+        # The audit found two evidence-record runs with completely different
+        # evidence_json recording the SAME workflow input_hash, because
+        # workflow-start saw only the workflow, lead and key.
+        first = vcrun.validate_workflow_args("evidence-record", self.ARGS)
+        changed = vcrun.validate_workflow_args(
+            "evidence-record",
+            json.dumps(
+                {
+                    "idempotency_key": "g5-replay",
+                    "lead_id": "7",
+                    "evidence_json": '{"claim":"arr","value":"999"}',
+                }
+            ),
+        )
+        self.assertNotEqual(first, changed)
+        self.assertNotEqual(
+            hashlib.sha256(first.encode()).hexdigest(),
+            hashlib.sha256(changed.encode()).hexdigest(),
+        )
+
+    def test_a_caller_cannot_supply_its_own_digest(self) -> None:
+        for workflow in sorted(vcrun.WORKFLOWS):
+            contract = vcrun.WORKFLOWS[workflow]
+            with self.subTest(workflow=workflow):
+                self.assertNotIn("input_digest", contract["keys"])
+                self.assertNotIn("input_digest", contract.get("optional_keys", set()))
+        with self.assertRaises(vcrun.VCRunError):
+            vcrun.validate_workflow_args(
+                "runtime-preflight",
+                json.dumps({"idempotency_key": "g5", "input_digest": "0" * 64}),
             )
+
+    def test_every_workflow_declares_the_injected_argument(self) -> None:
+        for workflow, contract in sorted(vcrun.WORKFLOWS.items()):
+            body = yaml.safe_load(
+                (PACKAGE / "workspaces/vc-chief/vc/workflows" / contract["file"]).read_text(
+                    encoding="utf-8"
+                )
+            )
+            with self.subTest(workflow=workflow):
+                self.assertIn("input_digest", body["args"])
+                start = next(
+                    step for step in body["steps"] if step["id"] == "workflow_start"
+                )
+                self.assertIn('--input-digest "$LOBSTER_ARG_INPUT_DIGEST"', start["run"])
+
+    def test_a_completed_replay_returns_the_existing_run_without_running_lobster(self) -> None:
+        with patch.object(vcrun, "_validate_install"), patch.object(
+            vcrun.subprocess, "run", return_value=self._probe_result("completed")
+        ), patch.object(vcrun, "_execute") as execute, patch.object(vcrun, "_emit") as emit:
+            self.assertEqual(0, vcrun.main(["run", "evidence-record", "--args-json", self.ARGS]))
+        execute.assert_not_called()
+        payload = emit.call_args.args[0]
+        self.assertTrue(payload["ok"])
+        self.assertEqual("completed", payload["idempotent_replay"]["outcome"])
+
+    def test_a_resumable_or_absent_run_proceeds_to_lobster(self) -> None:
+        for outcome in ("absent", "in_progress", "retried", "unverifiable"):
+            with self.subTest(outcome=outcome), patch.object(
+                vcrun, "_validate_install"
+            ), patch.object(
+                vcrun.subprocess, "run", return_value=self._probe_result(outcome)
+            ), patch.object(vcrun, "_execute", return_value=0) as execute:
+                self.assertEqual(
+                    0, vcrun.main(["run", "evidence-record", "--args-json", self.ARGS])
+                )
+            execute.assert_called_once()
+            command = execute.call_args.args[0]
+            payload = json.loads(command[command.index("--args-json") + 1])
+            self.assertEqual(64, len(payload["input_digest"]))
+
+    def test_a_typed_probe_refusal_is_reported_verbatim(self) -> None:
+        refusal = subprocess.CompletedProcess(
+            args=[],
+            returncode=1,
+            stdout=json.dumps(
+                {
+                    "ok": False,
+                    "error": {
+                        "code": "idempotency_payload_mismatch",
+                        "message": "workflow replay arguments differ from the committed request",
+                        "details": None,
+                    },
+                }
+            ),
+            stderr="",
+        )
+        with patch.object(vcrun, "_validate_install"), patch.object(
+            vcrun.subprocess, "run", return_value=refusal
+        ), patch.object(vcrun, "_execute") as execute, patch.object(vcrun, "_emit") as emit:
+            self.assertEqual(2, vcrun.main(["run", "evidence-record", "--args-json", self.ARGS]))
+        execute.assert_not_called()
+        self.assertEqual(
+            "idempotency_payload_mismatch", emit.call_args.args[0]["error"]["code"]
+        )
+
+    def test_an_unknown_probe_outcome_fails_closed(self) -> None:
+        with patch.object(vcrun, "_validate_install"), patch.object(
+            vcrun.subprocess, "run", return_value=self._probe_result("something_new")
+        ), patch.object(vcrun, "_execute") as execute:
+            self.assertEqual(2, vcrun.main(["run", "evidence-record", "--args-json", self.ARGS]))
+        execute.assert_not_called()
+
+    def test_dry_run_never_probes_or_mutates(self) -> None:
+        with patch.object(vcrun, "_validate_install"), patch.object(
+            vcrun.subprocess, "run"
+        ) as helper, patch.object(vcrun, "_execute", return_value=0):
+            self.assertEqual(
+                0, vcrun.main(["dry-run", "evidence-record", "--args-json", self.ARGS])
+            )
+        helper.assert_not_called()
 
 
 class OperatorControlTests(unittest.TestCase):

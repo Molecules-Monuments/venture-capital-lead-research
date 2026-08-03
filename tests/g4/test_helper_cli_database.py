@@ -274,6 +274,161 @@ class HelperCliDatabaseTests(unittest.TestCase):
         self.assertEqual(missing["workflow_failure_reconciliation"]["outcome"], "not_started")
         self.assertIsNone(missing["workflow_failure_reconciliation"]["workflow_run"])
 
+    def test_replay_probe_classifies_every_reuse_of_an_idempotency_key(self):
+        # docs/WORKFLOWS.md: "An unchanged retry may return existing ... run
+        # records. That is expected idempotency, not duplicate work." The probe
+        # is what lets the runner honour that before any step executes.
+        key = self.prefix + "_replay_probe"
+        digest = hashlib.sha256(b"replay-probe-arguments").hexdigest()
+        absent = self.invoke([
+            "workflow-replay-probe", "--workflow", "evaluate-lead",
+            "--idempotency-key", key, "--input-digest", digest,
+        ])["workflow_replay_probe"]
+        self.assertEqual(absent["outcome"], "absent")
+        self.assertIsNone(absent["workflow_run"])
+
+        opened = self.invoke([
+            "workflow-start", "--workflow", "evaluate-lead", "--lead-id", str(self.lead_id),
+            "--idempotency-key", key, "--input-digest", digest,
+        ])
+        self.assertEqual(opened["replay"], "opened")
+        self.assertTrue(opened["execute"])
+        self.assertEqual(opened["workflow_run"]["attempt"], 1)
+        self.assertEqual(opened["workflow_run"]["input_digest"], digest)
+
+        in_progress = self.invoke([
+            "workflow-replay-probe", "--workflow", "evaluate-lead",
+            "--idempotency-key", key, "--input-digest", digest,
+        ])["workflow_replay_probe"]
+        self.assertEqual(in_progress["outcome"], "in_progress")
+
+        # A reused key carrying different arguments must fail closed, and must
+        # not be reported as the idempotent replay of the committed one.
+        tampered = self.invoke([
+            "workflow-replay-probe", "--workflow", "evaluate-lead", "--idempotency-key", key,
+            "--input-digest", hashlib.sha256(b"different-arguments").hexdigest(),
+        ], expect_ok=False)
+        self.assertEqual(tampered["error"]["code"], "idempotency_payload_mismatch")
+
+        running = self.invoke([
+            "workflow-transition", "--run-id", opened["workflow_run"]["run_id"], "--status", "running",
+            "--expected-revision", str(opened["workflow_run"]["record_version"]),
+        ])["workflow_run"]
+        self.invoke([
+            "workflow-transition", "--run-id", running["run_id"], "--status", "succeeded",
+            "--expected-revision", str(running["record_version"]),
+        ])
+
+        completed = self.invoke([
+            "workflow-replay-probe", "--workflow", "evaluate-lead",
+            "--idempotency-key", key, "--input-digest", digest,
+        ])["workflow_replay_probe"]
+        self.assertEqual(completed["outcome"], "completed")
+        self.assertEqual(completed["workflow_run"]["status"], "succeeded")
+        replayed_start = self.invoke([
+            "workflow-start", "--workflow", "evaluate-lead", "--lead-id", str(self.lead_id),
+            "--idempotency-key", key, "--input-digest", digest,
+        ])
+        self.assertEqual(replayed_start["replay"], "completed")
+        self.assertFalse(replayed_start["execute"])
+        self.assertEqual(
+            self.query("SELECT count(*) FROM workflow_runs WHERE idempotency_key=%s", (key,)), 1
+        )
+
+    def test_a_reconciled_failure_is_retryable_under_the_same_key(self):
+        # README: "reuse a key only to recover that same operation." Before
+        # migration 018 the first reconciled failure poisoned the key for good.
+        key = self.prefix + "_retry_after_failure"
+        digest = hashlib.sha256(b"retry-after-failure-arguments").hexdigest()
+        opened = self.invoke([
+            "workflow-start", "--workflow", "evaluate-lead", "--lead-id", str(self.lead_id),
+            "--idempotency-key", key, "--input-digest", digest,
+        ])["workflow_run"]
+        self.invoke([
+            "workflow-transition", "--run-id", opened["run_id"], "--status", "running",
+            "--expected-revision", str(opened["record_version"]),
+        ])
+        reconciled = self.invoke([
+            "workflow-reconcile-failure", "--workflow", "evaluate-lead",
+            "--idempotency-key", key, "--reason", "lobster_step_failure",
+        ])["workflow_failure_reconciliation"]
+        self.assertEqual(reconciled["workflow_run"]["status"], "failed")
+
+        retried = self.invoke([
+            "workflow-replay-probe", "--workflow", "evaluate-lead",
+            "--idempotency-key", key, "--input-digest", digest,
+        ])["workflow_replay_probe"]
+        self.assertEqual(retried["outcome"], "retried")
+        self.assertEqual(retried["workflow_run"]["status"], "queued")
+        self.assertEqual(retried["workflow_run"]["attempt"], 2)
+        # Identity is immutable across the retry: same run, same claim.
+        self.assertEqual(retried["workflow_run"]["run_id"], opened["run_id"])
+        self.assertEqual(retried["workflow_run"]["input_hash"], opened["input_hash"])
+        self.assertEqual(retried["workflow_run"]["input_digest"], digest)
+        self.assertEqual(
+            self.query(
+                "SELECT count(*) FROM workflow_runs WHERE idempotency_key=%s", (key,)
+            ),
+            1,
+        )
+        self.assertEqual(
+            self.query(
+                "SELECT count(*) FROM audit_events WHERE event_type='workflow.retry' "
+                "AND entity_id=%s",
+                (str(opened["id"]),),
+            ),
+            1,
+        )
+        self.assertEqual(
+            self.query(
+                "SELECT count(*) FROM workflow_runs WHERE id=%s AND finished_at IS NULL "
+                "AND error_class IS NULL",
+                (opened["id"],),
+            ),
+            1,
+        )
+
+        # The reopened attempt runs the ordinary lifecycle to completion.
+        running = self.invoke([
+            "workflow-transition", "--run-id", opened["run_id"], "--status", "running",
+            "--expected-revision", str(retried["workflow_run"]["record_version"]),
+        ])["workflow_run"]
+        succeeded = self.invoke([
+            "workflow-transition", "--run-id", opened["run_id"], "--status", "succeeded",
+            "--expected-revision", str(running["record_version"]),
+        ])["workflow_run"]
+        self.assertEqual(succeeded["status"], "succeeded")
+        self.assertEqual(succeeded["attempt"], 2)
+
+    def test_retry_cannot_resurrect_a_terminal_or_cancelled_run(self):
+        succeeded_key = self.prefix + "_no_retry_succeeded"
+        digest = hashlib.sha256(b"no-retry-arguments").hexdigest()
+        opened = self.invoke([
+            "workflow-start", "--workflow", "evaluate-lead", "--lead-id", str(self.lead_id),
+            "--idempotency-key", succeeded_key, "--input-digest", digest,
+        ])["workflow_run"]
+        running = self.invoke([
+            "workflow-transition", "--run-id", opened["run_id"], "--status", "running",
+            "--expected-revision", str(opened["record_version"]),
+        ])["workflow_run"]
+        cancelled = self.invoke([
+            "workflow-transition", "--run-id", opened["run_id"], "--status", "cancelled",
+            "--expected-revision", str(running["record_version"]),
+        ])["workflow_run"]
+        self.assertEqual(cancelled["status"], "cancelled")
+        refused = self.invoke([
+            "workflow-replay-probe", "--workflow", "evaluate-lead",
+            "--idempotency-key", succeeded_key, "--input-digest", digest,
+        ], expect_ok=False)
+        self.assertEqual(refused["error"]["code"], "workflow_run_not_retryable")
+        # workflow-start agrees with the probe rather than returning the run and
+        # leaving the caller to fail on the next transition.
+        refused_start = self.invoke([
+            "workflow-start", "--workflow", "evaluate-lead", "--lead-id", str(self.lead_id),
+            "--idempotency-key", succeeded_key, "--input-digest", digest,
+        ], expect_ok=False)
+        self.assertEqual(refused_start["error"]["code"], "workflow_run_not_retryable")
+
     def test_workflow_request_claim_precedes_mutation_and_globally_binds_extraction(self):
         document = self.inbox / f"{self.prefix}-claimed.csv"
         document.write_text("metric,value\narr,1200000\n", encoding="utf-8")

@@ -19,7 +19,7 @@
     "config/runtime/secrets/vcops_approval_pepper",
     "deployment-lock.json"
   ],
-  "file_count": 319,
+  "file_count": 320,
   "files": [
     {
       "executable": false,
@@ -96,8 +96,8 @@
     {
       "executable": false,
       "path": "README.md",
-      "sha256": "26887d570c40cdd174780fe8903f04854e925d9b139b2ebe04d3de7333ca9c4c",
-      "size": 81849
+      "sha256": "36ea83d61f53c4911325097eb7b5820a0009b9336ad1d981c2f921203ccbedd9",
+      "size": 83404
     },
     {
       "executable": false,
@@ -168,8 +168,8 @@
     {
       "executable": false,
       "path": "config/openclaw.json",
-      "sha256": "72ddd4197efd2da44178d3f18e6662d7a51754421e68d05448ecae2fb746c2f9",
-      "size": 15872
+      "sha256": "94346a937bed54c7cf37dd575b9c40867b63b537dc0d02bf1696d95d4ab09e72",
+      "size": 16017
     },
     {
       "executable": false,
@@ -192,8 +192,8 @@
     {
       "executable": false,
       "path": "docs/DATA_MODEL.md",
-      "sha256": "eb6a3fb091106ba96fd3f7db13fa45ae44c0bc3f448cd8332bd4c142477b7a7f",
-      "size": 30461
+      "sha256": "18d6256b96009c5cfefd6b6f7b63c9b3a4e863dbe351ba4b0193d15af63bbec8",
+      "size": 31751
     },
     {
       "executable": false,
@@ -204,26 +204,26 @@
     {
       "executable": false,
       "path": "docs/OPERATIONS.md",
-      "sha256": "ddacba8a85f3fe5738d9630ed44cf5e93d395113391aa7b8caa42acddaf9afac",
-      "size": 19139
+      "sha256": "c7f95430cf23d1c8e04791067f9d9313830949d02597ea78bbce0d876fe811d6",
+      "size": 21360
     },
     {
       "executable": false,
       "path": "docs/PRODUCTION_READINESS.md",
-      "sha256": "6c613d984ab1e473d3e7b3b4b3f6f335108abc3d10dec44e5a0f0221eb800207",
-      "size": 10098
+      "sha256": "ddd4976fce3dfb7894feb7c8604cc9aa22b4cedf4d0b1b9ba0d002bad21068a0",
+      "size": 10303
     },
     {
       "executable": false,
       "path": "docs/RUNBOOK.md",
-      "sha256": "4c28df2d9b12d7088bd1aded64abf37cc9dca547df3d470c60c68371d1d06005",
-      "size": 45031
+      "sha256": "a69fa4e437a929a68c235a36ddc8ce173a1f6bf5e8a13c37c54fc90fb24bcebd",
+      "size": 48622
     },
     {
       "executable": false,
       "path": "docs/SCHEMA.sql",
-      "sha256": "5cb308a4af8cedfe89b8c5fb54debf955c80b0f5af698ff80c8cc616cd83d430",
-      "size": 228716
+      "sha256": "727f55caf5591b6c085d886f73a6efc4b104a03a1d7546a09e92a39b80383eb2",
+      "size": 232759
     },
     {
       "executable": false,
@@ -234,19 +234,19 @@
     {
       "executable": false,
       "path": "docs/V3_RELEASE_EVIDENCE.md",
-      "sha256": "1a92be82bb1ca8b8a2c490ac627eb7f9071b76d2267edda7659182972681b305",
-      "size": 10205
+      "sha256": "40d7a6404fb80b56218d610744767d7f934009361303b0be2d4a258c12427a5d",
+      "size": 10233
     },
     {
       "executable": false,
       "path": "docs/WORKFLOWS.md",
-      "sha256": "0e8cff64812a14a26ab28a34c69143d0fec9dc0edd235dd18939945c9e56061a",
-      "size": 15877
+      "sha256": "8feae9c4377f494cec2008772fb890ad76a8ef8543b82d4ad7b27568ea917ae7",
+      "size": 25056
     },
     {
       "executable": false,
       "path": "evals/V3_EVAL_RESULTS.md",
-      "sha256": "7c951deff6bd4ba29809c5bb19458b7e2a3944d35a66bd974b6e01cae609ae8e",
+      "sha256": "49ee7d0701b2746ef09692f20ba895bfa0e5de5cf0a158c96ae6effe9ef3bdf7",
       "size": 6966
     },
     {
@@ -362,6 +362,12 @@
       "path": "migrations/017_erasure_tombstone_and_append_only_grants.sql",
       "sha256": "05fa553ac7c1100fbb3c56e0e2fa3761261ff0315568148a48a9ddf43436757b",
       "size": 6446
+    },
+    {
+      "executable": false,
+      "path": "migrations/018_workflow_retry_after_failure.sql",
+      "sha256": "12e6739e2df457e6f41e1f8448eb26aff04a61cd29929ba609c2f2ca48fe3a49",
+      "size": 10207
     },
     {
       "executable": false,
@@ -552,8 +558,8 @@
     {
       "executable": true,
       "path": "scripts/check_env.py",
-      "sha256": "76f8bc5efde838cc7550e5d97a75314cc17df57d6f206f2050fb19d6225d9263",
-      "size": 34328
+      "sha256": "f8ed7a6ea8fb87340cc1dca07e48c18d0ef992a0e022be4d38a94d4a9ce2cab9",
+      "size": 35543
     },
     {
       "executable": true,
@@ -588,8 +594,8 @@
     {
       "executable": true,
       "path": "scripts/render_channel_config.py",
-      "sha256": "dbcd8c7d157ab518bb33dd1be7481ef20045c4fa1fdf002e5c15bc84b7eb9389",
-      "size": 26497
+      "sha256": "cf23bdda696fde4aac33c698560bf924aa4d5ae86b09c6ec741ad14b19c5a1cf",
+      "size": 27286
     },
     {
       "executable": true,
@@ -618,8 +624,8 @@
     {
       "executable": true,
       "path": "scripts/run_g8_deployment.py",
-      "sha256": "0f4d5a8740fcacbd12f321581935a95e5c0cea0fe0d9ac2adbd5816aa36e0578",
-      "size": 20235
+      "sha256": "74f0d7083f5d6e9d1278f99839c5a4e121a3eaa13638fbc9b73e56dd57cc7913",
+      "size": 22569
     },
     {
       "executable": true,
@@ -630,8 +636,8 @@
     {
       "executable": true,
       "path": "scripts/schedule_jobs.sh",
-      "sha256": "db4ebde4395ed51fffa85a3cb2122dccdc5e7c4e80442cca312bfa88b2074a88",
-      "size": 4501
+      "sha256": "c1fa4a0061406f26ceb90bf0608e441107b2546a7ea5a91979c44b3eb61cd0b7",
+      "size": 6278
     },
     {
       "executable": true,
@@ -648,8 +654,8 @@
     {
       "executable": true,
       "path": "scripts/validate_skill_system.py",
-      "sha256": "e04d4643443bb582e0edd04f941130098ae3a8a325d651fb7b646ec5f171acda",
-      "size": 30254
+      "sha256": "15c0ccb9383890e902cfd87396d66b8b9c6b6db4415b436781df54a21c6e54d1",
+      "size": 30391
     },
     {
       "executable": true,
@@ -744,8 +750,8 @@
     {
       "executable": false,
       "path": "tests/g4/test_helper_cli_database.py",
-      "sha256": "207a1a3f7d5cf7c44e5aa43f0ab4efb6da87baf68820873732dceee78ea0f412",
-      "size": 56368
+      "sha256": "24abe43d085642171c623e17c8ef382f51990c69fb6d7abac55b634564179bcc",
+      "size": 64237
     },
     {
       "executable": false,
@@ -768,8 +774,8 @@
     {
       "executable": false,
       "path": "tests/g4/test_workflow_execution.py",
-      "sha256": "17ad40ead08805b593563ce453467151a84bc6e95b49f08c68523e7097e4c556",
-      "size": 19084
+      "sha256": "e902827b83ee2c81ea3ca241f329162abbf1fa5f43296ec70ab61be16c2f26b9",
+      "size": 22411
     },
     {
       "executable": false,
@@ -792,8 +798,8 @@
     {
       "executable": false,
       "path": "tests/g5/test_vcrun.py",
-      "sha256": "2d1d2b8c5387769c926654d7b253ead897612ea666cdfb622f5d2e893ee8ed8e",
-      "size": 25988
+      "sha256": "42798c448840f59b49cd1f0b361d860f81f113ca1af9921b4938c692f5f8bcfe",
+      "size": 38682
     },
     {
       "executable": false,
@@ -822,8 +828,8 @@
     {
       "executable": false,
       "path": "tests/infrastructure/test_infrastructure_contract.py",
-      "sha256": "dfcc3497bb9ba32af4c26f56fc4f4a4ce60fe1565d875d9842030d6b74de07d4",
-      "size": 31446
+      "sha256": "da6cf56ee62d75937e4fdf42777ab02982627772fe17e47db1049e5a5fe1b47d",
+      "size": 34656
     },
     {
       "executable": false,
@@ -852,8 +858,8 @@
     {
       "executable": false,
       "path": "tests/v3/test_runtime_provider_and_context.py",
-      "sha256": "a7d9d81e5d0488fc5971386741a2888443e406776e645d18bd730965c3fc1176",
-      "size": 28645
+      "sha256": "af0474e76da905b1ae53c39a2e80f3e79839970ae5ce3a886e5c9fc81bc2e4f0",
+      "size": 32144
     },
     {
       "executable": false,
@@ -1374,8 +1380,8 @@
     {
       "executable": false,
       "path": "workspaces/vc-chief/AGENTS.md",
-      "sha256": "87c2841f47e10e6082cdf6d0af151d83a2529aa4cdaa491b6adfb5f1cbdbe07f",
-      "size": 14982
+      "sha256": "25201848e8a9b9040b9f25f7cd85319667a06b694f7b36d10fbcad7c2842d0d8",
+      "size": 15673
     },
     {
       "executable": false,
@@ -1446,8 +1452,8 @@
     {
       "executable": true,
       "path": "workspaces/vc-chief/vc/bin/vcops.py",
-      "sha256": "9b9d1d4fe945998b43b16929b77248ed55bc0b8f08cb853d9f532f386ecffe7c",
-      "size": 323867
+      "sha256": "0771bfc5382489365440d0ad302a0e0496357fc3a3db7e19a6831a44f7a4b1f5",
+      "size": 333932
     },
     {
       "executable": true,
@@ -1458,8 +1464,8 @@
     {
       "executable": true,
       "path": "workspaces/vc-chief/vc/bin/vcrun.py",
-      "sha256": "656dabf881c774763b309547d055d8a109983540e88b16613bc9f069158f4509",
-      "size": 37377
+      "sha256": "1a8bcf0bdef87d29b833d9e69843107775a98fa83f9fce13cd7a7bf20ee5f4ff",
+      "size": 42938
     },
     {
       "executable": true,
@@ -1494,8 +1500,8 @@
     {
       "executable": false,
       "path": "workspaces/vc-chief/vc/document_intake.md",
-      "sha256": "a02efeb07f82d8f15eed19fdff5d26a3ecb9f0d265f2d8574d04024a8210787e",
-      "size": 2822
+      "sha256": "50b98bf8a8c4b647e4f48d9f7c7e24b7adf5872f6b07abcf2dcebf34cd55e0e1",
+      "size": 3890
     },
     {
       "executable": false,
@@ -1830,110 +1836,110 @@
     {
       "executable": false,
       "path": "workspaces/vc-chief/vc/workflows/contradiction-record.lobster",
-      "sha256": "4394d63503ecca7a97d218f9c0f4f272784bb6519a7a55a5df1405a81ab65aa1",
-      "size": 1870
+      "sha256": "60b4198156bd5dfe286c3a58c48d2edeb3da1eb795cb133151a8a5ea2690f537",
+      "size": 2231
     },
     {
       "executable": false,
       "path": "workspaces/vc-chief/vc/workflows/document-ingest.lobster",
-      "sha256": "2f1e4ce2369d3890b1ead778abcd52eec0224f5bf1de697c41ea733f693e1a8a",
-      "size": 3087
+      "sha256": "3c6e4b8a7e198f2d3565320cc8d6c59f4cc4ff96957fef0e6505fb8ec609a641",
+      "size": 3448
     },
     {
       "executable": false,
       "path": "workspaces/vc-chief/vc/workflows/document-lead-intake.lobster",
-      "sha256": "ffef3aeeb051b487d54fb9331af03ae55da1613ce3a8726ae6a484d70ac4f20d",
-      "size": 4383
+      "sha256": "db1e3b55c82eacab264ba1b81777459c0a8f1a78e94aea6d603164c05675797f",
+      "size": 4744
     },
     {
       "executable": false,
       "path": "workspaces/vc-chief/vc/workflows/evaluate-lead.lobster",
-      "sha256": "ddd71ed24cdb363c8e34e94434485d67c30883e469f47cc43bbd9e2167915470",
-      "size": 4489
+      "sha256": "6c9a1ea6ac06f6990fffdb9a4c1cf810e4f493f2a6787226a6b76e719cbb06bc",
+      "size": 4850
     },
     {
       "executable": false,
       "path": "workspaces/vc-chief/vc/workflows/evidence-record.lobster",
-      "sha256": "82cd47ae42fa757a8286445ef36b7594df4aa1038d6d3f935952ee71a3448aaa",
-      "size": 2056
+      "sha256": "13199c12f537cd9cd500864a0a8821bd11c73f8ff10fbed593bc0acbfdbd7b15",
+      "size": 2417
     },
     {
       "executable": false,
       "path": "workspaces/vc-chief/vc/workflows/inbound-intake.lobster",
-      "sha256": "bea36871cd62614b1f1a70aff495121a03ccbab2c1f10b44c6c9c36a5b0662cc",
-      "size": 4541
+      "sha256": "4a503054f3581684640b649e9c5e8dc512d9e4ae14eecb06873764d83e702de6",
+      "size": 5690
     },
     {
       "executable": false,
       "path": "workspaces/vc-chief/vc/workflows/inbound-text-intake.lobster",
-      "sha256": "3f706c9fc7328ba64853ba48ee521bb756cc6b46c38f6ecb89ea833501908b55",
-      "size": 3264
+      "sha256": "13954676fce7669fe7883ef60903c31e3c1ebf71d5687e51305d244bfe7cbd80",
+      "size": 3625
     },
     {
       "executable": false,
       "path": "workspaces/vc-chief/vc/workflows/memo-record.lobster",
-      "sha256": "ddfc571d76949d8880706b92dae1eb23c5f123c2ee1a5efbbe0e1207ab2c11ad",
-      "size": 2332
+      "sha256": "8af32adcb5699b98bff8f5d52c25b11ad82d7eb0ccc45242b23ab3ec231f9d99",
+      "size": 2693
     },
     {
       "executable": false,
       "path": "workspaces/vc-chief/vc/workflows/orchestration-record.lobster",
-      "sha256": "462adcae240cdf50a79ed892696724d3e272ed805c8cbaeda598442aa16bf115",
-      "size": 2325
+      "sha256": "2c8d2af7327cd9f73b1cef5fb21c59bc576d794000f5d0119653ca5c6ca56751",
+      "size": 2686
     },
     {
       "executable": false,
       "path": "workspaces/vc-chief/vc/workflows/outbound-scout.lobster",
-      "sha256": "7b94352a37bbcefe1020b92fe66fd61447f6dfaba202bd93dd697088122dae8f",
-      "size": 3032
+      "sha256": "b8631d8708a8ddac23fcb6aaa4f6e9960eeb5bd8e4ddaf624aaa0cf6975cd4d1",
+      "size": 3393
     },
     {
       "executable": false,
       "path": "workspaces/vc-chief/vc/workflows/preference-forget.lobster",
-      "sha256": "07a67d62da6e74dea98298c5421efe3279031158149dddd73cb10176d1660186",
-      "size": 1810
+      "sha256": "f96c6ec9d29433e5d317cb562fa0020e909ab01c7c882f39645f3dcf64d603e0",
+      "size": 2171
     },
     {
       "executable": false,
       "path": "workspaces/vc-chief/vc/workflows/preference-observe.lobster",
-      "sha256": "b15eb0ba6a68d7027a90296ab247a11b4eece73fb38c3ace56a12a277bcc7fbb",
-      "size": 2063
+      "sha256": "0332730b38cca709fb4e3bca1248a5fa07ce25e190e7d2cd1882ec102fc4ccfd",
+      "size": 2424
     },
     {
       "executable": false,
       "path": "workspaces/vc-chief/vc/workflows/proposal-record.lobster",
-      "sha256": "ad9f22b8b21d4e6759f02bf4b62ca2114b0b72f95896563d9edfd07b3d063b47",
-      "size": 1814
+      "sha256": "29ce9d747e0e6e9642a972ee5d6de6e85c6796f84b487d99aeca5ed486abf230",
+      "size": 2175
     },
     {
       "executable": false,
       "path": "workspaces/vc-chief/vc/workflows/runtime-preflight.lobster",
-      "sha256": "ced66c84d5e0094de4e2e2fab1c823ffaaca42fe93bac77d56a71a2c59184079",
-      "size": 1658
+      "sha256": "e97b3d066ae7959129f4e79016d04edb097d297fe3a91afadaaa3f0d985690e3",
+      "size": 2019
     },
     {
       "executable": false,
       "path": "workspaces/vc-chief/vc/workflows/source-scan.lobster",
-      "sha256": "0c4e53ad578308246821ffe06901ce93e28b5adedae16d9d8637f0a97d879ab3",
-      "size": 1847
+      "sha256": "25c5eebfa3df4ea55ed295ac799b8083766f3b492209c108309225b798183156",
+      "size": 2208
     },
     {
       "executable": false,
       "path": "workspaces/vc-chief/vc/workflows/source-unwatch.lobster",
-      "sha256": "48c5941b069d594a9e85e88f4c15c1f900d98b85830b0e101155dc94beffe292",
-      "size": 1471
+      "sha256": "c6f363a19eea73d6f285a18a5f0f8372e467c3917b410e407534d948e22ca0fe",
+      "size": 1832
     },
     {
       "executable": false,
       "path": "workspaces/vc-chief/vc/workflows/source-watch.lobster",
-      "sha256": "5864a216cf52e86146ad25ba1b7871e767cecc07370020485d53c9ee632e6d7a",
-      "size": 1988
+      "sha256": "583df23b0893c94f742cf3dfab08fe0209ea19838e2097e596e00656d0f41a19",
+      "size": 2349
     },
     {
       "executable": false,
       "path": "workspaces/vc-chief/vc/workflows/trajectory-record.lobster",
-      "sha256": "b252c64d20b5b268f99c554c8acae95269730083cee7b97edf01e9834f4d4243",
-      "size": 1722
+      "sha256": "4ee1bc134cd70fa972fde37eab333e90de51ae4d1687d68355ee952eaf029b83",
+      "size": 2083
     }
   ],
   "manifest_version": 1,

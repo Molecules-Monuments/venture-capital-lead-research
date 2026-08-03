@@ -625,5 +625,70 @@ class LifecycleScriptContractTests(unittest.TestCase):
             self.assertEqual(declared[name], pin["version"], f"{name} version differs from package.json")
 
 
+class TeamsIdentifierValidationTests(unittest.TestCase):
+    """Directory object IDs are accepted by shape, not by RFC-4122 bits."""
+
+    @staticmethod
+    def teams_env(**overrides: str) -> dict[str, str]:
+        values = {
+            "PRIMARY_CHANNEL": "msteams",
+            "MSTEAMS_APP_ID": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+            "MSTEAMS_APP_PASSWORD": "an-app-password-of-length",
+            "MSTEAMS_TENANT_ID": "72f988bf-86f1-41af-91ab-2d7cd011db47",
+            "MSTEAMS_ALLOWED_USER_IDS": "29f1c4de-9a1b-4d0e-8f2a-11bb22cc33dd",
+            "MSTEAMS_ALLOWED_TEAM_ID": "19:abcdef123456@thread.tacv2",
+            "MSTEAMS_ALLOWED_CHANNEL_ID": "19:fedcba654321@thread.tacv2",
+            "MSTEAMS_PUBLIC_WEBHOOK_URL": "https://teams.example.org/api/messages",
+        }
+        values.update(overrides)
+        return values
+
+    def test_a_guid_outside_rfc_4122_version_and_variant_bits_is_accepted(self) -> None:
+        # Entra guarantees the 8-4-4-4-12 GUID format, not the RFC-4122 version
+        # (1-5) and variant (8|9|a|b) nibbles, and historic tenants do hold
+        # GUIDs that fall outside them. Rejecting those reported "not a stable
+        # UUID, a display name or UPN" — the wrong cause for a stable ID.
+        for label, guid in (
+            ("version nibble 0", "3f2504e0-4f89-01d3-9a0c-0305e82c3301"),
+            ("version nibble f", "3f2504e0-4f89-f1d3-9a0c-0305e82c3301"),
+            ("variant nibble 7", "3f2504e0-4f89-41d3-7a0c-0305e82c3301"),
+            ("variant nibble c", "3f2504e0-4f89-41d3-ca0c-0305e82c3301"),
+            ("uppercase", "3F2504E0-4F89-41D3-9A0C-0305E82C3301"),
+        ):
+            with self.subTest(case=label):
+                self.assertEqual(
+                    [], check_env.validate_channel_selection(self.teams_env(MSTEAMS_APP_ID=guid))
+                )
+
+    def test_display_names_upns_and_the_nil_guid_are_still_refused(self) -> None:
+        for label, value, marker in (
+            ("display name", "Contoso Research Bot", "8-4-4-4-12"),
+            ("UPN", "bot@contoso.onmicrosoft.com", "8-4-4-4-12"),
+            ("truncated", "3f2504e0-4f89-41d3-9a0c", "8-4-4-4-12"),
+            ("non-hex", "3f2504e0-4f89-41d3-9a0c-0305e82c330g", "8-4-4-4-12"),
+            ("all-zero GUID", "00000000-0000-0000-0000-000000000000", "all-zero"),
+        ):
+            with self.subTest(case=label):
+                errors = check_env.validate_channel_selection(
+                    self.teams_env(MSTEAMS_APP_ID=value)
+                )
+                self.assertTrue(any(marker in error for error in errors), errors)
+
+    def test_the_allowed_user_list_applies_the_same_rule(self) -> None:
+        self.assertEqual(
+            [],
+            check_env.validate_channel_selection(
+                self.teams_env(
+                    MSTEAMS_ALLOWED_USER_IDS="3f2504e0-4f89-01d3-7a0c-0305e82c3301,"
+                    "72f988bf-86f1-41af-91ab-2d7cd011db47"
+                )
+            ),
+        )
+        errors = check_env.validate_channel_selection(
+            self.teams_env(MSTEAMS_ALLOWED_USER_IDS="alice@contoso.com")
+        )
+        self.assertTrue(any("8-4-4-4-12" in error for error in errors), errors)
+
+
 if __name__ == "__main__":
     unittest.main()
