@@ -90,8 +90,8 @@
     {
       "executable": false,
       "path": "README.md",
-      "sha256": "34c064d8f5a254c6db5ced767d5e5beacafd17b4134666a44c5e8c5d140cb20c",
-      "size": 87094
+      "sha256": "8f2351e5fc080f3fd9cb21d34e10511d2c141d990a879526179fb83b9b110aa8",
+      "size": 89752
     },
     {
       "executable": false,
@@ -162,8 +162,8 @@
     {
       "executable": false,
       "path": "config/openclaw.json",
-      "sha256": "94346a937bed54c7cf37dd575b9c40867b63b537dc0d02bf1696d95d4ab09e72",
-      "size": 16017
+      "sha256": "158beb604b5fc03263aeb06d52493fbd122e885d447b70cda7c954e35d717fb3",
+      "size": 16109
     },
     {
       "executable": false,
@@ -210,8 +210,8 @@
     {
       "executable": false,
       "path": "docs/RUNBOOK.md",
-      "sha256": "febf10cf3b81a1c68c452859cddcfbbf3433118798ba7b3c5e1b2ba6f3a1c519",
-      "size": 55058
+      "sha256": "0878cbc7fad83749ca9040fe109bf014f1c788715b640808545b584ecc77a597",
+      "size": 56296
     },
     {
       "executable": false,

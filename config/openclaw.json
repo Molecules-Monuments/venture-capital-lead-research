@@ -692,6 +692,10 @@
     "enabled": false,
     "maxConcurrentRuns": 1
   },
+  "diagnostics": {
+    "stuckSessionWarnMs": 300000,
+    "stuckSessionAbortMs": 960000
+  },
   "logging": {
     "maxFileBytes": 10485760
   }

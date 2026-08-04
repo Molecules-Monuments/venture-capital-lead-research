@@ -807,6 +807,23 @@ record. Autonomous transcript review remains disabled.
 
 ## 10. Known release limitations
 
+- **The stuck-session watchdog, not `VC_MODEL_TIMEOUT_SECONDS`, decides when a
+  slow model call dies — unless you keep the two in the right order.** The
+  harness aborts an agent run after a period with no *streaming* progress, and a
+  prefill emits nothing until it completes, so it cannot distinguish a slow
+  local model from a stalled provider. Upstream defaults are 120 s to warn and
+  **300 s to abort**, both below the 600 s minimum this package requires for
+  `VC_MODEL_TIMEOUT_SECONDS` in Ollama mode — so at the defaults the package
+  mandated a per-call budget the runtime would never grant. Measured on a
+  CPU-only host: a legitimate 481 s cold prefill was aborted at 392 s with
+  `AbortError: agent run aborted: code=OPENCLAW_DIRECT_ABORT`, a message that
+  names neither the provider nor the prefill. `config/openclaw.json` therefore
+  sets `diagnostics.stuckSessionWarnMs: 300000` and
+  `diagnostics.stuckSessionAbortMs: 960000`, above the 900 s maximum the
+  validator allows for the per-call timeout. **If you raise
+  `VC_MODEL_TIMEOUT_SECONDS` for slower hardware, raise `stuckSessionAbortMs`
+  with it.** Both are reviewed artifacts: edit, re-pin with
+  `init_customization.py --update-hashes`, and re-bootstrap.
 - **Channel plugins must stay under the harness's own extension scan root.** Not
   a limitation so much as a constraint that is easy to undo by accident, and it
   is load-bearing. The GHCR base image prunes the Slack, Teams, and Discord
