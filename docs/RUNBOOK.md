@@ -344,6 +344,35 @@ The restore drill in §5.4 is the one item no gate covers.
   - `gateway.probe_failed` (`missing scope: operator.read`) — expected. The
     audit's own probe authenticates with no operator scope against a
     token-authenticated gateway. It is the access control working, not a fault.
+  - `models.small_params` (**CRITICAL**) — appears **only when the configured
+    model is a small one**, which in practice means every Ollama deployment and
+    any custom provider serving a small model. It does not appear on a hosted
+    frontier model, which is why an OpenAI-mode commissioning of this release
+    records `0 critical · 2 warn · 1 info` while an Ollama-mode one records
+    `1 critical · 2 warn · 1 info`. The audit classifies any model at or below
+    300B parameters as small and reports CRITICAL when one is granted
+    `web_search`/`web_fetch`. Measured on an `ollama/llama3.2:1b` deployment it
+    names the five specialists that hold web tools: `lead-signal-detector`,
+    `outbound-scout`, `founder-researcher`, `traction-analyst`, and
+    `market-mapper`.
+
+    **This is not a false positive, and it cannot be configured away from
+    `.env`.** `VC_WEB_SEARCH_PROVIDER` has no "off" value, so a shipped
+    deployment always grants those five agents web tools. A small local model
+    reading public web text is precisely the exposure `trust_boundaries.md` and
+    the untrusted-content contract govern — the package's controls make public
+    text data rather than instruction, but they do not make a 1B model good at
+    honouring that boundary, and `SEC-12` is `BLOCKED` for exactly this reason.
+
+    Disposition, and it is a decision you must record rather than a line to
+    tick: either (a) run a model whose judgement you have benchmarked under
+    `MOD-08` and accept the finding with that evidence attached, or (b) remove
+    `web_search`/`web_fetch` from those agents in `config/openclaw.json` and
+    re-pin — it is one of the twenty reviewed artifacts, so this is the normal
+    `init_customization.py --update-hashes` path — which clears the finding and
+    costs the outbound-research lanes their search. Do not simply note it as
+    expected and move on: on a small model this finding is describing a real
+    property of the deployment you are commissioning.
 
   You should **not** see `gateway.auth_no_rate_limit`. `gateway.bind` is `lan`
   because Docker forwards a published port to the container's network

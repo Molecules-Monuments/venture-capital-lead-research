@@ -36,7 +36,7 @@ is presented as a passing result.
 
 ## Final deterministic summary (executed 2026-07-23; counts and G4/G6/G8/scale re-executed 2026-07-29 after the upstream-conformance remediation)
 
-- 231 offline unittest cases pass, 0 fail, 0 skip; 25/25 offline checks pass.
+- 234 offline unittest cases pass, 0 fail, 0 skip; 25/25 offline checks pass.
 - Disposable PostgreSQL G4 passes **88/88** across seven suites with migrations
   001–018 applied and registered twice, including step-interpreter execution
   of all eighteen real `.lobster` workflows across the three executing G4 suites

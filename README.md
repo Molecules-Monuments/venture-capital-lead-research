@@ -416,9 +416,31 @@ system prompt is about 12700 tokens, so a window has to clear both before an
 agent has any budget left to work in. `check_env.sh` enforces that floor. Below
 it the deployment still validates at the level of individual values, boots, and
 reports healthy — and then answers every message with `Context overflow: prompt
-too large for the model`, which the harness returns as an ordinary payload with
-`status: "ok"` and CLI exit code 0. Choose a model whose context comfortably
-exceeds the floor rather than one that only just clears it.
+too large for the model`. Choose a model whose context comfortably exceeds the
+floor rather than one that only just clears it.
+
+**How an overflow reports, and why the floor does not make this go away.** The
+floor only guarantees room for the chief's *own* system prompt. Whatever is left
+is the working budget, and a single large turn input — an ingested document, a
+long thread, a pasted corpus — can still exhaust it on a correctly configured
+deployment. When it does, the harness returns the overflow as an ordinary
+successful payload: measured at `VC_MODEL_CONTEXT_WINDOW=36864`, well above the
+floor, a 65699-character message produced **CLI exit code 0** and a top-level
+`status: "ok"`. Anything that shells out to `openclaw agent` and checks the exit
+code or that field sees a completed turn.
+
+The turn *is* classified, two levels down. Check these instead:
+
+```sh
+# both are set on an overflow; neither is reflected in the exit code
+.result.meta.error.kind      # "context_overflow"
+.result.meta.livenessState   # "blocked"
+```
+
+This matters most where nobody is watching the output. A cron job seeded by
+`scripts/schedule_jobs.sh` runs an agent turn, so a scheduled scan that overflows
+is recorded as having run. Treat `result.meta.error.kind` as the outcome of an
+agent turn; the exit code only tells you the CLI itself ran.
 
 **Timeouts against a local model.** `VC_MODEL_TIMEOUT_SECONDS` covers the whole
 request, and the first request after each model load has to prefill that entire

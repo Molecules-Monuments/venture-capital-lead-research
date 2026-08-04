@@ -90,8 +90,8 @@
     {
       "executable": false,
       "path": "README.md",
-      "sha256": "d5b17f6b1aae9ccaf7d59dbb9e645b9da41e1268d62cd0c7fb4de113fe5fea59",
-      "size": 85972
+      "sha256": "34c064d8f5a254c6db5ced767d5e5beacafd17b4134666a44c5e8c5d140cb20c",
+      "size": 87094
     },
     {
       "executable": false,
@@ -204,14 +204,14 @@
     {
       "executable": false,
       "path": "docs/PRODUCTION_READINESS.md",
-      "sha256": "ddd4976fce3dfb7894feb7c8604cc9aa22b4cedf4d0b1b9ba0d002bad21068a0",
-      "size": 10303
+      "sha256": "c1c1688a4cf327a087f1a4ef1f1b8ff1b6f461385fb111f9ab71c49f624eabe3",
+      "size": 10392
     },
     {
       "executable": false,
       "path": "docs/RUNBOOK.md",
-      "sha256": "29f05464614daa945d082bc3f864ddc7f0f23e3aa1c056231a3a99cdd6a1a3c8",
-      "size": 51089
+      "sha256": "b12e2cca51834e22237f25ceca17dcd42d7c00cc69c76cb593f0e1a93968e7fd",
+      "size": 53104
     },
     {
       "executable": false,
@@ -228,8 +228,8 @@
     {
       "executable": false,
       "path": "docs/V3_RELEASE_EVIDENCE.md",
-      "sha256": "40d7a6404fb80b56218d610744767d7f934009361303b0be2d4a258c12427a5d",
-      "size": 10233
+      "sha256": "6ea09dbdc623d2056b0205627838e764a7e7268015f6177b869ba94727cc1ecb",
+      "size": 10407
     },
     {
       "executable": false,
@@ -240,7 +240,7 @@
     {
       "executable": false,
       "path": "evals/V3_EVAL_RESULTS.md",
-      "sha256": "49ee7d0701b2746ef09692f20ba895bfa0e5de5cf0a158c96ae6effe9ef3bdf7",
+      "sha256": "8cd659169690449881ac767c17f3ba7f863e15b69fd340e2ed0a7787978c8c24",
       "size": 6966
     },
     {
