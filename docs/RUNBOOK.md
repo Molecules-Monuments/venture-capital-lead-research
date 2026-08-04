@@ -700,13 +700,34 @@ For an accepted pending proposal:
    evidence.
 2. Add the rendered `SKILL.md` and reviewed support files to
    `workspaces/shared-skills/<skill-name>/` in a new repository revision.
-3. Update `config/openclaw.json`, the owning agent's `AGENTS.md` and `TOOLS.md`,
-   `workspaces/vc-chief/vc/RESOLVER.md`, any canonical schemas/helpers/workflows,
-   public documentation, and positive, negative, adversarial, and routing
-   fixtures.
+3. Update `config/openclaw.json` (both `skills.entries` and the `skills` list of
+   every agent that should hold it), the owning agent's `AGENTS.md` and
+   `TOOLS.md`, `workspaces/vc-chief/vc/RESOLVER.md` (the `discovers N shared
+   skills` line **and** the canonical skill list below it), any canonical
+   schemas/helpers/workflows, public documentation, and positive, negative,
+   adversarial, and routing fixtures.
+
+   Two of these bite in ways the wording above does not make obvious, and both
+   were confirmed by walking this procedure end to end:
+
+   - **The canonical schemas are mirrored, and the mirror is compared
+     byte-for-byte.** `workspaces/schemas/lead-router.output.schema.json` carries
+     the routable skill enum, and `workspaces/vc-chief/vc/schemas/` holds a copy
+     the chief reads at runtime. Editing one and not the other fails
+     `tests/contracts` on `test_mirror_is_complete_and_byte_identical`, not on
+     anything that names the skill.
+   - **The count is frozen in the test suite as well as in the validator.**
+     `tests/v3/test_orchestration_and_customization.py` pins both the resolver
+     string and the skill total; `tests/v3/test_skill_agent_production.py` pins
+     the `(skills, agents, workflows)` triple. Several documents state it too:
+     `docs/PRODUCTION_READINESS.md`, `docs/V3_RELEASE_EVIDENCE.md`,
+     `evals/V3_EVAL_RESULTS.md`, `workspaces/vc-chief/vc/system_health.md`, and
+     `workspaces/shared-skills/resolver-check/SKILL.md`.
 4. Deliberately update the exact inventory in
    `scripts/validate_skill_system.py`; an unexplained count change is a release
-   failure.
+   failure. Note the corollary of that rule: a *deliberate* change has to be
+   made everywhere in step 3 at once, or the gates go red for reasons that look
+   like the defect this rule exists to catch.
 5. Run the official `skill-creator` `quick_validate.py` against the new skill.
    That tool is not part of this package; it is bundled inside the pinned
    OpenClaw image and runs with the image's own `python3`:
@@ -717,11 +738,18 @@ For an accepted pending proposal:
      /app/skills/skill-creator/scripts/quick_validate.py /skills/<skill-name>
    ```
 
-   Then run
-   `python3 -B scripts/validate_skill_system.py` and the complete locked
-   virtual-environment gate.
+   Then run `python3 -B scripts/validate_skill_system.py`, which is the fast
+   check that step 3 and step 4 agree — it reports the new total and lists any
+   touchpoint still holding the old one.
+
+   **Regenerate the manifest before the full gate, not after.**
+   `python3 -B scripts/build_release_manifest.py` first, then the complete
+   locked virtual-environment gate. `verify_offline.py` includes the
+   manifest-currency and pristine checks, so running it against a tree that has
+   gained a `SKILL.md` and not been re-pinned fails on those two every time —
+   which buries the failures worth reading underneath two that are expected.
 6. Rebuild the image, run disposable Postgres, retrieval-scale when affected,
-   and exact-image gates, then regenerate and verify the release manifest.
+   and exact-image gates, then verify the release manifest again.
    Once the rebuilt image is running, confirm the harness itself accepts the
    new skill: `openclaw skills check --agent <owner-agent> --json` must list it
    as visible. This is what catches a skill that loads locally but pushes the
