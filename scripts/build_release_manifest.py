@@ -29,12 +29,13 @@ EXCLUDED_FILES = {
 }
 EXCLUDED_PARTS = {".git", "__pycache__", ".pytest_cache", ".ruff_cache"}
 EXCLUDED_SUFFIXES = {".pyc", ".pyo"}
-# Top-level directories that live in the package directory but are never part
-# of the distribution: internal review material, the machine-specific developer
-# venv, and the live-testing harness that drives throwaway deployments. Keep in
-# lockstep with verify_release.REVIEW_ONLY_ROOTS — that gate re-reads this set
-# from the manifest and fails closed if the two disagree.
-EXCLUDED_PREFIXES = {"_internal", "openclaw-v3-dev-venv", "v3-live-testing"}
+# Keep in lockstep with verify_release.REVIEW_ONLY_ROOTS: that gate re-reads this
+# set from the manifest and fails closed if the two disagree. Everything else in
+# the package root is declared, so a stray directory is reported rather than
+# silently tolerated — deliberately, since this set is the only blind spot the
+# pristine inventory has. The developer venv and the live-testing harness are
+# kept beside the package rather than inside it so they need no entry here.
+EXCLUDED_PREFIXES = {"_internal"}
 # Operator payload, not package files. verify_release.py tolerates anything the
 # operator drops here (its OPERATOR_DATA_ROOTS); without the same rule the two
 # checkers disagree and an ordinary document drop makes this manifest look

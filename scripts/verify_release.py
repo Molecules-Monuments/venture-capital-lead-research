@@ -26,11 +26,11 @@ RUNTIME_ALLOWED = {
     "deployment-lock.json",
 }
 # Must equal build_release_manifest.EXCLUDED_PREFIXES; the manifest records the
-# set and the contract check below refuses a manifest that disagrees. Widening
-# this widens what --pristine tolerates, so each entry is a deliberate choice:
-# _internal is review material, openclaw-v3-dev-venv is the developer venv, and
-# v3-live-testing is the scratch harness. None of the three ships.
-REVIEW_ONLY_ROOTS = {"_internal", "openclaw-v3-dev-venv", "v3-live-testing"}
+# set and the contract check below refuses a manifest that disagrees. Every entry
+# here is a directory --pristine stops reporting, so this set is kept to the one
+# directory that genuinely cannot be declared. Developer tooling belongs beside
+# the package, not inside it, precisely so it never needs to appear here.
+REVIEW_ONLY_ROOTS = {"_internal"}
 # Operator working directories. Their contents are deliberately undeclared —
 # `inbox` is the documented document drop point (bind-mounted read-only into the
 # gateway) and `quarantine` is a runtime quarantine placeholder (the deployed
