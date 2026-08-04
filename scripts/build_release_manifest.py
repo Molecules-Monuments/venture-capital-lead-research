@@ -29,7 +29,12 @@ EXCLUDED_FILES = {
 }
 EXCLUDED_PARTS = {".git", "__pycache__", ".pytest_cache", ".ruff_cache"}
 EXCLUDED_SUFFIXES = {".pyc", ".pyo"}
-EXCLUDED_PREFIXES = {"_internal"}
+# Top-level directories that live in the package directory but are never part
+# of the distribution: internal review material, the machine-specific developer
+# venv, and the live-testing harness that drives throwaway deployments. Keep in
+# lockstep with verify_release.REVIEW_ONLY_ROOTS — that gate re-reads this set
+# from the manifest and fails closed if the two disagree.
+EXCLUDED_PREFIXES = {"_internal", "openclaw-v3-dev-venv", "v3-live-testing"}
 # Operator payload, not package files. verify_release.py tolerates anything the
 # operator drops here (its OPERATOR_DATA_ROOTS); without the same rule the two
 # checkers disagree and an ordinary document drop makes this manifest look

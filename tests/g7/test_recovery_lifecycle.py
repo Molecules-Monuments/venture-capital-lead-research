@@ -20,6 +20,19 @@ from unittest import mock
 PACKAGE = Path(__file__).resolve().parents[2]
 SCRIPTS = PACKAGE / "scripts"
 
+# The review-only directory contract is asserted in three places that must agree
+# (.gitignore, build_release_manifest.EXCLUDED_PREFIXES,
+# verify_release.REVIEW_ONLY_ROOTS). Read it from the verifier under test rather
+# than restating the literal here: these fixtures previously hard-coded
+# ["_internal"] and silently became wrong the moment the contract was widened.
+_REVIEW_SPEC = importlib.util.spec_from_file_location(
+    "verify_release_contract", SCRIPTS / "verify_release.py"
+)
+assert _REVIEW_SPEC is not None and _REVIEW_SPEC.loader is not None
+_verify_release = importlib.util.module_from_spec(_REVIEW_SPEC)
+_REVIEW_SPEC.loader.exec_module(_verify_release)
+EXCLUDED_REVIEW_DIRECTORIES = sorted(_verify_release.REVIEW_ONLY_ROOTS)
+
 
 AUTH_SPEC = importlib.util.spec_from_file_location(
     "backup_authentication_contract", SCRIPTS / "authenticate_backup.py"
@@ -489,7 +502,7 @@ class RecoveryLifecycleContractTests(unittest.TestCase):
                     {
                         "manifest_version": 1,
                         "package_version": "3.0.0",
-                        "excluded_review_directories": ["_internal"],
+                        "excluded_review_directories": EXCLUDED_REVIEW_DIRECTORIES,
                         "file_count": len(files),
                         "files": files,
                     }
@@ -574,7 +587,7 @@ class RecoveryLifecycleContractTests(unittest.TestCase):
                     {
                         "manifest_version": 1,
                         "package_version": "3.0.0",
-                        "excluded_review_directories": ["_internal"],
+                        "excluded_review_directories": EXCLUDED_REVIEW_DIRECTORIES,
                         "file_count": len(files),
                         "files": files,
                     }

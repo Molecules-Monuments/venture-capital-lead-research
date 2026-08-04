@@ -38,6 +38,16 @@ workspaces/*/memory/
 # package does not depend on any of it.
 _internal/
 
+# ── Local developer venv & live-testing harness ──────────────────────────────
+# Both live inside the package directory for convenience but are NOT part of the
+# distribution: the venv is machine-specific and the harness is scratch that
+# drives throwaway deployments. They are excluded from git, from the release
+# manifest (build_release_manifest.EXCLUDED_PREFIXES) and from the pristine
+# inventory (verify_release.REVIEW_ONLY_ROOTS) — all three must agree, and
+# verify_release asserts that agreement against the manifest.
+openclaw-v3-dev-venv/
+v3-live-testing/
+
 # ── Python / tooling caches ───────────────────────────────────────────────────
 __pycache__/
 *.pyc

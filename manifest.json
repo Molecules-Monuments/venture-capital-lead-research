@@ -6,7 +6,9 @@
   },
   "created_on": "2026-07-20",
   "excluded_review_directories": [
-    "_internal"
+    "_internal",
+    "openclaw-v3-dev-venv",
+    "v3-live-testing"
   ],
   "excluded_runtime_files": [
     ".env",
@@ -42,8 +44,8 @@
     {
       "executable": false,
       "path": ".gitignore",
-      "sha256": "c418c60165e6f51d7a954626ce2894685a8de8aa1ba0720767064f4e4e7d3ee5",
-      "size": 2746
+      "sha256": "7b32f07e88a42a4d40fe29a500ff18f80285a61075892bdf49a60dcd4a453a29",
+      "size": 3380
     },
     {
       "executable": false,
@@ -90,8 +92,8 @@
     {
       "executable": false,
       "path": "README.md",
-      "sha256": "d5b17f6b1aae9ccaf7d59dbb9e645b9da41e1268d62cd0c7fb4de113fe5fea59",
-      "size": 85972
+      "sha256": "bfb30c203998313d589c242ad0e68cef71c6a1bc5f6c8c084fa97c33ed7f8639",
+      "size": 85970
     },
     {
       "executable": false,
@@ -540,8 +542,8 @@
     {
       "executable": true,
       "path": "scripts/build_release_manifest.py",
-      "sha256": "bcf2d72885552f4cecbef4620cf64e9bded87485947b2f911330d5964dd1a624",
-      "size": 8502
+      "sha256": "4c6927a2c81f776aa6549dad6448a326405f83b916deeadfb011919942e642a2",
+      "size": 8922
     },
     {
       "executable": true,
@@ -666,8 +668,8 @@
     {
       "executable": true,
       "path": "scripts/verify_release.py",
-      "sha256": "ec6b6f015d803f75eb7f73f7d23749742093a283ab9fbf4a6c434f6b27312b8d",
-      "size": 7600
+      "sha256": "750760b0e23e077bf65459e45dd27ecee63850bd3984cbda6f76967e8f7daee3",
+      "size": 8028
     },
     {
       "executable": false,
@@ -816,8 +818,8 @@
     {
       "executable": false,
       "path": "tests/g7/test_recovery_lifecycle.py",
-      "sha256": "c73e3105eb5735dd58b6d01ac9567bbf7826e3471e9ad69d468e65d8065c95d4",
-      "size": 49506
+      "sha256": "b8d3b7ffe788a9c7afda819a9af08bb120b756461255558cdbf17a60560a5134",
+      "size": 50276
     },
     {
       "executable": false,

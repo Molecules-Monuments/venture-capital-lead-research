@@ -25,7 +25,12 @@ RUNTIME_ALLOWED = {
     "config/runtime/secrets/vc_trusted_context_key",
     "deployment-lock.json",
 }
-REVIEW_ONLY_ROOTS = {"_internal"}
+# Must equal build_release_manifest.EXCLUDED_PREFIXES; the manifest records the
+# set and the contract check below refuses a manifest that disagrees. Widening
+# this widens what --pristine tolerates, so each entry is a deliberate choice:
+# _internal is review material, openclaw-v3-dev-venv is the developer venv, and
+# v3-live-testing is the scratch harness. None of the three ships.
+REVIEW_ONLY_ROOTS = {"_internal", "openclaw-v3-dev-venv", "v3-live-testing"}
 # Operator working directories. Their contents are deliberately undeclared —
 # `inbox` is the documented document drop point (bind-mounted read-only into the
 # gateway) and `quarantine` is a runtime quarantine placeholder (the deployed

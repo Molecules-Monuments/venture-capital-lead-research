@@ -917,8 +917,8 @@ From the Version 3.0 package root:
 
 ```sh
 python3 -B scripts/verify_release.py --pristine
-python3 -m venv ../openclaw-v3-dev-venv
-. ../openclaw-v3-dev-venv/bin/activate
+python3 -m venv ./openclaw-v3-dev-venv
+. ./openclaw-v3-dev-venv/bin/activate
 python -m pip install --disable-pip-version-check \
   --require-hashes -r requirements-dev.lock
 python -B scripts/verify_offline.py
