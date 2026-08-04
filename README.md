@@ -395,20 +395,49 @@ run very slowly. The shipped default (272000) is sized for the hosted OpenAI
 default, not for a local model; set it to what your model and hardware actually
 support.
 
-**The server also clamps this value down, silently.** Ollama caps `num_ctx` at
-the model's own trained context (`n_ctx_train`) and reports no error when it
-does: asking `qwen2.5:1.5b` for 36796 loaded a context of 32768 and said nothing.
-The package would then pack prompts to a budget the server never allocated, and
-the overflow is truncated server-side — the same failure this alignment exists to
-prevent, arriving from the other direction. Check the model before choosing the
-window:
+**The server clamps this value down, and then truncates your prompt to fit.**
+Two separate behaviours, both measured on Ollama 0.32.5:
+
+1. **The clamp.** Ollama caps `num_ctx` at the model's own trained context.
+   Asking `gemma3:1b` (trained 32768) for 60000 loads a context of 32768. It
+   logs `requested context size too large for model num_ctx=60000
+   n_ctx_train=32768` — so it is visible in the *server* log, but the API
+   response carries no indication at all, and nothing in the deployment
+   reconciles the two numbers.
+2. **The truncation, which is the one that costs you answers.** When the prompt
+   exceeds what the server will accept, Ollama drops the excess and answers
+   anyway. Measured: a **39 211-token** prompt against a 32768 context was cut
+   to **16 387 tokens** — 58% of the input silently discarded — and the reply
+   came back with `error: null` and no indication whatever:
+
+   ```text
+   level=WARN msg="truncating input prompt" limit=16387 prompt=39211 keep=5 new=16387
+   ```
+
+   Note the limit: **16 387, roughly half of 32768**, not the whole context.
+   Ollama reserves the rest for generation. So the real ceiling on prompt size
+   is about *half* the model's context, not all of it.
+
+That halving is what makes the naive rule wrong. Check the model first:
 
 ```sh
 ollama show <model> | grep "context length"
 ```
 
-Pick a model whose context length is at or above `VC_MODEL_CONTEXT_WINDOW`. On
-the floor below, that rules out every 32k model.
+Then require, with `budget = VC_MODEL_CONTEXT_WINDOW − 20000` (the runtime's
+fixed reserve):
+
+```text
+model context length  >=  2 x budget
+```
+
+At the shipped floor of 36796 the budget is 16 796, so the model needs about
+**33 600** tokens of context — which rules out every 32k model, and confirms it
+for a reason stronger than the floor alone. The default here
+(`VC_MODEL_CONTEXT_WINDOW=36864` on a 131072-token model) leaves a budget of
+16 864 against a truncation limit near 18 432: safe, but with under 1 600 tokens
+of margin. Raising the window without moving to a larger-context model spends
+that margin and starts silently discarding prompt.
 
 There is a floor as well as a ceiling. The runtime reserves a fixed 20000 tokens
 of every context window for compaction headroom, and the chief's own assembled
@@ -451,6 +480,33 @@ Prompt caching then serves the retry in about 5 s, which makes the failure look
 like a one-off rather than a setting. Ollama mode therefore requires at least
 600 s. Raise it further if your host is slower or your prompt is larger; on a
 fast GPU host the ceiling simply never binds.
+
+**`VC_MODEL_TIMEOUT_SECONDS` is not the only bound, and it is not the first one
+to fire.** The harness runs a stuck-session watchdog that aborts an agent run
+after a period with no *streaming* progress. Its own defaults are 120 s to warn
+and **300 s to abort** — and a prefill emits nothing until it finishes, so a
+long prefill is indistinguishable from a stalled provider. Left at those
+defaults, no value of `VC_MODEL_TIMEOUT_SECONDS` can keep a slow local model
+alive: a call that needs 480 s of prefill is killed at ~380 s (the abort
+threshold plus the sweep interval) with
+
+```text
+AbortError: agent run aborted: code=OPENCLAW_DIRECT_ABORT
+```
+
+which names neither the provider nor the prefill, and reads like a flake. This
+package therefore sets the window above its own maximum per-call timeout, so
+`VC_MODEL_TIMEOUT_SECONDS` is the constraint that actually binds:
+
+```json
+"diagnostics": { "stuckSessionWarnMs": 300000, "stuckSessionAbortMs": 960000 }
+```
+
+Measured on a CPU-only host: the same 481 s cold prefill that was aborted at
+392 s under the defaults runs to completion with these values. If you raise
+`VC_MODEL_TIMEOUT_SECONDS` beyond 900 s on slower hardware, raise
+`stuckSessionAbortMs` with it — the watchdog must stay above the per-call
+ceiling or it, not your timeout, decides when a turn dies.
 
 ### Search configuration
 
