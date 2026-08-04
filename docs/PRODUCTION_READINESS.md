@@ -47,7 +47,7 @@ archive (excluded from the published package).
 
 | Proof | Result |
 | --- | --- |
-| Complete aggregate offline suites | 231 tests passed; 0 failed; 0 skipped; 25/25 offline checks pass (count re-verified 2026-08-03 after the pre-publication audit remediation) |
+| Complete aggregate offline suites | 234 tests passed; 0 failed; 0 skipped; 25/25 offline checks pass (count re-verified 2026-08-04; the three runtime-provider/context regression tests that accompanied the context-window and Ollama-timeout floors moved it from 231) |
 | Disposable PostgreSQL G4 | 88/88 across seven suites (semantics 6, document security 15, database contract 8, helper CLI 22, workflow execution 10, research intelligence 19, source surveillance 8); migrations 001–018 applied and registered twice |
 | Real deployment gate (G8) | PASS — `./scripts/bootstrap.sh` completes on the pinned images; the negative credential proof is rejected over TCP with no host trust rules remaining; fixed workflows run through real `vcrun`/Lobster inside the deployed gateway; an unchanged retry of a succeeded workflow returns an idempotent replay without re-executing, and the same key with changed arguments fails closed as `idempotency_payload_mismatch` leaving no new rows; an autonomous run leaves a non-empty knowledge base; teardown removes all state |
 | Exact-image gate (G6) | PASS — 8/8 against the image rebuilt from this tree |
