@@ -204,8 +204,8 @@
     {
       "executable": false,
       "path": "docs/PRODUCTION_READINESS.md",
-      "sha256": "c1c1688a4cf327a087f1a4ef1f1b8ff1b6f461385fb111f9ab71c49f624eabe3",
-      "size": 10392
+      "sha256": "298ba3fb4ab3042d056183eb41404a48338b664a2e69456836e150f086989b48",
+      "size": 12554
     },
     {
       "executable": false,
@@ -228,8 +228,8 @@
     {
       "executable": false,
       "path": "docs/V3_RELEASE_EVIDENCE.md",
-      "sha256": "6ea09dbdc623d2056b0205627838e764a7e7268015f6177b869ba94727cc1ecb",
-      "size": 10407
+      "sha256": "01f23469a0e71af4dfc502b4e737f17f356acd53f75ccfc0882674f52d6c50d6",
+      "size": 10894
     },
     {
       "executable": false,
@@ -240,8 +240,8 @@
     {
       "executable": false,
       "path": "evals/V3_EVAL_RESULTS.md",
-      "sha256": "8cd659169690449881ac767c17f3ba7f863e15b69fd340e2ed0a7787978c8c24",
-      "size": 6966
+      "sha256": "2e22e9007752de6698c01e6651b8bcb5fcc686aa682d98c398dca56c8dc31962",
+      "size": 8021
     },
     {
       "executable": false,

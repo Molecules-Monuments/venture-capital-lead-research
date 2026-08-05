@@ -1,9 +1,10 @@
 # Version 3.0 production-readiness decision
 
 Decision date: 2026-07-23 (final-audit session: every gate re-executed after the security/correctness remediation; supersedes the 2026-07-22 decision)
+Live-model boundary restated: 2026-08-04, after five audit passes drove the agent layer against a real model (see "Exercised against a live model" below). The decision itself is unchanged; what changed is that the boundary is now drawn at model *judgement* rather than at model *contact*.
 Package: `openclaw-lead-research`
 Version: `3.0.0`
-Decision: **Deterministic package and deployment path VERIFIED. Live-model behavioral certification BLOCKED (never run against a model). Not certified for autonomous decision quality until commissioned.**
+Decision: **Deterministic package and deployment path VERIFIED. The live-model path is exercised against a real model — resolution, provider reach, tool-call payloads, and the timeout/context/watchdog bounds. Behavioral certification remains BLOCKED: never run against a production-grade model. Not certified for autonomous decision quality until commissioned.**
 
 ## What changed since the 2026-07-21 decision
 
@@ -52,7 +53,7 @@ archive (excluded from the published package).
 | Real deployment gate (G8) | PASS — `./scripts/bootstrap.sh` completes on the pinned images; the negative credential proof is rejected over TCP with no host trust rules remaining; fixed workflows run through real `vcrun`/Lobster inside the deployed gateway; an unchanged retry of a succeeded workflow returns an idempotent replay without re-executing, and the same key with changed arguments fails closed as `idempotency_payload_mismatch` leaving no new rows; an autonomous run leaves a non-empty knowledge base; teardown removes all state |
 | Exact-image gate (G6) | PASS — 8/8 against the image rebuilt from this tree |
 | Reference retrieval scale | PASS — 100k companies / 1m facts, all frozen thresholds met |
-| Release integrity | Current manifest (`file_count` matches the packaged inventory), pristine inventory, workflow validation (18 workflows), Python/shell syntax, and Ruff pass |
+| Release integrity | Current manifest (`file_count` matches the packaged inventory), pristine inventory, workflow validation (18 workflows), Python/shell syntax, Ruff, and the ty type checker pass |
 | Skills, agents, workflows | 26 skills, 12 agents, **18 workflows**, 0 findings (`validate_skill_system.py`) |
 
 The local image digest is deployment-specific: `bootstrap.sh` rebuilds the
@@ -68,11 +69,41 @@ by ranking each target above its look-alikes; a resolver that could not rank the
 exact-ish match first would fail. This closes the former CR-013 dataset-artifact
 item (audit P1-014/P1-015).
 
-## BLOCKED — never run against a model (not a package pass)
+## Exercised against a live model (audit passes, 2026-08-04)
+
+**The package's own gates still never invoke a model** — `verify_offline.py` has
+no model step, and nothing below is a package gate. What follows was established
+by audit passes outside the package boundary, driving a deployed stack against a
+local Ollama model, and it is why the boundary above is drawn at model
+*judgement* rather than at model *contact*:
+
+- An agent turn resolves the configured model, reaches the provider, carries its
+  tool payload, and returns. A real vendor completion still needs a credential;
+  on a throwaway key the request path was proven to the provider's own
+  `HTTP 401`.
+- The bounds that govern a live call are measured, not assumed: the
+  context-window floor, the Ollama per-call timeout floor, the harness
+  stuck-session watchdog (which aborts a *healthy* call if left below the
+  per-call timeout), and Ollama's silent input truncation at roughly half the
+  served context.
+- Search results are fenced as untrusted at the provider boundary before the
+  model sees them — the marking is applied in code, not by prompt convention.
+- A channel provider starts and binds under a real configuration.
+
+**This says nothing about output quality.** The models used were deliberately
+small (sub-1B) — chosen to force mechanisms cheaply, not to produce useful
+prose. Everything in the next section stays BLOCKED.
+
+Detail is retained in the project's internal audit archive (excluded from the
+published package).
+
+## BLOCKED — never run against a production-grade model (not a package pass)
 
 Per the frozen contract these are BLOCKED, not PASS:
 
-- Live model, search, channel, callback, and attachment-provider behavior.
+- Model, search, channel, callback, and attachment-provider *behavior* — whether
+  the model honours the untrusted-content fencing it is given, routes to the
+  right specialist, and respects tool authority under adversarial input.
 - Specialist output quality and memo decision-usefulness (semantic quality of the
   model's prose and citations — the actual VC deliverable). The package validates
   the *shape* of these outputs, never their semantic quality.
@@ -83,7 +114,7 @@ Per the frozen contract these are BLOCKED, not PASS:
 
 These are commissioning facts that depend on the operator's accounts,
 infrastructure, policy, data, and legal context — and, for the model-behavioral
-gates, on a live model run that this package boundary does not perform.
+gates, on a production-grade model that this package boundary does not supply.
 
 ## Production operating boundary
 

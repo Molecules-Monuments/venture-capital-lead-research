@@ -64,8 +64,13 @@ reclassified, or re-owned from a model-reachable lane.
 
 This evidence records what was executed. Live provider/recovery exercises,
 model-behavioral quality, organization-specific policy, and target-host capacity
-are BLOCKED (never run against a model) or deployment-commissioning activities,
-not package passes.
+are BLOCKED (never run against a production-grade model) or
+deployment-commissioning activities, not package passes. The live-model
+*mechanism* — model resolution, provider reach, tool payloads, and the
+timeout/context/watchdog bounds — was separately exercised against a real model
+by audit passes outside this package boundary; see
+`docs/PRODUCTION_READINESS.md`, "Exercised against a live model". No gate below
+invokes a model.
 
 ## Passing evidence (executed 2026-07-23)
 
@@ -131,10 +136,11 @@ recovery point. Restore verifies this envelope before accepting inventory or
 mutating state. (These are executed by `tests/g7` at the source-contract level; a
 real destructive target restore is a BLOCKED commissioning exercise.)
 
-## BLOCKED — never run against a model
+## BLOCKED — never run against a production-grade model
 
-- Live model/search/channel semantics, callbacks, reply delivery, and channel
-  document behavior.
+- Live model/search/channel *semantics*, callbacks, reply delivery, and channel
+  document behavior — the judgement a capable model exercises, not the
+  mechanism that carries it, which is covered in `docs/PRODUCTION_READINESS.md`.
 - Specialist output quality and memo decision-usefulness (semantic quality of the
   model's prose and citations). The package validates output *shape*, not
   semantic quality.
