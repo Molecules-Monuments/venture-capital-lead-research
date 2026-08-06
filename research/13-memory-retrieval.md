@@ -154,13 +154,36 @@ Plain Markdown cannot enforce field-level access control. If a deployment needs
 cross-channel confidential memory, it needs structured retrieval-time audience
 checks rather than a longer prompt.
 
-## Why current gates give false confidence
+## Why the Version 2 gates gave false confidence
 
-No retained test invokes `memory-lookup`. The G4 database suites test strong
-workflow invariants but not retrieval. G5 is static and cannot detect that the
-outbound workflow discards lookup. G8 tests memory survival, not indexing,
-precision, isolation, specialist flush, or expiry. Offline “PASS” is valid only
-for those tested surfaces and must not be presented as retrieval acceptance.
+This section assesses the **Version 2** gate set as it stood at the audit date;
+it is the finding that motivated the retrieval gate Version 3.0 went on to
+build, not a statement about the shipped release. At that time: no retained
+test invoked `memory-lookup`; the G4 database suites tested strong workflow
+invariants but not retrieval; G5 was static and could not detect that the
+outbound workflow discarded lookup; G8 tested memory survival, not indexing,
+precision, isolation, specialist flush, or expiry. Offline “PASS” was valid
+only for those tested surfaces and could not be presented as retrieval
+acceptance.
+
+> **Closed in Version 3.0** (note added 2026-08-06; the section above keeps its
+> original finding for provenance). Every limb of it was answered in the
+> shipped package:
+>
+> - `scripts/verify_offline.py` registers `tests/retrieval` as a gate step, so
+>   retrieval is no longer outside the offline gate.
+> - `tests/retrieval/test_entity_resolution_contract.py` inspects
+>   `vcops.cmd_memory_lookup` directly, and asserts that both creation
+>   workflows order `workflow_request_claim` → `company_resolve_create` →
+>   `create_lead` with no `memory-lookup` call — the exact bypass this section
+>   identified as undetectable by a static gate is now the assertion.
+> - The precommitted thresholds below were executed as gates D and I on the
+>   declared 100k-company/1m-fact reference dataset via
+>   `scripts/run_retrieval_scale.py`.
+>
+> The design half of this document — staged entity resolution and the disabling
+> of Markdown recall as a factual store — shipped in
+> `migrations/006_entity_resolution.sql` and the resolver helpers.
 
 ## Precommitted retrieval eval
 
