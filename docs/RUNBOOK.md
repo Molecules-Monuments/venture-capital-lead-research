@@ -596,9 +596,12 @@ Collect only stable provider IDs and populate one credential family. Set
 `PRIMARY_CHANNEL` to `slack`, `msteams`, `discord`, or `telegram`, and update
 the reviewed `config/customization-profile.json` in the same change: its
 `channels.selected` must equal the new `PRIMARY_CHANNEL`, its
-`approvals.allowed_channel_ids` must exactly match the selected destination
-IDs from `.env`, and the change record must note the review — otherwise the
-next lifecycle validation fails closed on the profile/environment mismatch.
+`approvals.allowed_channel_ids` must be the one-element list holding the
+selected profile's *conversation* ID from `.env` (`docs/CHANNELS.md`,
+"Destination IDs and the reviewed profile", names the variable per channel; a
+Teams team ID or a Discord guild ID does not belong there), and the change
+record must note the review — otherwise the next lifecycle validation fails
+closed on the profile/environment mismatch.
 Then rerun:
 
 ```sh
@@ -900,10 +903,19 @@ record. Autonomous transcript review remains disabled.
     health review per `workspaces/vc-chief/HEARTBEAT.md`.
 
   Both are idempotent through `--declaration-key`, so re-running the script on
-  every deploy is safe. Its five tunables are read from the **process
+  every deploy is safe. Its six tunables are read from the **process
   environment only** — `check_env.py` rejects every one of them in `.env` as an
   unknown key: `VC_SCAN_CRON`, `VC_SCAN_TZ`, `VC_SCAN_DELIVERY`,
-  `VC_HEARTBEAT_CRON`, and `VC_HEARTBEAT_DELIVERY`.
+  `VC_HEARTBEAT_CRON`, `VC_HEARTBEAT_DELIVERY`, and
+  `VC_ALLOW_DISABLED_SCHEDULER`.
+
+  The steps above are ordered, and the script enforces the order rather than
+  trusting it: it reads `openclaw cron status --json` first and **exits 3
+  without seeding** while the scheduler is disabled, because upstream `cron add`
+  warns but still exits 0, so a job seeded into a disabled scheduler would be
+  recorded as a success and never fire. Its refusal message repeats steps 1–3.
+  `VC_ALLOW_DISABLED_SCHEDULER=1` seeds anyway, with a warning; use it only when
+  you are deliberately staging jobs before enabling cron.
 
   Two behaviours to know before you run it. First, an empty delivery value is
   seeded as `--no-deliver`, not as upstream's default: omitting every delivery
