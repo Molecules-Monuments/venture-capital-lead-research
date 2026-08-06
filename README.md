@@ -509,10 +509,13 @@ package therefore sets the window above its own maximum per-call timeout, so
 ```
 
 Measured on a CPU-only host: the same 481 s cold prefill that was aborted at
-392 s under the defaults runs to completion with these values. If you raise
-`VC_MODEL_TIMEOUT_SECONDS` beyond 900 s on slower hardware, raise
-`stuckSessionAbortMs` with it — the watchdog must stay above the per-call
-ceiling or it, not your timeout, decides when a turn dies.
+392 s under the defaults runs to completion with these values.
+`scripts/check_env.py` caps `VC_MODEL_TIMEOUT_SECONDS` at 900 s, and the
+shipped `stuckSessionAbortMs` (960 000 ms) already clears that ceiling, so no
+per-host retuning is required on slower hardware. The ordering rule still
+holds: if you raise the per-call timeout within its 30–900 s range, keep
+`stuckSessionAbortMs` above it, or the watchdog — not your timeout — decides
+when a turn dies.
 
 ### Search configuration
 
@@ -539,10 +542,12 @@ to the effective runtime configuration.
 ### Switching a model or search provider
 
 A provider switch is **not** an `.env` change alone. `check_customization.py`
-binds five reviewed profile values to the deployed environment —
+binds seven reviewed profile values to the deployed environment —
 `models.provider`, `models.primary`, `models.fast`, `search.provider`, and
-`search.fetch_provider` — and every lifecycle path (`bootstrap.sh`,
-`update.sh`, `restore.sh`, `rotate_runtime_role.sh`) runs it. Editing `.env`
+`search.fetch_provider`, plus `organization.timezone` (to `TZ`) and
+`channels.selected` (to `PRIMARY_CHANNEL`) — and every lifecycle path
+(`bootstrap.sh`, `update.sh`, `restore.sh`, `rotate_runtime_role.sh`) runs it.
+Editing `.env`
 without the matching `config/customization-profile.json` edit fails closed on
 the profile/environment mismatch before the re-rendered config can reach the
 gateway. This is the same rule [RUNBOOK.md](docs/RUNBOOK.md) §6 applies to a
@@ -1153,10 +1158,11 @@ within this system's lead-research scope.
 
 The chat invocations below produce a report and persist nothing. To create a
 lead the rest of the system can act on, run the fixed workflows. From the
-package root, with `compose()` defined as
-`docker compose -f docker-compose.yml -p openclaw-lead-research-v3 --env-file .env`:
+package root:
 
 ```sh
+compose() { docker compose -f docker-compose.yml -p openclaw-lead-research-v3 --env-file .env "$@"; }
+
 # 0. Prove the helper/database boundary is live.
 compose exec openclaw-gateway /workspaces/vc-chief/vc/bin/agent/vcrun \
   run runtime-preflight --args-json '{"idempotency_key":"preflight-1"}'
@@ -1477,9 +1483,10 @@ curl -fsS -o /dev/null -w '%{http_code}\n' http://127.0.0.1:18789/readyz
 ```
 
 The readiness probe is run from the deployment host, against the gateway's
-loopback port. The `openclaw-cli` service is a separate container with no route
-to the gateway, so `openclaw gateway probe` from inside it reports
-`Reachable: no` even on a healthy deployment.
+loopback port. The `openclaw-cli` service is a separate container that runs
+its own embedded agent and is not a client of the running gateway, so
+`openclaw gateway probe` from inside it reports `Reachable: no` even on a
+healthy deployment.
 
 Routine review covers readiness, restarts, disk/capacity, provider failures,
 stale workflows, approvals, Task Flow audit, quarantine retention, preference

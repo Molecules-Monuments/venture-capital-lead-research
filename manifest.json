@@ -84,8 +84,8 @@
     {
       "executable": false,
       "path": "Dockerfile.openclaw",
-      "sha256": "b807818e26b2ad5d5f7f414200febc0bc12f565203a59cf73ada461ceb8615c2",
-      "size": 8249
+      "sha256": "b4e6526fa749116ced6c1d9d778c6a91fcf1200a6658f8c2af71a53db1e0fdd2",
+      "size": 8565
     },
     {
       "executable": false,
@@ -96,8 +96,8 @@
     {
       "executable": false,
       "path": "README.md",
-      "sha256": "6ddf0fcceb93f023183c9c00ec55ed6978efc5172392fe0cd99e6fb9d8dc8167",
-      "size": 90313
+      "sha256": "07ad9b0082c312079d8fc05dd4a7cf06b21a9bd8c0f1fae300efb432fb3f7ebf",
+      "size": 90623
     },
     {
       "executable": false,
@@ -216,8 +216,8 @@
     {
       "executable": false,
       "path": "docs/RUNBOOK.md",
-      "sha256": "0878cbc7fad83749ca9040fe109bf014f1c788715b640808545b584ecc77a597",
-      "size": 56296
+      "sha256": "4b2e8b1c5a5b93ca3490b63efba1c64d5ae593d58417465a53051d6ad71f5b51",
+      "size": 57386
     },
     {
       "executable": false,
