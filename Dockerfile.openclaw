@@ -52,9 +52,13 @@ RUN npm ci --prefix /opt/openclaw-runtime \
 # current revision of each package, so when Debian ships the next point release
 # these exact pins are eventually superseded and drop out of deb.debian.org.
 # RECOVERY (documented in docs/RUNBOOK.md "Rebuilding after a Debian point
-# release"): point apt at a snapshot that still carries these versions, e.g.
-#   printf 'deb [check-valid-until=no] https://snapshot.debian.org/archive/debian/20260720T000000Z/ bookworm main\n' \
-#     > /etc/apt/sources.list.d/snapshot.list
+# release"): point apt at a snapshot dated at or after the last pin change
+# below (currently 2026-08-03), and add BOTH archives — the poppler pair is a
+# bookworm-security revision, which never reaches the bookworm main suite:
+#   SNAPSHOT=20260805T000000Z
+#   { printf 'deb [check-valid-until=no] https://snapshot.debian.org/archive/debian/%s/ bookworm main\n' "$SNAPSHOT"
+#     printf 'deb [check-valid-until=no] https://snapshot.debian.org/archive/debian-security/%s/ bookworm-security main\n' "$SNAPSHOT"
+#   } > /etc/apt/sources.list.d/snapshot.list
 # and rebuild; or bump the pins here and re-run every release gate. The wrapper
 # below turns the otherwise-opaque "has no installation candidate" apt error into
 # that actionable message instead of a bare non-zero exit.

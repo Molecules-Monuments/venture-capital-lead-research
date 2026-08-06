@@ -571,7 +571,11 @@ inspection/extraction lane, while unsupported media and unsafe documents are
 rejected before model exposure and before any business-data mutation.
 
 After the selected matrix passes, roll back to `none`, prove disconnection, and
-then re-enable only the reviewed profile. This rollback proof is part of G8.
+then re-enable only the reviewed profile. That is matrix row CH-12 in
+`docs/CHANNELS.md`, and no shipped gate exercises it: `run_g8_deployment.py`
+builds its throwaway `.env` from `.env.example` and therefore runs at
+`PRIMARY_CHANNEL=none` from bootstrap to teardown. The rollback proof is yours
+to produce and retain, like the rest of the channel matrix (§5.0).
 
 ### 5.6 Commissioning decision
 
@@ -820,10 +824,11 @@ record. Autonomous transcript review remains disabled.
   names neither the provider nor the prefill. `config/openclaw.json` therefore
   sets `diagnostics.stuckSessionWarnMs: 300000` and
   `diagnostics.stuckSessionAbortMs: 960000`, above the 900 s maximum the
-  validator allows for the per-call timeout. **If you raise
-  `VC_MODEL_TIMEOUT_SECONDS` for slower hardware, raise `stuckSessionAbortMs`
-  with it.** Both are reviewed artifacts: edit, re-pin with
-  `init_customization.py --update-hashes`, and re-bootstrap.
+  validator allows for the per-call timeout. **The shipped abort therefore
+  already clears the whole legal range, so slower hardware needs no retuning;
+  if you raise `VC_MODEL_TIMEOUT_SECONDS` within its 30–900 s range, keep
+  `stuckSessionAbortMs` above it.** Both are reviewed artifacts: edit, re-pin
+  with `init_customization.py --update-hashes`, and re-bootstrap.
 - **Channel plugins must stay under the harness's own extension scan root.** Not
   a limitation so much as a constraint that is easy to undo by accident, and it
   is load-bearing. The GHCR base image prunes the Slack, Teams, and Discord
@@ -928,16 +933,25 @@ including `run_g6_image.py`, whose provenance assertions must list both names.
 Verify a *fresh* build explicitly with `compose build --no-cache
 openclaw-gateway`; a cached build proves nothing about the pool.
 To recover a byte-reproducible build, point apt at a `snapshot.debian.org`
-timestamp that still carries the pinned versions before building:
+timestamp that still carries the pinned versions before building. Add **both**
+archives: the poppler pair sits at a `bookworm-security` revision, which is
+never published into the `bookworm main` suite, so a main-only snapshot cannot
+satisfy it however recent it is.
 
 ```sh
-printf 'deb [check-valid-until=no] https://snapshot.debian.org/archive/debian/20260720T000000Z/ bookworm main\n' \
-  > /etc/apt/sources.list.d/snapshot.list
+SNAPSHOT=20260805T000000Z   # at or after this release's last apt-pin change
+{ printf 'deb [check-valid-until=no] https://snapshot.debian.org/archive/debian/%s/ bookworm main\n' "$SNAPSHOT"
+  printf 'deb [check-valid-until=no] https://snapshot.debian.org/archive/debian-security/%s/ bookworm-security main\n' "$SNAPSHOT"
+} > /etc/apt/sources.list.d/snapshot.list
 ```
 
-(add it inside the build, or bake it into a local Dockerfile overlay). That
-timestamp is this release's pin date, so it still carries every version
-`Dockerfile.openclaw` names; use it verbatim. Editing `Dockerfile.openclaw` to
+(add it inside the build, or bake it into a local Dockerfile overlay). The
+timestamp must be at or after the last change to any pin in
+`Dockerfile.openclaw` — currently **2026-08-03**, when `libpoppler126` and
+`poppler-utils` moved to `22.12.0-2+deb12u3`. Re-check it whenever a pin moves,
+and confirm the snapshot actually resolves every pinned name before relying on
+it: an earlier timestamp reproduces the exact `held broken packages` failure
+this recipe exists to cure. Editing `Dockerfile.openclaw` to
 add the overlay makes `verify_release.py --pristine` report a hash mismatch for
 that one file from then on, which is expected and does not affect
 bootstrap or update. Alternatively, run the
