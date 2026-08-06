@@ -84,8 +84,8 @@
     {
       "executable": false,
       "path": "Dockerfile.openclaw",
-      "sha256": "31e22fdd42e43873d29c2614192981118ee3ae5ba71f5bc6744912e99457199c",
-      "size": 7228
+      "sha256": "b807818e26b2ad5d5f7f414200febc0bc12f565203a59cf73ada461ceb8615c2",
+      "size": 8249
     },
     {
       "executable": false,
@@ -96,8 +96,8 @@
     {
       "executable": false,
       "path": "README.md",
-      "sha256": "24156c2edaca26c61c1d6f688e2f0cb53516b401ccaf8c9176f34539ddfed271",
-      "size": 89849
+      "sha256": "6ddf0fcceb93f023183c9c00ec55ed6978efc5172392fe0cd99e6fb9d8dc8167",
+      "size": 90313
     },
     {
       "executable": false,
@@ -108,8 +108,8 @@
     {
       "executable": false,
       "path": "THIRD_PARTY_NOTICES.md",
-      "sha256": "646e76e57a06649a1f1354c89afbf2b91318603f24d4073e67f47b5f300df65d",
-      "size": 5480
+      "sha256": "8621c3cfd8ac3b56d2a1c6cee67ca8bc18ea8728ab483c2c2ec194cc7d73b86c",
+      "size": 5973
     },
     {
       "executable": false,

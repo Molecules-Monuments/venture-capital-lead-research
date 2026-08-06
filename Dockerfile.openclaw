@@ -101,8 +101,21 @@ RUN python3 -m venv /opt/vcops-venv \
 COPY --chown=root:root workspaces/ /workspaces/
 COPY --chown=root:root runtime-extensions/vc-trusted-context/ /opt/openclaw-extensions/vc-trusted-context/
 COPY --chown=root:root config/exec-approvals.json /opt/openclaw-seed/exec-approvals.json
-RUN chmod -R a-w /workspaces \
-  && chmod -R a-w /opt/openclaw-extensions/vc-trusted-context \
+# `a+rX` before `a-w` is load-bearing, not decoration. COPY preserves the build
+# context's modes, and git creates a working tree with `0666 & ~umask` (`0777 &
+# ~umask` for the executable helpers). On a host with the CIS/STIG default
+# `umask 027` a clone therefore lands at 0640/0750, and `chmod -R a-w` alone
+# turns that into 0440 files inside 0550 directories owned by root:root — which
+# the `node` runtime user can neither traverse nor read. The build still exits
+# 0, `verify_release.py --pristine` still passes (it hashes content, not modes),
+# and the failure only surfaces later as an unreadable agent contract and a
+# non-executable vcops/vcrun. `a+rX` grants read to all and execute only where
+# one already exists (directories and the helper entry points), so every host
+# produces the same reviewed mode set the release was verified against:
+# directories 0555, regular files 0444, helper entry points 0555. `a-w` still
+# removes every write bit, so the read-only guarantee below is unchanged.
+RUN chmod -R a+rX,a-w /workspaces \
+  && chmod -R a+rX,a-w /opt/openclaw-extensions/vc-trusted-context \
   && install -d -m 0700 -o node -g node /quarantine \
   && chmod 0444 /opt/openclaw-seed/exec-approvals.json
 
