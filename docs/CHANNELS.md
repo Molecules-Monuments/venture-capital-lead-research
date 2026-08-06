@@ -18,8 +18,10 @@ materializes list and destination sentinels, applies the configured model and
 search providers, and writes `config/runtime/openclaw.json` atomically with
 mode `0600`. A networkless initializer validates and copies that document to a
 node-owned mode-`0400` named-volume file. Gateway and CLI mount it read-only.
-Never edit the generated file; edit reviewed input, validate, render, and
-force-recreate the gateway.
+Never edit the generated file; edit reviewed input, validate, render, re-run the
+`openclaw-state-init` one-shot, and only then force-recreate the gateway. The
+initializer is the sole writer of the volume the gateway mounts, so a render
+followed by a gateway recreate alone leaves the previous config in place.
 
 Only `vc-chief` on account `default` is channel-bound. No specialist has a
 channel binding. Direct-message scope is `per-channel-peer`, so two allowed
@@ -104,21 +106,33 @@ restricted to the same user allowlist.
    the destination IDs in `.env`, or every later lifecycle run fails closed on
    the profile/environment mismatch.
 5. Validate `.env` and customization, render config, and record its SHA-256.
-6. Build the exact image, then run the gateway's own checks. `openclaw` lives
-   in the image, not on the host:
+6. Build the exact image, then **deliver the rendered config and recreate the
+   gateway**. The gateway reads its config from the runtime-config volume and
+   the one-shot `openclaw-state-init` service is that volume's only writer, so
+   recreating the gateway without it keeps the previous channel config mounted
+   and every check in step 7 would measure the old configuration:
 
    ```sh
    compose() { docker compose -f docker-compose.yml -p openclaw-lead-research-v3 --env-file .env "$@"; }
+   compose run --rm --no-deps openclaw-state-init
+   compose up -d --wait --force-recreate --no-deps openclaw-gateway
+   ```
+
+   Re-running `./scripts/bootstrap.sh` does the same thing. `docs/RUNBOOK.md` §6
+   carries the same sequence with the surrounding validation steps.
+7. Run the gateway's own checks. `openclaw` lives in the image, not on the host:
+
+   ```sh
    compose exec openclaw-gateway openclaw config validate
    compose exec openclaw-gateway openclaw doctor
    compose exec openclaw-gateway openclaw security audit
    compose exec openclaw-gateway openclaw channels status
    ```
-7. Test each applicable matrix row below. Retain timestamps, config/image
+8. Test each applicable matrix row below. Retain timestamps, config/image
    digests, redacted stable IDs, provider event IDs, database counts, and logs.
-8. Resolve every warning. `FAIL`, `NOT RUN`, missing evidence, or an unexplained
+9. Resolve every warning. `FAIL`, `NOT RUN`, missing evidence, or an unexplained
    warning is not a channel pass.
-9. Only then admit real messages.
+10. Only then admit real messages.
 
 Rollback is the same sequence in reverse, and the profile has to come with it:
 set `PRIMARY_CHANNEL=none`, clear all channel families, set the profile's

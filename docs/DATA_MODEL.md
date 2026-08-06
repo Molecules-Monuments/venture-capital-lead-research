@@ -26,7 +26,7 @@ Workspace memory is operational convenience only. It may point to Postgres IDs b
 
 ## Installation and migration integrity
 
-`openclaw_owner` owns schema objects. `openclaw_runtime` is created by `000_roles.sh` and receives only the grants in `002_runtime_grants.sql`.
+`openclaw_owner` owns schema objects. `openclaw_runtime` is created by `000_roles.sh`; its grants begin in `002_runtime_grants.sql` and are extended by the later migrations that add tables, sequences, or functions it must reach (`004`, `005`, `009`, `010`, `012`, `013`, `014`, `015`, `018`). It receives no grant outside that reviewed migration series.
 
 Migration files are immutable after release. The installer computes each file's lowercase SHA-256 outside Postgres, applies it in a transaction, and then calls:
 
@@ -315,7 +315,7 @@ README but not previously named here. They complete the 42-table inventory:
 | `company_domains` | Registrable domains bound to one company. The primary exact-match key during resolution. |
 | `entity_resolution_runs` | One resolution attempt: its input, threshold configuration, and outcome summary. |
 | `entity_resolution_decisions` | Exactly one decision row per resolution run (`resolution_run_id` is UNIQUE), recording the outcome, matched company, method and confidence, with the per-candidate set and rationale carried in `candidate_company_ids` and `reasons`, so a match can be re-read and audited rather than re-derived. |
-| `entity_resolution_consumptions` | Binds a resolution decision to the workflow run that consumed it, so a downstream write can be traced to the exact match that justified it. |
+| `entity_resolution_consumptions` | Binds a resolution decision to the company it created or linked and to the requester that consumed it (`consumed_by`, the calling lane's actor — not a workflow-run reference), so a downstream write can be traced to the exact match that justified it. `resolution_decision_id` is UNIQUE, so one decision is consumable exactly once. |
 | `memo_citations` | The claim-to-evidence edges of one memo. Append-only, and lineage-guarded so a memo cannot cite outside its frozen evidence snapshot. |
 | `signal_sources` | The operator-governed source watchlist driving `source-watch`/`source-scan`, including cadence, owner, confidentiality, enabled state, and last-scan state. |
 

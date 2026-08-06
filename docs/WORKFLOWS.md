@@ -68,7 +68,7 @@ marked optional.
 | `contradiction-record` | Record the deterministic contradiction classification for two persisted facts | `idempotency_key`, `lead_id`, `left_fact_id`, `right_fact_id`, `severity` |
 | `trajectory-record` | Record the deterministic trajectory classification for two persisted facts | `idempotency_key`, `lead_id`, `left_fact_id`, `right_fact_id` |
 | `memo-record` | Persist the memo produced from the frozen, human-approved snapshot (lands as `draft`; citations are trigger-confined to the snapshot's *current-support* facts — see "Memo citations" below) | `idempotency_key`, `lead_id`, `evaluation_id`, `compiled_truth_id`, `memo_title`, `memo_markdown`, `citations_json`, `evidence_hash` |
-| `source-watch` | Register or re-enable one watched surveillance source (the "monitor this website" path); the workflow lane cannot re-enable an operator-disabled entry, lower a stored confidentiality, or change ownership | `idempotency_key`, `source_name`, `source_uri`, `source_class`, `cadence`, `thesis_relevance`, `expected_signal` |
+| `source-watch` | Register one watched surveillance source (the "monitor this website" path), or refresh the descriptive fields of an already-enabled one. The workflow lane cannot re-enable a **disabled** entry at all — whoever disabled it, including its own earlier `source-unwatch` — nor lower a stored confidentiality or change ownership; re-enabling is operator-lane only (`vcops-operator source-watch`) | `idempotency_key`, `source_name`, `source_uri`, `source_class`, `cadence`, `thesis_relevance`, `expected_signal` |
 | `source-unwatch` | Disable one watched source without deleting its history | `idempotency_key`, `source_uri` |
 | `proposal-record` | Persist one governance proposal (schema change / source policy / skill candidate) for operator review; applies nothing | `idempotency_key`, `proposal_kind`, `title`, `summary`, `content_json` |
 | `orchestration-record` | Persist one orchestration/delegation audit entry (delegation_eval / return_assessment / chief_output) for a lead's research run | `idempotency_key`, `lead_id`, `record_kind`, `specialist`, `payload_json`; optional Task Flow correlation handles `flow_id`, `task_id`, `flow_revision` (omit the key entirely to persist NULL; `vcrun` rejects an empty string) |
@@ -233,12 +233,14 @@ mutation. A new logical operation receives a new opaque idempotency key. The sam
 logical retry reuses the same key and exactly the same inputs. Same key plus
 changed arguments, document path/hash, extraction, or principal fails closed.
 
-Two tables hold that claim, because the four intake workflows must resolve a
-company and create a lead *before* their run row can reference them:
+Two tables hold that claim, because the five intake workflows must resolve a
+company, create a lead, or bind an extraction *before* their run row can
+reference them:
 
 - **`workflow_requests`** — the outer claim for `inbound-intake`,
-  `inbound-text-intake`, `outbound-scout` (`workflow-request-claim`) and
-  `document-ingest` (`document-request-claim`). It is committed as the first
+  `inbound-text-intake`, `outbound-scout` (`workflow-request-claim`),
+  `document-ingest` (`document-request-claim`) and `document-lead-intake`
+  (`document-association-request-claim`). It is committed as the first
   step, ahead of any company or lead row, and stores a hash of the whole
   request payload including the document digest and channel principal.
 - **`workflow_runs`** — the claim for every other workflow, committed by
@@ -284,11 +286,18 @@ supersedes the claim (`supersedes_fact_id`, `version + 1`) and copies its
 provenance links. So a promoted claim is two rows on purpose — version 1
 (`submitted_claim`, superseded) and version 2 (`verified_fact`) — and not a
 duplicate. `facts` is append-only; nothing is rewritten or deleted, exactly as
-for the erasure tombstone and the other history tables. Every read path
-(`compiled-truth`, `lead-show`, the dedup lookup) excludes rows that something
-supersedes, so a superseded predecessor never reaches a snapshot, score, or memo.
-Query current facts with `NOT EXISTS (SELECT 1 FROM facts newer WHERE
-newer.supersedes_fact_id = f.id)` rather than by counting rows.
+for the erasure tombstone and the other history tables. `lead-show` and the
+dedup lookup exclude rows that something supersedes, so a superseded predecessor
+never reaches a score or a memo. Query current facts that way — with
+`NOT EXISTS (SELECT 1 FROM facts newer WHERE newer.supersedes_fact_id = f.id)`
+rather than by counting rows.
+
+`compiled-truth` is the deliberate exception: it snapshots *every* fact the lead
+holds and labels each with a `support_role`, so the superseded predecessor is
+present as `historical` beside its successor's `current`. That is what makes the
+snapshot a frozen history rather than a frozen selection — and it is why the
+citation rule below has to be stated in terms of `support_role` rather than in
+terms of what the snapshot contains.
 
 ### Memo citations
 
@@ -401,11 +410,13 @@ previous section meet here:
   Fixing a rejected payload is a different logical operation and takes a new
   key. That is not a gap in recovery: a payload the helpers rejected never
   produced a partial effect to recover from, which is exactly why reusing the
-  key would be meaningless. Every attempt is preserved
-in `audit_events` as a `workflow.retry` row alongside its `workflow.transition`
-rows. `succeeded`, `cancelled`, and `lost` have no edge out: a run that
-completed is never re-executed, and a run an operator cancelled is never
-resurrected by reusing its key.
+  key would be meaningless.
+
+Each reopened attempt — the first case above, the only one that reopens
+anything — is preserved in `audit_events` as a `workflow.retry` row alongside
+its `workflow.transition` rows. `succeeded`, `cancelled`, and `lost` have no
+edge out: a run that completed is never re-executed, and a run an operator
+cancelled is never resurrected by reusing its key.
 
 When a step fails and the cleanup itself cannot complete, both are reported: the
 Lobster envelope naming the failing step stays in the result and
@@ -426,8 +437,13 @@ the matching Postgres workflow/request records and expected domain identifiers.
 
 `LOBSTER_STATE_DIR=/home/node/.openclaw/lobster/state` places continuation in
 the writable OpenClaw state volume. PostgreSQL is separate. Backup quiesces
-consumers and captures both in one recovery window; restore verifies both
-before traffic and reconciles non-terminal runs.
+consumers and captures both in one recovery window; restore verifies both before
+traffic. Restore does **not** reconcile workflow runs: a run that was
+non-terminal when the recovery point was taken comes back non-terminal, and
+reconciling it is the incident procedure in `docs/RUNBOOK.md` §9 (re-read the
+current revision, reconcile the same run) or the runner's own
+`workflow-reconcile-failure` on a later same-key retry. What `restore.sh`
+reconciles is database *roles*, not runs.
 
 Before a live deployment relies on workflows, retain evidence that:
 

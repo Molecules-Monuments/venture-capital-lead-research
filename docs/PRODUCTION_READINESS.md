@@ -44,7 +44,17 @@ release inventory.
 The component-by-component basis is retained in the project's internal audit
 archive (excluded from the published package).
 
-## Release proof (what was executed this session, 2026-07-23)
+## Release proof (executed 2026-07-23; last re-executed 2026-08-06)
+
+Every figure in the table below is the measurement of a **2026-08-06**
+re-execution against this tree and against an image rebuilt from it with
+`docker build --no-cache --pull`, not a figure carried forward from the
+2026-07-23 session. That re-execution was necessary rather than ceremonial: the
+migrations, `vcops.py`, the eighteen `.lobster` workflows and
+`Dockerfile.openclaw` — the file that defines the very image G6 and G8 build —
+all changed after the original decision date. The counts reproduced exactly; only
+their provenance had gone stale. `docs/V3_RELEASE_EVIDENCE.md` and
+`evals/V3_EVAL_RESULTS.md` carry the same note for the same run.
 
 | Proof | Result |
 | --- | --- |

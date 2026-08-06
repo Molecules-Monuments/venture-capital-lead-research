@@ -4,10 +4,15 @@ Heartbeat work is observational and advisory. It must not enable cron, restart s
 
 Reachability (Version 3.0): this review runs only when an operator triggers it
 (cron ships disabled), and the agent read surface has no run/lead/approval/
-notification LIST commands — steps 2, 4, and 5 and the weekly outbox item are
-therefore performed over operator-supplied query exports attached to the
-heartbeat request. Report any step whose input export is absent as
-`not_observable` rather than skipping it silently or guessing from memory.
+notification LIST commands — steps 2, 3, 4, and 5 and the weekly outbox item are
+therefore performed over operator-supplied exports attached to the heartbeat
+request. Steps 2, 4 and 5 export from Postgres. Step 3 is the one that is not a
+database query at all: Lobster continuation state lives in `$LOBSTER_STATE_DIR`
+on the state volume, outside Postgres and outside every agent workspace, and
+`vcrun` exposes only `run`, `dry-run`, `doctor` and `version` — so its export
+comes from the operator's own inspection of that directory. Report any step
+whose input export is absent as `not_observable` rather than skipping it
+silently or guessing from memory.
 
 ## Each run
 

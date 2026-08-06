@@ -24,7 +24,12 @@ Active sourcing is thesis-directed search performed by the system or operator.
 3. Select one source class.
 4. Collect candidates with source URLs.
 5. Deduplicate by canonical domain.
-6. Create `origin_group=outbound`, `origin_subtype=source_based` or `event_based`.
+6. Persist through the fixed `outbound-scout` workflow. It stamps
+   `origin_group=outbound`, `origin_subtype=active_sourcing` — the
+   intake-mechanism subtype, which is not a workflow argument and cannot be
+   overridden. Record `source_based` or `event_based` as the *model*
+   classification inside the scout packet, not as the persisted subtype; see
+   `lead_origin_taxonomy.md` for why both layers exist.
 7. Run pre-qualification before deeper research.
 
 ## Approval gates

@@ -397,8 +397,10 @@ and truncates the rest of the prompt server-side without an error. Because the
 value now reaches the server, the machine running Ollama has to be able to serve
 it — a context far beyond what the host's memory supports will fail to load or
 run very slowly. The shipped default (272000) is sized for the hosted OpenAI
-default, not for a local model; set it to what your model and hardware actually
-support.
+default, not for a local model. Lower it — and note that in Ollama mode *lower*
+is the direction that buys headroom, for the reason the sizing rule below
+derives: the usable band is roughly 36796–40000, not "as much as your model
+supports".
 
 **The server clamps this value down, and then truncates your prompt to fit.**
 Two separate behaviours, both measured on Ollama 0.32.5:
@@ -421,7 +423,11 @@ Two separate behaviours, both measured on Ollama 0.32.5:
 
    Note the limit: **16 387, roughly half of 32768**, not the whole context.
    Ollama reserves the rest for generation. So the real ceiling on prompt size
-   is about *half* the model's context, not all of it.
+   is about *half* the **served** context — the context the server actually
+   loaded after the clamp above, which is
+   `min(VC_MODEL_CONTEXT_WINDOW, model context length)` because the renderer
+   sends the window as `num_ctx`. It is not half the model's trained context,
+   and above the clamp point those two are different numbers.
 
 That halving is what makes the naive rule wrong. Check the model first:
 
@@ -433,17 +439,34 @@ Then require, with `budget = VC_MODEL_CONTEXT_WINDOW − 20000` (the runtime's
 fixed reserve):
 
 ```text
-model context length  >=  2 x budget
+min(VC_MODEL_CONTEXT_WINDOW, model context length)  >=  2 x budget
 ```
 
-At the shipped floor of 36796 the budget is 16 796, so the model needs about
-**33 600** tokens of context — which rules out every 32k model, and confirms it
-for a reason stronger than the floor alone. A worked example just above that
-floor (`VC_MODEL_CONTEXT_WINDOW=36864` on a 131072-token model — the
-configuration measured below, not the shipped 272000) leaves a budget of
-16 864 against a truncation limit near 18 432: safe, but with under 1 600 tokens
-of margin. Raising the window without moving to a larger-context model spends
-that margin and starts silently discarding prompt.
+One condition, two limbs, and **both** bind:
+
+- **The model.** `model context length >= 2 x budget`. At the shipped floor of
+  36796 the budget is 16 796, so the model needs about **33 600** tokens of
+  context — which rules out every 32k model, and confirms it for a reason
+  stronger than the floor alone.
+- **The window, whatever the model.** Substituting `budget = W − 20000` into
+  `W/2 >= budget` leaves **`VC_MODEL_CONTEXT_WINDOW <= 40000`**, with the model
+  cancelled out of the inequality entirely. Because `num_ctx` tracks the
+  window, raising the window by a token adds one token of packed budget and
+  only half a token of truncation limit, so the headroom
+  (`margin = 20000 − W/2`) shrinks as the window grows and reaches zero at
+  40000. A 262144-token model at `VC_MODEL_CONTEXT_WINDOW=60000` satisfies the
+  first limb comfortably and still serves 60000, truncates near 30000, and is
+  packed to 40000 — a third of every large prompt discarded, with
+  `error: null`. Nothing rejects it: `check_env.py` accepts windows up to
+  4 000 000.
+
+So in Ollama mode the usable window is a narrow band just above the floor,
+roughly 36796–40000. A worked example inside it
+(`VC_MODEL_CONTEXT_WINDOW=36864` on a 131072-token model — the configuration
+measured below, not the shipped 272000) leaves a budget of 16 864 against a
+truncation limit near 18 432: safe, but with under 1 600 tokens of margin.
+Raising the window spends that margin, and moving to a larger-context model
+does **not** buy it back — the margin depends only on the window.
 
 There is a floor as well as a ceiling. The runtime reserves a fixed 20000 tokens
 of every context window for compaction headroom, and the chief's own assembled
@@ -493,7 +516,7 @@ after a period with no *streaming* progress. Its own defaults are 120 s to warn
 and **300 s to abort** — and a prefill emits nothing until it finishes, so a
 long prefill is indistinguishable from a stalled provider. Left at those
 defaults, no value of `VC_MODEL_TIMEOUT_SECONDS` can keep a slow local model
-alive: a call that needs 480 s of prefill is killed at ~380 s (the abort
+alive: a call that needs 480 s of prefill is killed at ~390 s (the abort
 threshold plus the sweep interval) with
 
 ```text
@@ -749,9 +772,10 @@ Only `data-steward` may invoke `vcrun`, which:
 | `orchestration-record` | Persist one append-only orchestration audit entry | `idempotency_key`, `lead_id`, `record_kind`, `specialist`, `payload_json` |
 | `proposal-record` | Persist one governance proposal for operator review | `idempotency_key`, `proposal_kind`, `title`, `summary`, `content_json` |
 
-`criteria_json`, `decision_context_json`, `evidence_json`, `payload_json`, and
-`content_json` are serialized JSON strings inside the outer object. Generate
-them with a serializer, not shell concatenation.
+`criteria_json`, `decision_context_json`, `evidence_json`, `payload_json`,
+`content_json`, and `citations_json` are serialized JSON strings inside the
+outer object — the first five are JSON objects, `citations_json` is a JSON
+array. Generate them with a serializer, not shell concatenation.
 
 ### Lobster approval is not business authorization
 

@@ -39,7 +39,7 @@ The shipped sample profile discovers 26 shared skills:
 | Any possible signal | `lead-signal-detection` | `lead-signal-detector` | `signal_detection.md`, trust decision, memory result |
 | Any entity/fact/event/relationship | `knowledge-modeling` | `data-steward` | `knowledge_model.md`, `missing_data_handling.md` |
 | Any business-state write | `data-persistence` | fixed `vcrun` workflow via `data-steward` | typed operation, provenance, expected version |
-| Any external or high-risk action | `approval-gates` | `vc-chief` validates; `data-steward` consumes | `approval-policy.md`, immutable action preview |
+| Any external or high-risk action | `approval-gates` | `vc-chief` validates and blocks; no agent lane consumes | `approval-policy.md`, immutable action preview |
 | Any user notification | `quiet-hours-reporting` | `vc-chief` may classify; proactive delivery is unsupported | `notification_policy.md`, `channel_policy.md` |
 
 ## Intake and research routes
