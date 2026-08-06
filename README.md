@@ -372,14 +372,19 @@ VC_FAST_MODEL=ollama/qwen3:8b
 VC_OLLAMA_BASE_URL=http://host.docker.internal:11434
 OPENAI_API_KEY=
 VC_WEB_SEARCH_PROVIDER=duckduckgo
-VC_MODEL_CONTEXT_WINDOW=65536
+VC_MODEL_CONTEXT_WINDOW=36864
 VC_MODEL_TIMEOUT_SECONDS=600
 ```
 
 The context window is part of the example because the shipped default (272000)
 describes a hosted model, and in Ollama mode this value is also what the server
-is asked to allocate. The timeout is part of it because the shipped default
-(300) is not enough for the first turn against a local model — see below.
+is asked to allocate. Both `qwen3` models above declare a trained context of
+40960 (`ollama show qwen3:14b`), and 36864 is what that context supports under
+the sizing rule below: it clears the 36796 floor, is small enough that the
+server does not clamp it, and leaves the prompt budget inside the truncation
+limit. A different model needs a different value — run that check before
+copying this block. The timeout is part of it because the shipped default (300)
+is not enough for the first turn against a local model — see below.
 
 Applying that block to an already-reviewed deployment also requires the matching
 profile edit described under [Switching a model or search
@@ -433,8 +438,9 @@ model context length  >=  2 x budget
 
 At the shipped floor of 36796 the budget is 16 796, so the model needs about
 **33 600** tokens of context — which rules out every 32k model, and confirms it
-for a reason stronger than the floor alone. The default here
-(`VC_MODEL_CONTEXT_WINDOW=36864` on a 131072-token model) leaves a budget of
+for a reason stronger than the floor alone. A worked example just above that
+floor (`VC_MODEL_CONTEXT_WINDOW=36864` on a 131072-token model — the
+configuration measured below, not the shipped 272000) leaves a budget of
 16 864 against a truncation limit near 18 432: safe, but with under 1 600 tokens
 of margin. Raising the window without moving to a larger-context model spends
 that margin and starts silently discarding prompt.

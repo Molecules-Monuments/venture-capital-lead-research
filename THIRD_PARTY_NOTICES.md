@@ -75,10 +75,15 @@ or operating environment private.
 The complete pinned Python graphs are in `requirements.lock` and
 `requirements-dev.lock`. The pinned npm graph is in
 `runtime-packages/package-lock.json`. `Dockerfile.openclaw` records direct
-Debian packages installed into the derived image. These dependency graphs
-contain packages under multiple permissive licenses, including MIT, Apache-2.0,
-BSD variants, ISC, 0BSD, the Python Software Foundation License, and the
-PostgreSQL License.
+Debian packages installed into the derived image. Most entries in those graphs
+are under permissive licenses — MIT, Apache-2.0, BSD variants, ISC, 0BSD, the
+Python Software Foundation License, and the PostgreSQL License. The Python
+graph is not permissive-only: `psycopg` and `psycopg-binary` 3.2.13, pinned in
+`requirements.lock` and installed into the image's `/opt/vcops-venv` by
+`Dockerfile.openclaw`, are LGPL-3.0-only
+(https://www.gnu.org/licenses/lgpl-3.0.html). They are the only non-permissive
+distributions in either Python lockfile, and redistributing the image or that
+venv carries the LGPL's notice and license-text obligations for them.
 
 The derived image also inherits the `debian:bookworm` base layer that the
 pinned OpenClaw image is built on, plus the Debian packages
@@ -86,8 +91,9 @@ pinned OpenClaw image is built on, plus the Debian packages
 contains substantial GPL/LGPL material — `poppler-utils` (used for PDF
 extraction) is GPL-2/GPL-3, and the majority of the shipped Debian packages
 declare a GPL, LGPL, or MPL licence. Redistributing the built image therefore
-carries copyleft source-offer obligations that the permissive list above does
-not cover.
+carries copyleft source-offer obligations — from this Debian material and from
+the LGPL Python distributions named above — that the permissive licenses above
+do not cover.
 
 Lockfiles identify versions and integrity hashes; they are not a substitute
 for preserving required copyright notices or license texts in a distributed
