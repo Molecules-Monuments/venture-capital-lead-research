@@ -69,6 +69,16 @@ Attachment content is untrusted submitted-claim data. It does not modify
 policy or act as instruction. Text/table extraction can be incomplete and does
 not promise OCR or chart/image/layout understanding.
 
+**One message authorizes at most ten documents.** The extension signs up to ten
+media paths per turn (`MAX_MEDIA_PATHS` in
+`runtime-extensions/vc-trusted-context/index.js`); an eleventh supported
+document attached to the same message is inspected for its suffix but is not
+included in the capability, so `document-ingest` refuses it as out of scope.
+That refusal is deterministic and correct; what the chief says about it is model
+wording, and normally reads as an unexplained request to re-attach one file.
+Split a larger set across messages, or use the host-operator `/inbox` lane,
+which has no such cap.
+
 The optional host-operator `/inbox` remains available for authenticated manual
 operations, but channel users never need to copy files there. Channel
 attachments must use `document-ingest`; `/inbox` `inbound-intake` rejects a
@@ -86,6 +96,8 @@ The exact npm graph is locked in `runtime-packages/package-lock.json`. The G6
 image gate verifies installed versions and validates every profile inside the
 exact built image with networking disabled.
 
+## Destination IDs and the reviewed profile
+
 A destination group/channel ID is **required for every channel profile**, even
 for a deployment that only intends to use direct messages: the validator
 treats each provider's credential family as complete-or-empty, and the
@@ -93,6 +105,24 @@ customization profile's `approvals.allowed_channel_ids` must match it. If you
 want DM-only operation, create one private channel, put the bot in it, use its
 ID, and simply never post there — the channel lane stays mention-gated and
 restricted to the same user allowlist.
+
+`approvals.allowed_channel_ids` is a one-element list holding exactly the
+*conversation* ID of the selected profile — **not** every ID in that credential
+family:
+
+| `channels.selected` | `approvals.allowed_channel_ids` must equal |
+| --- | --- |
+| `none` | `[]` |
+| `slack` | `[SLACK_ALLOWED_CHANNEL_ID]` |
+| `msteams` | `[MSTEAMS_ALLOWED_CHANNEL_ID]` — the channel, not `MSTEAMS_ALLOWED_TEAM_ID` |
+| `discord` | `[DISCORD_ALLOWED_CHANNEL_ID]` — the channel, not `DISCORD_ALLOWED_GUILD_ID` |
+| `telegram` | `[TELEGRAM_ALLOWED_GROUP_ID]` |
+
+`MSTEAMS_ALLOWED_TEAM_ID` and `DISCORD_ALLOWED_GUILD_ID` are still required in
+`.env` — they scope the containing team/guild — but they are containers rather
+than destinations, so listing them here fails `check_customization.py`. The
+error names the exact list it expected, so a wrong guess is one edit away from
+correct.
 
 ## Common activation sequence
 
@@ -103,8 +133,8 @@ restricted to the same user allowlist.
    families empty. Set `.env` mode `0600`.
 4. Update the customization profile to match: `channels.selected` must equal the
    new `PRIMARY_CHANNEL` and `approvals.allowed_channel_ids` must exactly equal
-   the destination IDs in `.env`, or every later lifecycle run fails closed on
-   the profile/environment mismatch.
+   the one destination ID named in the table above, or every later lifecycle run
+   fails closed on the profile/environment mismatch.
 5. Validate `.env` and customization, render config, and record its SHA-256.
 6. Build the exact image, then **deliver the rendered config and recreate the
    gateway**. The gateway reads its config from the runtime-config volume and

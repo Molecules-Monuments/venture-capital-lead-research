@@ -78,8 +78,8 @@
     {
       "executable": false,
       "path": "CUSTOMIZATION.md",
-      "sha256": "77ac50f32e426114b6eeff39e80de0eae4266eb260406cce472418556aca5c56",
-      "size": 26410
+      "sha256": "81855cded1d3879ffdb35e70ea853814c7319a9e514e11636ca3a0ffc813ab35",
+      "size": 26584
     },
     {
       "executable": false,
@@ -96,8 +96,8 @@
     {
       "executable": false,
       "path": "README.md",
-      "sha256": "748dabc17206141c898e77761d4d55f3f216ee7a219dc5504a2c5aa0667a686b",
-      "size": 92153
+      "sha256": "7dadf3d3d77f532dc64d2c205261422701d880558b41849071b027596e8f0e03",
+      "size": 92410
     },
     {
       "executable": false,
@@ -186,8 +186,8 @@
     {
       "executable": false,
       "path": "docs/CHANNELS.md",
-      "sha256": "7b3dbe250267759884cc79eeb8d5a76422262445718054ed7a21b705c9c7d770",
-      "size": 19944
+      "sha256": "aaa42c64314e1b69b8f58d879e2698c88f139c2fe0892b6de6b91231191af29e",
+      "size": 21488
     },
     {
       "executable": false,
@@ -216,8 +216,8 @@
     {
       "executable": false,
       "path": "docs/RUNBOOK.md",
-      "sha256": "37bcfc71555c4f6a2965e55a496b91740007365c55e93e26771520dc7eb3edeb",
-      "size": 58734
+      "sha256": "e3ec2940d9f924e3de0a3a8bb83ec356114bf0f65110171accfd9e5340303808",
+      "size": 59485
     },
     {
       "executable": false,
@@ -240,8 +240,8 @@
     {
       "executable": false,
       "path": "docs/WORKFLOWS.md",
-      "sha256": "bf24e267666c42409d5ec78a51764a369d019ab9b0d4e393d3dfaa0b0d417457",
-      "size": 27134
+      "sha256": "88138ab5d7479373c52f673e3647fa5881c8e9c9b4a16a2aa6be974136ca409e",
+      "size": 29154
     },
     {
       "executable": false,

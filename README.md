@@ -1260,10 +1260,13 @@ team, and prepare a detailed internal memo. Treat deck statements as claims,
 identify contradictions and unknowns, and do not contact the company.
 ```
 
-Attach a supported PDF/PPTX/XLSX/CSV to the same message. The chief should run
-document ingestion/association before external research. If the provider did
-not deliver a current attachment path, it will ask the user to reattach rather
-than inventing one.
+Attach a supported PDF/PPTX/XLSX/CSV to the same message — at most ten per
+message, the ceiling the signed capability carries (see
+[CHANNELS.md](docs/CHANNELS.md)). The chief should run document
+ingestion/association before external research. If the provider did not deliver
+a current attachment path, the chief cannot invent one: no capability names it,
+so the document lane refuses. What it says in response — normally a request to
+re-attach the file — is model wording rather than an enforced behavior.
 
 Users may also say “keep future memos short,” “use dense citations,” or “forget
 my memo-length preference.” Only supported values in direct messages persist.

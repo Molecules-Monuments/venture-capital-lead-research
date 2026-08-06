@@ -41,8 +41,10 @@ Selectors are `runtime-preflight`, `outbound-scout`, `inbound-intake`, `inbound-
 `vcrun` rejects unknown selectors, paths, `--file`, inline pipelines, arbitrary
 commands, passthrough flags, cwd/env overrides, caller time/output overrides,
 duplicate JSON keys, non-object JSON, NULs, input above 32 KiB, wrong value
-types, missing fields, extra fields, invalid domain/BIGINT/preference values,
-and paths outside the exact permitted intake root.
+types, missing fields, extra fields, invalid domain, BIGINT and
+preference-*key* values, and paths outside the exact permitted intake root.
+(`preference_value` is the one closed domain the helper rather than the runner
+enforces — see "Closed argument value domains" below.)
 
 The agent-facing runner does not accept `DATABASE_URL`, DB passwords, provider
 keys, approval secrets, resume tokens, or an operator identity. The internal
@@ -85,8 +87,8 @@ element contract lives in `workspaces/shared-skills/memo-writing/SKILL.md`.
 ### Closed argument value domains
 
 Several arguments accept only a fixed set of values. `vcrun` refuses anything
-else before the workflow starts, so a call that guesses a value fails on first
-use. Every closed domain in the eighteen workflows:
+else before the workflow starts, so a call that guesses one of the values below
+fails on first use without touching the database:
 
 | Workflow | Argument | Accepted values |
 | --- | --- | --- |
@@ -101,12 +103,27 @@ use. Every closed domain in the eighteen workflows:
 | `preference-observe` | `observation_kind` | `explicit`, `inferred` |
 | `source-scan` | `limit` | an integer from `1` through `500` |
 
-`preference_value` is keyed to `preference_key`: `memo_length`
+`preference_value` is the one closed domain **not** in that table, because it is
+the one `vcrun` does not check. It is keyed to `preference_key` — `memo_length`
 (`short`/`standard`/`detailed`), `communication_tone`
 (`concise`/`balanced`/`explanatory`), `research_depth`
 (`quick_scan`/`standard`/`deep`), `citation_density`
 (`light`/`standard`/`dense`), `output_structure`
-(`narrative`/`headings`/`bullet_heavy`).
+(`narrative`/`headings`/`bullet_heavy`) — and the pairing is enforced by
+`vcops`, which owns the schema, at the `preference-observe` step. That step runs
+*after* `workflow-start` has claimed the run, so an unsupported value does not
+fail the way an unsupported `preference_key` does:
+
+- a bad `preference_key` is refused by `vcrun` before Lobster starts, and
+  nothing is written;
+- a bad `preference_value` opens a run, fails at the helper step, and the runner
+  reconciles that run to `failed`. No preference is recorded, but the run row
+  exists — and because the arguments are part of the run's identity, retrying
+  the *corrected* value under the same idempotency key is refused as
+  `idempotency_payload_mismatch`. Correcting it needs a new key, exactly as
+  "Failure and recovery" below describes for any other rejected payload.
+
+Send a value from the list above rather than relying on the runner to catch it.
 
 Identifier arguments (`lead_id`, `left_fact_id`, `right_fact_id`,
 `extraction_id`, `evaluation_id`, `compiled_truth_id`) must be canonical
@@ -339,11 +356,28 @@ docker compose -f docker-compose.yml -p openclaw-lead-research-v3 --env-file .en
 The eight-hex `<approval-id>` is printed by the paused run itself: `vcrun run
 evaluate-lead …` returns a JSON object whose pause result carries the
 correlation ID, and the same value appears in the gateway log for that run.
-Record it when the run pauses — there is no command that lists pending pauses,
-so a lost ID means the run must be cancelled and re-run. For the rejection and
-cancel forms, `--run-id` and `--expected-revision` are the `run_id` and
-`record_version` of the same workflow run, returned by `workflow-start` and by
-every `workflow-transition`.
+Record it when the run pauses. If it is lost, the pause is still recoverable
+and the evaluation does not have to be re-run: the pinned Lobster runtime
+writes one reverse-index file per pending approval into `LOBSTER_STATE_DIR`,
+named `approval_<8-hex-id>.json`, and removes it on resume or cancel. List them
+on the deployment host:
+
+```sh
+docker compose -f docker-compose.yml -p openclaw-lead-research-v3 --env-file .env \
+  exec openclaw-gateway sh -c 'ls -1 /home/node/.openclaw/lobster/state/approval_*.json'
+```
+
+Each filename carries an ID the wrapper accepts; the file's `stateKey` names the
+paused workflow state beside it, which is how you tell two concurrent pauses
+apart. There is no *command* that lists them — this is a directory listing, so
+treat it as recovery rather than as the normal path, and still record the ID
+when the run pauses.
+
+For the rejection and cancel forms, `--run-id` and `--expected-revision` are the
+`run_id` and `record_version` of the same workflow run, returned by
+`workflow-start` and by every `workflow-transition`. Both reject and cancel also
+require `--id`, so recovering the approval ID above is a precondition for
+terminating a paused run through this surface, not only for approving one.
 
 The wrapper accepts these forms:
 

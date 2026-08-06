@@ -180,9 +180,11 @@ token there). Editing it fails the offline gate. See the
   host file directly), and then seed the schedule with
   `./scripts/schedule_jobs.sh` (idempotent; tunable
   via `VC_SCAN_CRON`/`VC_SCAN_TZ`/`VC_SCAN_DELIVERY`, optional
-  `VC_HEARTBEAT_CRON`). These are read from the environment of the
-  `schedule_jobs.sh` invocation only — they are not `.env` keys, and
-  `check_env.py` rejects them there as unknown variables.
+  `VC_HEARTBEAT_CRON`/`VC_HEARTBEAT_DELIVERY`, plus the
+  `VC_ALLOW_DISABLED_SCHEDULER` escape hatch — the script otherwise refuses to
+  seed while the gateway's scheduler is still disabled). These six are read from
+  the environment of the `schedule_jobs.sh` invocation only — they are not
+  `.env` keys, and `check_env.py` rejects them there as unknown variables.
   It uses OpenClaw's native cron to send `vc-chief` a fixed scan instruction on
   the chosen schedule. Per `approval-policy.md`, increasing cron frequency or
   concurrency is an approval gate. This is a deliberate switch: the shipping
