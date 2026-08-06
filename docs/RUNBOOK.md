@@ -264,7 +264,8 @@ it only stops you re-deriving what the package already demonstrates.
 | 5.1 rendered-config mode, ownership, digest and read-only mounting | `tests/infrastructure` plus the in-container initializer assertions exercised by `run_g8_deployment.py` | — |
 | 5.1 `/healthz` and `/readyz` behaviour; private-path reachability | — | Yours: depends on your host and proxy |
 | 5.2 migration names, checksums, and no-op replay | `verify_offline.py --with-g4-database` (applies and registers every migration twice) | Inspect `schema_migrations` once on your database |
-| 5.2 `openclaw_runtime` is `NOINHERIT`, non-superuser, non-replication, cannot create databases/roles/schema/temp objects, no role membership | `tests/g4/test_database_contract.py` asserts that exact privilege set | — |
+| 5.2 `openclaw_runtime` cannot create schema objects or temporary objects, and holds only the reviewed table/function grants | `tests/g4/test_database_contract.py` asserts that exact privilege set, and that DDL as the runtime role fails | — |
+| 5.2 `openclaw_runtime` is `NOINHERIT`, non-superuser, non-replication, non-`BYPASSRLS`, cannot create databases or roles, connection-limited, and holds no role membership in either direction | `scripts/rotate_runtime_role.sh` asserts exactly that predicate against `pg_roles`/`pg_auth_members` and fails closed; `bootstrap.sh` and `update.sh` both run it, so `run_g8_deployment.py` exercises it. **No offline gate covers it** — G4 builds its own throwaway role rather than applying `migrations/000_roles.sh` | Read the reconciler's output on *your* deployment (it runs on every bootstrap/update/rotate) |
 | 5.2 typed lifecycle, idempotent replay, optimistic conflict, approval consume/replay denial, notification claim/retry, cross-lead document provenance | the same G4 gate | — |
 | 5.3 all eighteen workflows parse, reject shell injection, environment leaks and unsafe authority | `validate_workflows.py` and `tests/g5` | — |
 | 5.3 live workflow execution | `run_g8_deployment.py` live-runs six workflows end-to-end through real `vcrun`/Lobster | Live-run the remaining twelve against your deployment |
@@ -362,11 +363,15 @@ The restore drill in §5.4 is the one item no gate covers.
     reading public web text is precisely the exposure `trust_boundaries.md` and
     the untrusted-content contract govern — the package's controls make public
     text data rather than instruction, but they do not make a 1B model good at
-    honouring that boundary, and `SEC-12` is `BLOCKED` for exactly this reason.
+    honouring that boundary. This is why "whether the model honours the
+    untrusted-content fencing it is given" stays on the BLOCKED list in
+    `docs/PRODUCTION_READINESS.md` rather than being closed by any package gate.
 
     Disposition, and it is a decision you must record rather than a line to
-    tick: either (a) run a model whose judgement you have benchmarked under
-    `MOD-08` and accept the finding with that evidence attached, or (b) remove
+    tick: either (a) run a model whose judgement you have benchmarked — the
+    chosen-model quality/cost/context/tool-use qualification that
+    `docs/PRODUCTION_READINESS.md` lists as a commissioning duty — and accept
+    the finding with that evidence attached, or (b) remove
     `web_search`/`web_fetch` from those agents in `config/openclaw.json` and
     re-pin — it is one of the twenty reviewed artifacts, so this is the normal
     `init_customization.py --update-hashes` path — which clears the finding and
@@ -686,8 +691,14 @@ environment.
 Rollback uses the prior package revision, its exact image digest, and a
 compatible database/state backup together. Do not point an older binary at a
 newer schema unless upstream explicitly documents compatibility. For channel
-rollback, set `PRIMARY_CHANNEL=none`, clear all channel fields, validate/render,
-force-recreate the gateway, and prove disconnection.
+rollback, run §6's sequence with `PRIMARY_CHANNEL=none`: clear all channel
+fields, set the profile's `channels.selected` back to `none` and
+`approvals.allowed_channel_ids` to `[]`, validate, render, **re-run
+`openclaw-state-init`**, force-recreate the gateway, and prove disconnection.
+The state-init run is not optional here either — recreating the gateway alone
+leaves the previous channel config mounted, so the deployment would still be
+connected while the rollback looked complete. `docs/CHANNELS.md` row CH-12 is
+where that proof is recorded.
 
 ### 8.1 Promote a pending skill candidate
 
@@ -889,10 +900,10 @@ record. Autonomous transcript review remains disabled.
     health review per `workspaces/vc-chief/HEARTBEAT.md`.
 
   Both are idempotent through `--declaration-key`, so re-running the script on
-  every deploy is safe. Its four tunables are read from the **process
-  environment only** — `check_env.py` rejects them in `.env`:
-  `VC_SCAN_CRON`, `VC_SCAN_TZ`, `VC_SCAN_DELIVERY`, and `VC_HEARTBEAT_CRON`
-  (plus `VC_HEARTBEAT_DELIVERY`).
+  every deploy is safe. Its five tunables are read from the **process
+  environment only** — `check_env.py` rejects every one of them in `.env` as an
+  unknown key: `VC_SCAN_CRON`, `VC_SCAN_TZ`, `VC_SCAN_DELIVERY`,
+  `VC_HEARTBEAT_CRON`, and `VC_HEARTBEAT_DELIVERY`.
 
   Two behaviours to know before you run it. First, an empty delivery value is
   seeded as `--no-deliver`, not as upstream's default: omitting every delivery

@@ -35,8 +35,16 @@ original project material covered by this repository's 0BSD license.
 ## Optional external model, search, and channel services
 
 The runtime can be configured to call OpenAI, Ollama, a reviewed custom model
-endpoint, DuckDuckGo search, Firecrawl, Tavily, Slack, Microsoft Teams, Discord,
-or Telegram. `config/connectors.example.json` additionally ships pre-wired
+endpoint, Slack, Microsoft Teams, Discord, or Telegram. For search it accepts
+DuckDuckGo, Firecrawl and Tavily — the three whose plugins the derived image
+already carries — and also Brave, Perplexity, Exa, a self-hosted SearXNG
+instance, or Parallel in its key-free `parallel-free` form. Those last five are
+native to the harness but **not bundled**: selecting one additionally requires
+pinning its plugin package in `runtime-packages/` and rebuilding the image, which
+brings that package's own licence into scope alongside the provider's terms.
+SearXNG is a self-hosted endpoint the operator supplies rather than a vendor
+API, so its terms are whatever that deployment's own are.
+`config/connectors.example.json` additionally ships pre-wired
 entries for the **Crunchbase**, **PitchBook**, and **Dealroom** research
 connectors, each with a credential slot in `.env.example` and a pass-through in
 `docker-compose.yml`; they are disabled until an operator enables them. These

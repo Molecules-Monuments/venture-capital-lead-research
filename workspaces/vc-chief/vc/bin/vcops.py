@@ -3865,14 +3865,17 @@ def cmd_source_watch(args: argparse.Namespace) -> dict[str, Any]:
             source = dict(row)
         else:
             # Re-registration through the model-reachable lanes must never
-            # resurrect an operator-disabled source, strip its confidentiality
+            # resurrect a disabled source, strip its confidentiality
             # classification, or seize its ownership. Only the operator lane
             # may re-enable or reclassify; everyone may refresh the benign
-            # descriptive fields of an already-enabled entry.
+            # descriptive fields of an already-enabled entry. The guard is on
+            # the disabled state, not on who set it: a model lane can disable a
+            # public/internal source through source-unwatch, so the message must
+            # not attribute the decision to an operator who may not have made it.
             if not existing["enabled"] and not OPERATOR_MODE:
                 raise VcopsError(
                     "source_watch_disabled",
-                    "an operator disabled this watched source; re-enabling requires the operator lane",
+                    "this watched source is disabled; re-enabling requires the operator lane",
                     exit_code=1,
                 )
             if OPERATOR_MODE:

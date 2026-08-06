@@ -30,8 +30,8 @@
     {
       "executable": false,
       "path": ".env.example",
-      "sha256": "792785f0d2ddc902139be21eff85f430854b1723d0b351622f75fd5ca3a61daa",
-      "size": 7835
+      "sha256": "608a63cce7ca1fbf5a79763435d28fc17ec815057de6cf4e74f3b0b6eb7db889",
+      "size": 7836
     },
     {
       "executable": false,
@@ -72,8 +72,8 @@
     {
       "executable": false,
       "path": "CUSTOMIZATION.md",
-      "sha256": "e22fe0fedf11518cb1a74b74386be959cfaf17de2067671163c1764e76e7b34c",
-      "size": 25090
+      "sha256": "77ac50f32e426114b6eeff39e80de0eae4266eb260406cce472418556aca5c56",
+      "size": 26410
     },
     {
       "executable": false,
@@ -90,8 +90,8 @@
     {
       "executable": false,
       "path": "README.md",
-      "sha256": "9c84652370bdc4aae2140f8b6f573aee6c7348d3b2a664fa37241debcc62e4b0",
-      "size": 90526
+      "sha256": "625ce728e91078050bde4f9dd3042f18572df5ceb95a0dbdb943d58585179aa8",
+      "size": 92056
     },
     {
       "executable": false,
@@ -102,8 +102,8 @@
     {
       "executable": false,
       "path": "THIRD_PARTY_NOTICES.md",
-      "sha256": "8621c3cfd8ac3b56d2a1c6cee67ca8bc18ea8728ab483c2c2ec194cc7d73b86c",
-      "size": 5973
+      "sha256": "a0dfc2b0c760a603e7e9a3aa078c218a385eced9c7e9f46604009b01a45763d9",
+      "size": 6564
     },
     {
       "executable": false,
@@ -180,14 +180,14 @@
     {
       "executable": false,
       "path": "docs/CHANNELS.md",
-      "sha256": "4590715e77376467c78665478e51f56d70fcd30ee6ccbd50caa0e9dffb9dd435",
-      "size": 19100
+      "sha256": "7b3dbe250267759884cc79eeb8d5a76422262445718054ed7a21b705c9c7d770",
+      "size": 19944
     },
     {
       "executable": false,
       "path": "docs/DATA_MODEL.md",
-      "sha256": "18d6256b96009c5cfefd6b6f7b63c9b3a4e863dbe351ba4b0193d15af63bbec8",
-      "size": 31751
+      "sha256": "59979edeb93ac1c79418f03ca65f892bb72b34b2185068a69836ede44d0fba65",
+      "size": 32153
     },
     {
       "executable": false,
@@ -204,14 +204,14 @@
     {
       "executable": false,
       "path": "docs/PRODUCTION_READINESS.md",
-      "sha256": "298ba3fb4ab3042d056183eb41404a48338b664a2e69456836e150f086989b48",
-      "size": 12554
+      "sha256": "9b8a85c46142b468310b560d45040c9029c495dbf7e9bcb7fe503d58648fffcc",
+      "size": 13216
     },
     {
       "executable": false,
       "path": "docs/RUNBOOK.md",
-      "sha256": "4b2e8b1c5a5b93ca3490b63efba1c64d5ae593d58417465a53051d6ad71f5b51",
-      "size": 57386
+      "sha256": "37bcfc71555c4f6a2965e55a496b91740007365c55e93e26771520dc7eb3edeb",
+      "size": 58734
     },
     {
       "executable": false,
@@ -222,8 +222,8 @@
     {
       "executable": false,
       "path": "docs/TASKFLOW_LOBSTER_COMPATIBILITY.md",
-      "sha256": "613df077a1c3b25d50d58281a83658d5a7b8f50ef86448654caee5ec36dc567d",
-      "size": 33699
+      "sha256": "fd316d42d1554e3d018c823e2f294881ebe7c48255ba0330072013c33b962521",
+      "size": 34672
     },
     {
       "executable": false,
@@ -234,8 +234,8 @@
     {
       "executable": false,
       "path": "docs/WORKFLOWS.md",
-      "sha256": "bd1df94fa7fe24e34688ce0ee3998c6618689a8ff9d7e6a35768bbb98598d7c2",
-      "size": 26018
+      "sha256": "bf24e267666c42409d5ec78a51764a369d019ab9b0d4e393d3dfaa0b0d417457",
+      "size": 27134
     },
     {
       "executable": false,
@@ -1320,8 +1320,8 @@
     {
       "executable": false,
       "path": "workspaces/shared-skills/skillify/SKILL.md",
-      "sha256": "c4b07c72e2c4ccdd37cdf8aed70a64b847cfca0585ffa335dd4d24e87ffec937",
-      "size": 5075
+      "sha256": "9b5fd52c2a78b132a1a36efd0b5a433faf771c0d9b4e8e0bd24cd7c9ed654461",
+      "size": 5137
     },
     {
       "executable": false,
@@ -1380,8 +1380,8 @@
     {
       "executable": false,
       "path": "workspaces/vc-chief/HEARTBEAT.md",
-      "sha256": "7ebaf3692b642adefead75ca5acb07e272073ab912a10fdb01be5ebd1d7e9c7a",
-      "size": 2051
+      "sha256": "83f46102780432e4ce5ff24cd13f4226c0085e425fd4a80c7a1e1a4af58fbbf7",
+      "size": 2416
     },
     {
       "executable": false,
@@ -1404,14 +1404,14 @@
     {
       "executable": false,
       "path": "workspaces/vc-chief/vc/RESOLVER.md",
-      "sha256": "96dce0f3f7d20c96486fb11a7f2265e822d1d66f84509a15e75bbd9dc8624866",
-      "size": 7309
+      "sha256": "18350d9d1b87fb1ede951fbd2d0967adad2fb012d65795d9838221ebb630fa42",
+      "size": 7319
     },
     {
       "executable": false,
       "path": "workspaces/vc-chief/vc/active_sourcing.md",
-      "sha256": "aa6c151136043038af526c40071eefa8ba9f08b97ba30909797c92aa68598f00",
-      "size": 1511
+      "sha256": "56c14b95bd8adceefa947ac7d63068473b29d6f462000c4fa2c257854c41b888",
+      "size": 1841
     },
     {
       "executable": false,
@@ -1446,8 +1446,8 @@
     {
       "executable": true,
       "path": "workspaces/vc-chief/vc/bin/vcops.py",
-      "sha256": "0771bfc5382489365440d0ad302a0e0496357fc3a3db7e19a6831a44f7a4b1f5",
-      "size": 333932
+      "sha256": "43769056c7fb74f601aa91739cfa0b99a5fc1b48d79b9aeb6ca151fbe8cb2a82",
+      "size": 334172
     },
     {
       "executable": true,
@@ -1638,8 +1638,8 @@
     {
       "executable": false,
       "path": "workspaces/vc-chief/vc/schema_proposals.md",
-      "sha256": "2d2a9dc23f1385177c5376e4caa642b4bc46c064574fbbf07038f7495a8dcb9e",
-      "size": 2358
+      "sha256": "92ed728b5c26dc06e28aac3388fd032f9ca78c2664094b6271c9b3e61581f0da",
+      "size": 3886
     },
     {
       "executable": false,
@@ -1746,8 +1746,8 @@
     {
       "executable": false,
       "path": "workspaces/vc-chief/vc/signal_detection.md",
-      "sha256": "e3747e7cd6a0ae7dc77ed517eb22a3379c9e323b451c7875a3f0918b967ef224",
-      "size": 3588
+      "sha256": "12926fd45401f18b6111819e4ee4026a5c92fd946f85d7e15413252e1a06a853",
+      "size": 4163
     },
     {
       "executable": false,
@@ -1758,8 +1758,8 @@
     {
       "executable": false,
       "path": "workspaces/vc-chief/vc/storage_tiers.md",
-      "sha256": "bf509726c412fc331bedbb6d8f1a5a2e29b48c487600985fc691c363aa52b282",
-      "size": 1095
+      "sha256": "97ea159d0b35b6cd7965a71bc2687ada30479238f8b80e5ba970f890619b84c7",
+      "size": 2035
     },
     {
       "executable": false,

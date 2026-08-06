@@ -84,11 +84,20 @@ This applies to every row in the tables below whose files live under
 `workspaces/`, plus `runtime-extensions/vc-trusted-context/`, `runtime-packages/**`
 and `requirements.lock`.
 
-It does **not** apply to `.env`, the customization profile, `config/openclaw.json`
-or the channel configs. Those are rendered into the runtime-config volume, and the
-initializer replaces that volume's copy unconditionally on every `bootstrap.sh`
-and `rotate_runtime_role.sh` (`compose run --rm --no-deps openclaw-state-init`),
-so a rendered change always reaches the gateway.
+It does **not** apply to `.env`, `config/openclaw.json` or the channel configs.
+Those are rendered into the runtime-config volume, and the initializer replaces
+that volume's copy unconditionally on every `bootstrap.sh` and
+`rotate_runtime_role.sh` (`compose run --rm --no-deps openclaw-state-init`), so a
+rendered change always reaches the gateway.
+
+`config/customization-profile.json` is on neither path. Nothing renders it and no
+container mounts or reads it: it is a host-side review record consumed only by
+`check_customization.py`, which every lifecycle script runs before it mutates
+anything. So editing the profile changes what the validators will accept, never
+what the deployment does at runtime — `approvals.stable_approver_ids` is an
+attestation rather than a runtime allowlist (identity is bound to
+`VCOPS_OPERATOR_ID`), and `approvals.expiry_minutes` is a reviewed record that
+nothing reads (the enforced lifetime is `--expires-minutes`, default 60).
 
 `config/exec-approvals.json` is digested with the image-baked set — a change to it
 is detected — but it is **not customizable**, and a rebuild would not apply one:
@@ -127,7 +136,17 @@ token there). Editing it fails the offline gate. See the
   `searxng` (keyed by `SEARXNG_BASE_URL`), and `parallel-free` (keyless) are also
   native but **non-bundled** — each additionally requires its plugin package
   pinned in `runtime-packages/package.json` (+ `package-lock.json` regen and
-  image rebuild) and is confirmed by the exact-image (G6) gate. The package
+  image rebuild). What checks the pin is `render_channel_config.py`, which reads
+  the declared dependency set and fails closed when a selected provider has no
+  plugin declared. The exact-image (G6) gate does **not** cover it: its
+  `image-package-provenance` check compares a fixed ten-package inventory
+  (`EXPECTED_PACKAGES`, itself pinned by `tests/g6/test_image_gate_contract.py`)
+  and renders all five profiles at `VC_WEB_SEARCH_PROVIDER=auto`, so an eleventh
+  plugin is never read either way. Re-run G6 after the rebuild regardless — it
+  still validates the rest of the image — but the only thing that proves your
+  plugin is actually installed is starting the gateway with that provider
+  selected. Extending G6 to cover it means editing both the gate and that
+  contract test. The package
   ids are `@openclaw/brave-plugin`, `@openclaw/perplexity-plugin`,
   `@openclaw/exa-plugin`, `@openclaw/searxng-plugin`, and — for `parallel-free`
   — `@openclaw/parallel-plugin`. Add the one you need at an exact version,

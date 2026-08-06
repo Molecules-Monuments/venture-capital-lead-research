@@ -67,8 +67,53 @@ Migration previews must show:
 
 Title: Add lead urgency reason
 
+Proposal type: `schema_change`. Requester: `partner-1`. Owning agent:
+`data-steward`.
+
 Problem:
 
 Partners often ask why a lead is high priority. The current `priority` field captures level but not the reason.
 
 Proposed change:
+
+```json
+{
+  "operation": "add_column",
+  "table": "leads",
+  "column": "urgency_reason",
+  "type": "TEXT",
+  "nullable": true,
+  "constraint": "CHECK (urgency_reason IS NULL OR btrim(urgency_reason) <> '')",
+  "backfill": null
+}
+```
+
+Affected files: the new numbered migration, `docs/DATA_MODEL.md`,
+`docs/SCHEMA.sql` (regenerated), `manifest.json` (re-pinned).
+Affected tables: `leads`.
+
+Migration preview:
+
+```sql
+ALTER TABLE leads ADD COLUMN urgency_reason TEXT
+  CHECK (urgency_reason IS NULL OR btrim(urgency_reason) <> '');
+```
+
+No new GRANT: `002_runtime_grants.sql` already grants `openclaw_runtime`
+table-level `SELECT, INSERT, UPDATE` on `leads`, and this package grants by
+table rather than by column, so a new column inherits it. A proposal that adds a
+*table* would need its own grant in the same migration.
+
+Expected rows affected: 0 — the column is nullable and nothing is backfilled.
+No downtime; no backfill required.
+
+Rollback plan: a further forward migration dropping the column. Applied
+migrations are never edited or reverted in place, so the rollback is itself a
+new numbered file.
+
+Risk level: `medium` — a new nullable column, per the approval table above, so
+it needs data owner plus system owner.
+
+Approval requirement: recorded through `proposal-record`, decided on the
+operator lane with `proposal-decide`. Acceptance authorizes an operator release,
+not a runtime change: no agent lane applies a migration.

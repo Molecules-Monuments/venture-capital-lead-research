@@ -38,4 +38,4 @@ The pending artifact is not release-ready merely because Workshop accepted it. A
 
 Return exactly one object containing `status`, `proposal_id`, `proposal_kind`, `skill_name`, `description`, `draft_hash`, `scan_status`, `trigger_examples`, `negative_triggers`, `owner`, `route_delta`, `allowlist_delta`, `schema_delta`, `tests`, `security_review`, `release_steps`, `rollback`, and `operator_action_required`.
 
-Use `status: "pending_operator_release"` only after a successful create/update/revise plus inspect. Otherwise return `status: "blocked"` with the missing or failed gate. Never claim that a pending proposal is active, production-installed, or approved.
+Use `status: "pending_operator_release"` only after a successful create or revise plus inspect (`action=update` is not usable in this deployment — see step 6). Otherwise return `status: "blocked"` with the missing or failed gate. Never claim that a pending proposal is active, production-installed, or approved.
