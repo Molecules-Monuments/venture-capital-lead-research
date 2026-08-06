@@ -1,20 +1,27 @@
 # Version 3.0 release evidence
 
 Date: 2026-07-23 (final-audit session; supersedes the earlier 2026-07-23 and 2026-07-22 evidence)
+Last full re-execution: **2026-08-06** — see "Count re-verification" below; every figure in this document is that run's measurement.
 Package version: `3.0.0`
 Status: **Deterministic package + deployment path VERIFIED; live-model behavioral gates BLOCKED (not run). See `PRODUCTION_READINESS.md` for the exact boundary.**
 
-Count re-verification: the suites grew across the two remediation sessions that
+Count re-verification: the suites grew across the remediation sessions that
 followed the 2026-07-23 evidence, so every count below is the count this tree
-actually produces rather than a carried-forward figure. All were re-executed on
-2026-08-03: `verify_offline.py` (**234 tests, 25/25 checks**; count re-verified
-2026-08-04), `run_g4.py`
-(**88/88**, migrations 001–018 applied twice on PostgreSQL 17.10),
-`run_g6_image.py` (8/8 against the image rebuilt from this tree, which loads
-`vc-trusted-context` from `/opt/openclaw-extensions`), `run_g8_deployment.py`
-(PASS end-to-end), `run_retrieval_scale.py` (all frozen thresholds met),
-`verify_release.py --pristine`, `build_release_manifest.py --check`, and
-`generate_schema_reference.py --check`. For reference, `c72d8b9` — the last
+actually produces rather than a carried-forward figure. **The full matrix was
+last re-executed on 2026-08-06**, against this tree and against an image
+rebuilt from it with `docker build --no-cache --pull`: `verify_offline.py`
+(**234 tests, 25/25** base checks), and each opt-in gate individually —
+`run_g4.py` (**88/88** across seven suites, migrations 001–018 applied
+twice on PostgreSQL 17.10), `run_g6_image.py` (**8/8**, against an image rebuilt from this tree with
+`docker build --no-cache --pull` and again against the one `bootstrap.sh`
+builds during the deployment gate; both load `vc-trusted-context` from
+`/opt/openclaw-extensions`), `run_g8_deployment.py` (**PASS** — five checks
+end-to-end, with a clean teardown leaving no containers, volumes, or runtime
+files), `run_retrieval_scale.py` (**160/160** cases, overall p95 **40.5 ms**
+against the frozen 250 ms threshold), `verify_release.py --pristine`,
+`build_release_manifest.py --check`, and `generate_schema_reference.py
+--check`. That re-execution also re-proves the pinned `deb12u3` poppler pair
+still installs from the live Debian pool. For reference, `c72d8b9` — the last
 commit before the channel-setup rewrite — measures 210 offline tests across
 these same suites, so everything from that rewrite through the pre-publication
 audit remediation added twenty-four in total; the per-suite figures in the table
@@ -72,7 +79,7 @@ by audit passes outside this package boundary; see
 `docs/PRODUCTION_READINESS.md`, "Exercised against a live model". No gate below
 invokes a model.
 
-## Passing evidence (executed 2026-07-23)
+## Passing evidence (executed 2026-07-23; last re-executed 2026-08-06)
 
 | Surface | Result | Reproducible command |
 | --- | ---: | --- |
@@ -115,8 +122,10 @@ base, and tore the deployment down.
 The local image ID is host-specific: `bootstrap.sh` rebuilds
 `openclaw-lead-research:3.0.0` from this tree and `record_images.py` records
 the resulting digest in `deployment-lock.json` at install time. The G6 gate was
-re-run on 2026-07-23 against the image rebuilt from the current tree (8/8) and
-the retrieval-scale gate was re-run the same day (all thresholds met).
+re-run on 2026-08-06 against an image rebuilt from this tree with `docker build
+--no-cache --pull` (8/8), and the retrieval-scale
+gate was re-run the same day (160/160 cases, overall p95 40.5 ms against the
+250 ms threshold).
 
 The retrieval benchmark now seeds deliberately **confusable clusters** — each
 of the 100 fuzzy cases is a target company plus four trigram-close distractor
