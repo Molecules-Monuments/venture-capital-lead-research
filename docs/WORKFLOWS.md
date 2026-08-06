@@ -253,6 +253,7 @@ untouched:
 | Existing run | Probe outcome | Effect |
 | --- | --- | --- |
 | none | `absent` | the workflow executes normally |
+| opened outside the fixed runner, so `input_digest` is NULL | `unverifiable` | there is nothing to compare the arguments against, so no match is asserted; the run's own `workflow-start` decides on the lineage hash |
 | non-terminal | `in_progress` | the same run is resumed |
 | `failed` | `retried` | the run is reopened for a fresh attempt; `attempt` increments |
 | `succeeded` | `completed` | **no step executes**; the existing records are returned as `idempotent_replay` |
@@ -268,7 +269,7 @@ different operation key, principal, or provider event using the same
 nonce/scope fails as `trusted_context_replay`. Because the capability token is
 part of the canonical argument payload, an unchanged retry must present the same
 token; a retry after the token's ≤30-minute window has closed fails as
-`trusted_context_expired` and needs a fresh channel event.
+`expired_trusted_context` and needs a fresh channel event.
 
 ## Evidence, corroboration, and superseded rows
 
