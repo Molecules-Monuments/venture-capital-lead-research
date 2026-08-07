@@ -66,8 +66,8 @@
     {
       "executable": false,
       "path": "03_CURRENT_DOCUMENT_ASSESSMENT.md",
-      "sha256": "15ec86612cfca2b19ce9e0fa06bb677bda4634b225de0457aa0eec31820313bf",
-      "size": 4899
+      "sha256": "897a08c0b77e688dcb4d81f481a3c3e4d0ea95ee71137c96beeb5cc552d3d20d",
+      "size": 4951
     },
     {
       "executable": false,
@@ -78,14 +78,14 @@
     {
       "executable": false,
       "path": "CUSTOMIZATION.md",
-      "sha256": "81855cded1d3879ffdb35e70ea853814c7319a9e514e11636ca3a0ffc813ab35",
-      "size": 26584
+      "sha256": "64fa8679e3a8a630f8b9b953d46478506d35ce57ee2bebd0da4716df198fa74e",
+      "size": 27025
     },
     {
       "executable": false,
       "path": "Dockerfile.openclaw",
-      "sha256": "b4e6526fa749116ced6c1d9d778c6a91fcf1200a6658f8c2af71a53db1e0fdd2",
-      "size": 8565
+      "sha256": "f53c61f497f9188ba57dc37b21b697af602da67e637cb3fa568ad02d0250fa01",
+      "size": 10058
     },
     {
       "executable": false,
@@ -96,8 +96,8 @@
     {
       "executable": false,
       "path": "README.md",
-      "sha256": "7dadf3d3d77f532dc64d2c205261422701d880558b41849071b027596e8f0e03",
-      "size": 92410
+      "sha256": "e5b97973651c04d21df80bef355f1cda106717b4e44c73784787db60c791cdfd",
+      "size": 93441
     },
     {
       "executable": false,
@@ -108,8 +108,8 @@
     {
       "executable": false,
       "path": "THIRD_PARTY_NOTICES.md",
-      "sha256": "a0dfc2b0c760a603e7e9a3aa078c218a385eced9c7e9f46604009b01a45763d9",
-      "size": 6564
+      "sha256": "38557e14f66a0b5d27919af71650fd41e93ea712438d14d7e6775780eb7e2de2",
+      "size": 7124
     },
     {
       "executable": false,
@@ -120,8 +120,8 @@
     {
       "executable": false,
       "path": "config/channel-discord.json5",
-      "sha256": "76a8da251d56bc20d7ce96ca2fd31f72e4674854fd2ecb8066e9362af8c219fc",
-      "size": 2271
+      "sha256": "05ddfac2c2e69b216153b6b42bc25a8d817f29669340fab4e990bdb7cda5e80a",
+      "size": 2196
     },
     {
       "executable": false,
@@ -144,8 +144,8 @@
     {
       "executable": false,
       "path": "config/channel-telegram.json5",
-      "sha256": "e6dd8ac754301a0d10616c6b0657824a1d38a903a0b7e4782bb796421aee378e",
-      "size": 1848
+      "sha256": "747c99484f1ee5bd9ea4e7fb6b050a1f5ef5ed4c1db04cc9327a3e62836b89ae",
+      "size": 1773
     },
     {
       "executable": false,
@@ -186,14 +186,14 @@
     {
       "executable": false,
       "path": "docs/CHANNELS.md",
-      "sha256": "aaa42c64314e1b69b8f58d879e2698c88f139c2fe0892b6de6b91231191af29e",
-      "size": 21488
+      "sha256": "95b07a959791ee1a912c52fefb024794e2bb0b4e8ec4b934e2e9b059d22e6faf",
+      "size": 22260
     },
     {
       "executable": false,
       "path": "docs/DATA_MODEL.md",
-      "sha256": "59979edeb93ac1c79418f03ca65f892bb72b34b2185068a69836ede44d0fba65",
-      "size": 32153
+      "sha256": "ecda3844fd27e66f152af812da9dd03de36a42c7a1332a399624ad5474a87e07",
+      "size": 32384
     },
     {
       "executable": false,
@@ -204,8 +204,8 @@
     {
       "executable": false,
       "path": "docs/OPERATIONS.md",
-      "sha256": "c7f95430cf23d1c8e04791067f9d9313830949d02597ea78bbce0d876fe811d6",
-      "size": 21360
+      "sha256": "0d3ca8f94eb3a7c36d146ff1d650f43a4c15a16644bf41fafc1a963b206272fb",
+      "size": 22665
     },
     {
       "executable": false,
@@ -216,8 +216,8 @@
     {
       "executable": false,
       "path": "docs/RUNBOOK.md",
-      "sha256": "e3ec2940d9f924e3de0a3a8bb83ec356114bf0f65110171accfd9e5340303808",
-      "size": 59485
+      "sha256": "16eb6b79b6f353de89678e979cdd1eed43ec6e4aca77af30d9fae428be0ce74e",
+      "size": 62041
     },
     {
       "executable": false,
@@ -228,8 +228,8 @@
     {
       "executable": false,
       "path": "docs/TASKFLOW_LOBSTER_COMPATIBILITY.md",
-      "sha256": "fd316d42d1554e3d018c823e2f294881ebe7c48255ba0330072013c33b962521",
-      "size": 34672
+      "sha256": "9d4f2802c8adfcc6821922ec30214abb5bf360487e27dc882c6ed3bc2aa2c2fe",
+      "size": 35713
     },
     {
       "executable": false,
@@ -240,14 +240,14 @@
     {
       "executable": false,
       "path": "docs/WORKFLOWS.md",
-      "sha256": "88138ab5d7479373c52f673e3647fa5881c8e9c9b4a16a2aa6be974136ca409e",
-      "size": 29154
+      "sha256": "931936b990dfbd1b53f42fd9bb36e33e731995cfc1b3e9750127f6c7755343f7",
+      "size": 30090
     },
     {
       "executable": false,
       "path": "evals/V3_EVAL_RESULTS.md",
-      "sha256": "2b52548f6db8675d70e1e8242425dc6fcac7563a5f6611df576317a37dc07554",
-      "size": 8841
+      "sha256": "aab16ed85d0950fec874221814317636213429332f3e4a0abb23f3c661e24c41",
+      "size": 9594
     },
     {
       "executable": false,
@@ -408,8 +408,8 @@
     {
       "executable": false,
       "path": "research/13-memory-retrieval.md",
-      "sha256": "d62f072437710bba1139662d7d8b3214f6a22830449bed2563bb3d9126c73ae9",
-      "size": 10600
+      "sha256": "46221a2e5a74694682c022d956eb2a6aeef33b25c5db7a6e4e9db822115e68c7",
+      "size": 10696
     },
     {
       "executable": false,
@@ -1218,8 +1218,8 @@
     {
       "executable": false,
       "path": "workspaces/shared-skills/controlled-evolution/SKILL.md",
-      "sha256": "6cf4370ad10080a7485e165cba6ab7439c5a7f640426ed630722d004030992ca",
-      "size": 4663
+      "sha256": "e3b666d3a24ded728480cd6bff3b62a075da40436fe039d9cbb6005ed3544163",
+      "size": 4666
     },
     {
       "executable": false,
@@ -1500,8 +1500,8 @@
     {
       "executable": false,
       "path": "workspaces/vc-chief/vc/document_intake.md",
-      "sha256": "50b98bf8a8c4b647e4f48d9f7c7e24b7adf5872f6b07abcf2dcebf34cd55e0e1",
-      "size": 3890
+      "sha256": "e5c9980e6766b4e5dfe9c872b8afcb78445d2df0a4a0189176c4d126cb7a123e",
+      "size": 4279
     },
     {
       "executable": false,
@@ -1608,8 +1608,8 @@
     {
       "executable": false,
       "path": "workspaces/vc-chief/vc/passive_sourcing.md",
-      "sha256": "3a096597a93ffe5681e4d088265d90c692b187be534be02155d4be853fcd5215",
-      "size": 2110
+      "sha256": "05d9aaa07e7b531acdc6bca2006039f47f718237c59388b6c91e516180047c8d",
+      "size": 2392
     },
     {
       "executable": false,
@@ -1776,8 +1776,8 @@
     {
       "executable": false,
       "path": "workspaces/vc-chief/vc/taskflow.md",
-      "sha256": "56bd9b07106f96d6e59abd9432e0adf21e105b4e1cd7f2d1cb0339cef57e9357",
-      "size": 10192
+      "sha256": "c3c54e9b34f7d1e14c0986eb2ffbdccb3b0d3eadec2afade1a0a9fe0dc0f87ed",
+      "size": 10541
     },
     {
       "executable": false,
@@ -1812,14 +1812,14 @@
     {
       "executable": false,
       "path": "workspaces/vc-chief/vc/third_party_connectors.md",
-      "sha256": "814080dd26697b4646c6308b19037ca3e258b79d8b098da3ecb2cece14f7a778",
-      "size": 3486
+      "sha256": "f33ea3dfcaefae8156603c3e002100c8dece71ca67b5673aa3446350b361a9ff",
+      "size": 4067
     },
     {
       "executable": false,
       "path": "workspaces/vc-chief/vc/trajectory_checks.md",
-      "sha256": "62c981101ff606e35e1e266eece344308952cf53f1417941dd883a18f6a9e667",
-      "size": 1128
+      "sha256": "364d4421ca570e82a9d39f2ff4ad7295b8996dbe7c02594046e247eec919b769",
+      "size": 1119
     },
     {
       "executable": false,
@@ -1854,8 +1854,8 @@
     {
       "executable": false,
       "path": "workspaces/vc-chief/vc/workflows/evaluate-lead.lobster",
-      "sha256": "6c9a1ea6ac06f6990fffdb9a4c1cf810e4f493f2a6787226a6b76e719cbb06bc",
-      "size": 4850
+      "sha256": "f59ab4b9fde936451012f4e29965f04b2c3fa6b3fff32e07ae5668b2e916547e",
+      "size": 5103
     },
     {
       "executable": false,
@@ -1932,8 +1932,8 @@
     {
       "executable": false,
       "path": "workspaces/vc-chief/vc/workflows/source-watch.lobster",
-      "sha256": "583df23b0893c94f742cf3dfab08fe0209ea19838e2097e596e00656d0f41a19",
-      "size": 2349
+      "sha256": "9d885f9e09566f5e7737f2f27e5d4aba6d825a27259d900835b4ed8ba91e8714",
+      "size": 2478
     },
     {
       "executable": false,

@@ -41,8 +41,8 @@ No connector may perform outreach, enrichment of private personal contact data, 
 Connectors are wired natively through OpenClaw **MCP servers** — no code. The
 operator copies `config/connectors.example.json` to `config/connectors.json`
 (gitignored, not in the release manifest) and lists each connector as an
-`mcp_servers.<name>` entry with a `server` block (hosted `url` or stdio
-`command`) and `grant_to` the research specialists that may query it.
+`mcp_servers.<name>` entry with a `server` block (a hosted `url` — see the
+stdio caveat below) and `grant_to` the research specialists that may query it.
 `scripts/render_channel_config.py` injects each enabled entry into the runtime
 config's `mcp.servers` and adds `<name>__*` to those agents' `tools.allow`.
 
@@ -61,8 +61,15 @@ config's `mcp.servers` and adds `<name>__*` to those agents' `tools.allow`.
   `market-mapper`, `outbound-scout`, `lead-signal-detector`. The steward, chief,
   and analysis-only roles are refused a connector grant.
 - **OpenClaw ships no Crunchbase/PitchBook/Dealroom server.** Point at a
-  third-party/official MCP server (hosted URL or `npx` package) or a thin MCP
-  shim over the vendor REST API.
+  third-party/official MCP server over a hosted `url`, or at a thin MCP shim
+  over the vendor REST API that you host yourself. A stdio `command` entry is
+  **not** usable on this deployment as shipped: `docker-compose.yml` runs the
+  gateway with `read_only: true` and `HOME=/home/node` on the read-only root,
+  so `npx` cannot create its cache and a package-installing stdio server
+  cannot start. The renderer copies the `server` block verbatim, so such an
+  entry still renders `PASS` and the gateway still reports healthy — the
+  failure appears only at `openclaw mcp doctor <name> --probe`. Every shipped
+  example in `config/connectors.example.json` is a hosted `url`.
 - **Live connectivity is a deployment-commissioning check**, not a package
   guarantee: `openclaw mcp doctor <name> --probe` proves the server connects.
   The config surface is what this release provides.

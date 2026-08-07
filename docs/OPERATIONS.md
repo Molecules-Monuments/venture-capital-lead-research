@@ -243,3 +243,28 @@ The Teams profile withholds Graph permissions, `sharePointSiteId`, delegated
 auth, and SSO. All profiles disable config writes, chat exec approvals,
 administrative commands, and action tools while permitting governed
 PDF/PPTX/XLSX/CSV intake. Unsupported media is blocked before model input.
+
+## Decommissioning a deployment
+
+Take a final recovery point first if the data is still needed; the sequence
+below destroys it. **`docker compose down --volumes` is not sufficient**, and
+its shortfall is silent: `openclaw-cli` sits behind `profiles: ["tools"]`, so a
+`down` without that profile neither removes the container `bootstrap.sh`
+created for it nor — because that container still references them — the named
+volumes. `openclaw-state` (sessions, inbound media, Lobster continuation) and
+`vc-quarantine` (rejected uploads) survive, and `docker compose ps` reports
+nothing, so the operator sees an empty stack over retained data. Name the
+profile:
+
+```sh
+docker compose -f docker-compose.yml -p openclaw-lead-research-v3 --env-file .env \
+  --profile tools down --volumes --remove-orphans
+docker volume ls --filter name=openclaw-lead-research-v3   # must return nothing
+```
+
+Then remove the host-side runtime files, which no Compose command owns:
+`.env`, `deployment-lock.json`, `config/runtime/openclaw.json`,
+`config/runtime/secrets/`, and any operator payload under `inbox/` and
+`quarantine/`. Retain `BACKUP_HMAC_KEY` for as long as any recovery point
+written with it must stay restorable, and destroy it deliberately afterwards —
+without it those archives are permanently unrestorable.

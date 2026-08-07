@@ -456,7 +456,7 @@ One condition, two limbs, and **both** bind:
   (`margin = 20000 − W/2`) shrinks as the window grows and reaches zero at
   40000. A 262144-token model at `VC_MODEL_CONTEXT_WINDOW=60000` satisfies the
   first limb comfortably and still serves 60000, truncates near 30000, and is
-  packed to 40000 — a third of every large prompt discarded, with
+  packed to 40000 — a quarter of every large prompt discarded, with
   `error: null`. Nothing rejects it: `check_env.py` accepts windows up to
   4 000 000.
 
@@ -513,11 +513,13 @@ fast GPU host the ceiling simply never binds.
 **`VC_MODEL_TIMEOUT_SECONDS` is not the only bound, and it is not the first one
 to fire.** The harness runs a stuck-session watchdog that aborts an agent run
 after a period with no *streaming* progress. Its own defaults are 120 s to warn
-and **300 s to abort** — and a prefill emits nothing until it finishes, so a
-long prefill is indistinguishable from a stalled provider. Left at those
-defaults, no value of `VC_MODEL_TIMEOUT_SECONDS` can keep a slow local model
-alive: a call that needs 480 s of prefill is killed at ~390 s (the abort
-threshold plus the sweep interval) with
+and **360 s to abort** — with `diagnostics.stuckSessionAbortMs` unset the abort
+threshold is computed as `max(300 s, stuckSessionWarnMs x 3)` rather than read
+from a constant, so 300 s is only its floor — and a prefill emits nothing until
+it finishes, so a long prefill is indistinguishable from a stalled provider.
+Left at those defaults, no value of `VC_MODEL_TIMEOUT_SECONDS` can keep a slow
+local model alive: a call that needs 480 s of prefill is killed at ~390 s (the
+abort threshold plus the sweep interval) with
 
 ```text
 AbortError: agent run aborted: code=OPENCLAW_DIRECT_ABORT
@@ -766,7 +768,7 @@ Only `data-steward` may invoke `vcrun`, which:
 | `contradiction-record` | Record a deterministic contradiction classification for two facts | `idempotency_key`, `lead_id`, `left_fact_id`, `right_fact_id`, `severity` |
 | `trajectory-record` | Record a deterministic trajectory classification for two facts | `idempotency_key`, `lead_id`, `left_fact_id`, `right_fact_id` |
 | `memo-record` | Persist the memo produced from the approved snapshot | `idempotency_key`, `lead_id`, `evaluation_id`, `compiled_truth_id`, `memo_title`, `memo_markdown`, `citations_json`, `evidence_hash` |
-| `source-watch` | Register or re-enable one watched signal source | `idempotency_key`, `source_name`, `source_uri`, `source_class`, `cadence`, `thesis_relevance`, `expected_signal` |
+| `source-watch` | Register one watched signal source, or refresh an already-enabled one; re-enabling a disabled entry is operator-lane only | `idempotency_key`, `source_name`, `source_uri`, `source_class`, `cadence`, `thesis_relevance`, `expected_signal` |
 | `source-unwatch` | Disable one watched signal source, keeping history | `idempotency_key`, `source_uri` |
 | `source-scan` | Claim the due watchlist sources and return the worklist | `idempotency_key`, `limit` |
 | `orchestration-record` | Persist one append-only orchestration audit entry | `idempotency_key`, `lead_id`, `record_kind`, `specialist`, `payload_json` |
@@ -946,7 +948,7 @@ its running deployment. Improvement is real, but activation remains a normal
 reviewed software release.
 
 OpenClaw `2026.7.1` already includes a
-[Self-learning/Skill Workshop](https://docs.openclaw.ai/tools/self-learning)
+[Skill Workshop](https://docs.openclaw.ai/tools/skill-workshop)
 facility that can review eligible conversations and create pending proposals.
 Autonomous review is not enabled for this sensitive VC deployment because it
 would perform an unrequested additional model pass over conversation/tool
@@ -1310,6 +1312,15 @@ current attempt's own step error, not a stale one.
 The gates deliberately separate local software evidence from live deployment
 evidence.
 
+Every `python3 -B scripts/…` command in this section runs under the disposable
+dev virtualenv from the [developer quick start](#developer-quick-start), not the
+host interpreter — activate it again with
+`. ../openclaw-v3-dev-venv/bin/activate`, or call it by path as
+`../openclaw-v3-dev-venv/bin/python -B scripts/verify_offline.py`. The host
+`python3` carries neither the hash-pinned `ruff` and `ty` nor the locked test
+dependencies, so the gate reports `FAIL` on a correct package. `docs/RUNBOOK.md`
+§1 says the same thing for the same gate.
+
 ### Offline source gate
 
 ```sh
@@ -1584,9 +1595,12 @@ Credit does not imply endorsement of this project or its outputs.
   [Ollama guide](https://docs.openclaw.ai/providers/ollama), and
   [web-search contract](https://docs.openclaw.ai/tools/web) informed the
   provider configuration. Its
-  [Self-learning guide](https://docs.openclaw.ai/tools/self-learning) informed
+  [Skill Workshop guide](https://docs.openclaw.ai/tools/skill-workshop) informed
   the guarded pending-proposal boundary and the decision to leave autonomous
-  transcript review disabled.
+  transcript review disabled. That page is the one the pinned `2026.7.1` docs
+  set ships; the newer "Self-learning" page on the same site documents an
+  autonomous-capture mode this release does not implement, whose configuration
+  keys the pinned schema rejects.
 - [Ollama API documentation](https://docs.ollama.com/api/introduction),
   [Firecrawl Search API](https://docs.firecrawl.dev/api-reference/endpoint/search),
   and [Tavily Search API](https://docs.tavily.com/documentation/api-reference/endpoint/search)

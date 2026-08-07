@@ -27,7 +27,7 @@ stays BLOCKED until a production-grade model is commissioned.
 | F deterministic data/workflow | PASS | G4 88/88 across seven suites; G5 48/48; G7 28/28; migrations 001–018 twice; **eighteen** workflows execution-verified end-to-end across three executing G4 suites (`test_workflow_execution.py` + `test_source_surveillance.py` + `test_research_intelligence.py`), where `test_workflow_execution.py` drives a test step-interpreter over the vcops command path (not the real Lobster engine); the real-engine execution subset and the real deployment path are verified by the G8 gate (re-run 2026-08-06, 5/5 checks); recovery authenticity and archive attacks; the stage-first restore contract | Live destructive recovery on a target is a commissioning exercise. |
 | G customization safety | PASS | Fail-closed sample, exact `.env` binding, artifact hashes, review/change controls; the fact-promotion strictness knob is reviewed configuration; the renderer refuses lifecycle renders from a non-package env | Jurisdiction/fund choices are explicitly excluded deployment data. |
 | H research quality | **BLOCKED** | Source method/roster and structural contracts exist | Research editorial quality is model-behavioral and was not run. The structural contracts pass but the quality gate did not run. |
-| I performance/cost | PASS (reference scope, re-run 2026-08-06) | Indexed resolver at 100k companies / 1m facts: all frozen thresholds met on the recorded host (exact p95 5.9 ms, fuzzy p95 42.9 ms, overall p95 40.5 ms against a 250 ms ceiling) | Eventual target capacity/cost is a commissioning exercise. |
+| I performance/cost | PASS (structural) · budget adherence BLOCKED | Deterministic: subagent concurrency capped at 3 and the child run timeout at 2700 s in `config/openclaw.json`, asserted by `tests/v3`; the proposed per-task budget (`max_sources`/`max_minutes`) required by `delegation-eval.schema.json`, the actual `resource_usage` required by `vc-chief-output.schema.json`, and `budget_respected` in `return-assessment.schema.json` — all contract-tested in `tests/contracts` | Gate I's frozen per-profile budgets (8/25/60 sources; 15/45/240 minutes), the minimal-route median-specialist regression check, and "no research until source cap" are model-behavioral: `workspaces/shared-skills/research-depth-control/SKILL.md` states that the runtime enforces only child concurrency and run timeout, and no in-package executor measures the rest. The 100k/1m resolver p95 is Gate D's threshold and is reported in that row, not here. Eventual target capacity/cost is a commissioning exercise. |
 | J final adversarial | PASS (deterministic) · live robustness BLOCKED | The deterministic attack suites that ship with the package and are re-runnable by any downloader (`tests/g4/`, `tests/g5/`), plus successive internal adversarial audits whose confirmed findings were fixed and execution-re-verified by those same suites | Live provider/model semantic robustness was not run. Untrusted search and document content is fenced at the provider boundary in code, which was verified live; whether a model then *honours* that fencing needs a production-grade model. The audit narratives themselves are internal working documents and are not distributed; the suites are the published evidence. |
 
 ### A7 — reinstated with explicit disposition
@@ -39,8 +39,8 @@ gate, and live channel/recovery gates — "do not turn missing environmental
 evidence into a passing result") remains **RETAINED.** Gates C and H are
 BLOCKED; Gate D's fuzzy benchmark now uses confusable clusters with a
 precision@1 metric (former dataset-artifact item closed); the live
-portions of B, E, and J are marked BLOCKED. No missing environmental evidence
-is presented as a passing result.
+portions of B, E, and J and the budget-adherence half of I are marked BLOCKED.
+No missing environmental evidence is presented as a passing result.
 
 ## Final deterministic summary
 
@@ -75,7 +75,8 @@ not a carried-forward one.
   validation, manifest currency, and pristine release inventory all pass.
 
 Overall result: **The deterministic package and its deployment path are verified;
-the model-behavioral gates (C, H, and the live portions of B/E/J) are BLOCKED and
+the model-behavioral gates (C, H, the live portions of B/E/J, and the
+budget-adherence half of I) are BLOCKED and
 were never run against a production-grade model.** The live-model mechanism those
 gates ride on — resolution, provider reach, tool payloads, and the
 timeout/context/watchdog bounds — was exercised against a real model by audit

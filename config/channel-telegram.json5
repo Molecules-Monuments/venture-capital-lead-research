@@ -30,9 +30,7 @@
       "execApprovals": { "enabled": false },
       "threadBindings": {
         "enabled": false,
-        "spawnSessions": false,
-        "spawnSubagentSessions": false,
-        "spawnAcpSessions": false
+        "spawnSessions": false
       },
       "network": { "dangerouslyAllowPrivateNetwork": false },
       "trustedLocalFileRoots": [],

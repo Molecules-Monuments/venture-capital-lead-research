@@ -122,7 +122,7 @@ token there). Editing it fails the offline gate. See the
 | Channels, users, attachments, notification policy | `.env`, channel overlay, `channel_policy.md`, `document_intake.md`, `notification_policy.md`, `docs/CHANNELS.md`, profile | Begin with `PRIMARY_CHANNEL=none`; use one provider, exact destination IDs, and a reviewed comma-separated stable-user list. Set a measured 1–50 MiB transport cap. Test per-peer sessions, principal preference isolation, signed path scope, all four supported documents, hostile/unsupported media, provider replay, and restart. Teams Graph/SharePoint channel files are a separate privileged design. This release does not authorize proactive outreach. |
 | User preference memory | `AGENTS.md`, `trust_boundaries.md`, `data_retention.md`, preference workflows/helper/migration/tests, profile | Keep the five-key closed schema unless undertaking a versioned schema migration. Define retention/deletion response, explain explicit versus three-event inference, test user isolation/group denial/forget cutoff/replay, and never use preferences as evidence, permission, or scoring input. |
 | Agent roster/routes/skills | `config/openclaw.json`, `workspaces/vc-chief/vc/RESOLVER.md`, affected agent `AGENTS.md`, shared `SKILL.md`, canonical schemas | Preserve one channel-facing chief, no specialist delegation, bounded steward exec, and no external writes. `skillify` may create a complete pending Workshop candidate; only an operator repository release may activate it. Update schemas, dependency fixtures, allowlists, documentation, manifest, and release inventory together. A new persona without distinct information is not a useful agent. |
-| Memo and reporting | `memo-writing/SKILL.md`, memo schema/template/evals, operator intent | Preserve claim-evidence mapping, case/countercase, cruxes, falsifiers, next diligence, snapshot hash, and recommendation parity. Length and audience are yours to set. |
+| Memo and reporting | `workspaces/shared-skills/memo-writing/SKILL.md`, memo schema/template/evals, operator intent | Preserve claim-evidence mapping, case/countercase, cruxes, falsifiers, next diligence, snapshot hash, and recommendation parity. Length and audience are yours to set. |
 
 ## `REVIEW_AND_CONFIRM` files and limits
 
@@ -173,9 +173,13 @@ token there). Editing it fails the offline gate. See the
   managed via the `source-watch`/`source-unwatch` fixed workflows) and its scan
   cadence. `source-scan` is operator-triggerable at any time; to make
   surveillance **autonomous**: set `config/openclaw.json` `cron.enabled: true`,
-  record the new artifact hash in `config/customization-profile.json`
-  (`review.reviewed_artifacts` plus the change record — the file is a
-  hash-pinned reviewed artifact), re-run `./scripts/bootstrap.sh` so the change
+  re-pin **both** inventories as step 4 requires — record the new artifact hash
+  in `config/customization-profile.json` (`review.reviewed_artifacts` plus the
+  change record) *and* regenerate `manifest.json` with
+  `python3 -B scripts/build_release_manifest.py`, because the file is declared
+  in both and skipping the second leaves `verify_release.py --pristine`
+  reporting your own edit as a permanent integrity mismatch — re-run
+  `./scripts/bootstrap.sh` so the change
   reaches the gateway's rendered runtime config (the gateway never reads the
   host file directly), and then seed the schedule with
   `./scripts/schedule_jobs.sh` (idempotent; tunable
@@ -194,8 +198,10 @@ token there). Editing it fails the offline gate. See the
   (`auto_promote`), how many independent sources corroborate a claim
   (`min_independent_sources`, default 2), which source kinds may promote alone
   (`single_source_kinds`, default `regulatory_filing` only), and which trust
-  levels never corroborate (`excluded_trust_levels`, default untrusted
-  uploads). `official_source_domains` (empty by default) is **not** read by the
+  levels never corroborate (`excluded_trust_levels`, default `untrusted_upload`
+  **and** `unknown` — `unknown` is also the `sources.trust_level` column
+  default, so a source recorded without an explicit trust level never
+  corroborates). `official_source_domains` (empty by default) is **not** read by the
   promotion predicate: it is consulted in exactly one place, where it decides
   whether a source the model labelled `regulatory_filing` keeps that kind or
   degrades to `public_web`. With the shipped defaults that is what keeps

@@ -13,6 +13,13 @@ authorization. `scripts/check_env.sh` rejects partial/unselected credential
 families, invalid stable IDs, duplicates, empty list items, unknown profiles,
 and an out-of-range attachment limit.
 
+The four `config/channel-*.json5` overlays carry a `.json5` extension for
+editor highlighting only: the renderer and the contract tests both parse them
+with a **strict JSON** parser that rejects duplicate keys, so comments and
+trailing commas are not accepted. An overlay edit that adds one fails closed at
+`render_channel_config.py` with the offending line and column, before anything
+reaches the gateway.
+
 `scripts/render_channel_config.py` deep-merges only the selected strict overlay,
 materializes list and destination sentinels, applies the configured model and
 search providers, and writes `config/runtime/openclaw.json` atomically with
@@ -199,7 +206,8 @@ Provider-side setup, following the pinned guide:
 1. At [api.slack.com/apps](https://api.slack.com/apps/new) choose **Create New
    App → From a manifest**, select the workspace, and paste the **Recommended**
    manifest from the pinned guide — the guide shows a Minimal alternative
-   beside it that omits `files:read` and the `mpim` scopes. The Recommended
+   beside it that drops the file (`files:read`/`files:write`), reaction, pin,
+   `mpim:*`, `emoji:read`, and `usergroups:read` scopes. The Recommended
    manifest carries the bot scopes and event subscriptions this integration
    expects, including `files:read` and the `message.*` events; a Minimal or
    hand-built text-only app validates but cannot commission CH-07.
@@ -217,9 +225,13 @@ authorization.
 
 Inbound document use requires the Slack app's file-read capability (including
 `files:read`) and the corresponding reviewed file/message events; a minimal
-text-only Slack manifest will validate but cannot commission CH-07. Do not add
-`files:write` unless the deployment separately chooses and reviews outbound
-file sending, which this application does not require.
+text-only Slack manifest will validate but cannot commission CH-07. The
+Recommended manifest also grants `files:write`, which the pinned plugin uses
+only on its outbound attachment path; this deployment replies in text and never
+exercises it. A deployment whose policy forbids an unused write scope deletes
+the `"files:write",` line from the manifest before pasting it, and accepts that
+outbound file sending would then fail at send time. Do not grant write scopes
+beyond the Recommended manifest.
 
 DMs are allowlisted. The selected channel is allowlisted, mention-gated, and
 restricted to the same user list. Bot senders, name matching, native commands,
@@ -251,6 +263,7 @@ Four different identifiers are involved and they are easy to confuse:
   after `/team/` or `/channel/`, URL-decoded from `19%3A…%40thread.tacv2`), and
   **ignore the `groupId` query parameter** — that one is the Entra group ID.
   Older tenants may show `@thread.skype`, which this package also accepts.
+
 Azure-side setup, following the pinned guide: create an **Azure Bot** resource
 with **Type of App = Single Tenant** (multi-tenant registration was deprecated
 after 2025-07-31); take the Microsoft App ID from its Configuration blade as

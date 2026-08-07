@@ -34,9 +34,7 @@
       "agentComponents": { "enabled": false },
       "threadBindings": {
         "enabled": false,
-        "spawnSessions": false,
-        "spawnSubagentSessions": false,
-        "spawnAcpSessions": false
+        "spawnSessions": false
       },
       "intents": { "presence": false, "guildMembers": false, "voiceStates": false },
       "voice": { "enabled": false },
