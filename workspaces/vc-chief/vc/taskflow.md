@@ -36,10 +36,14 @@ Agents may ask the data steward to execute only the exact approved runner:
 cwd/env overrides, timeout/output overrides, NUL characters, JSON larger than
 32 KiB, any single argument value longer than 16 384 characters, non-string
 values, missing required keys, and extra keys. The runner owns the time and
-output limits. The per-value ceiling binds before the payload ceiling and is
-the one that a long `memo_markdown`, `evidence_json` or `citations_json` hits
-first: the refusal is `<field> exceeds 16384 characters`, raised before any
-step runs, so nothing is written and the same idempotency key stays usable.
+output limits. The per-value ceiling is the lower of the two and is the one a
+long `memo_markdown`, `evidence_json` or `citations_json` normally hits first:
+the refusal is `<field> exceeds 16384 characters`. The payload ceiling is
+nevertheless checked earlier — before the JSON is parsed — so a value big
+enough to carry the whole object past 32 KiB is refused as `args JSON exceeds
+32768 bytes` instead, naming the payload rather than the field. Either refusal
+is raised before any step runs, so nothing is written and the same idempotency
+key stays usable.
 
 Only an authenticated operator environment may use the separate control
 binary, which is not present in any agent exec allowlist:
@@ -106,10 +110,13 @@ Task Flow statuses are `queued`, `running`, `waiting`, `blocked`, `succeeded`,
 optimistic. Carry the returned revision forward. On `revision_conflict`, re-read
 the flow and decide again; never guess or increment locally.
 
-The canonical plugin runtime is `api.runtime.tasks.flow`;
-`api.runtime.taskFlow` is a compatibility alias. OpenClaw may create a mirrored
-one-task flow for detached data-steward work. Standalone `vcrun` does not create
-a managed Task Flow and must not claim one.
+In the pinned `2026.7.1` plugin SDK the mutation-capable runtime is
+`api.runtime.tasks.managedFlows`; `api.runtime.tasks.flows` and
+`api.runtime.tasks.runs` are read-only views, `api.runtime.tasks.flow` is a
+**deprecated alias** for `managedFlows`, and `api.runtime.taskFlow` is a legacy
+runtime alias. OpenClaw may create a mirrored one-task flow for detached
+data-steward work. Standalone `vcrun` does not create a managed Task Flow and
+must not claim one.
 
 The upstream direct Lobster tool also has managed fields:
 
@@ -168,10 +175,15 @@ or `lost`. Require provider and database idempotency evidence.
 
 The chief has no `exec` or gateway tool and cannot run shell commands; the data
 steward's narrow exec allowlist is `vcops` + `vcrun` only and does not include
-`openclaw tasks`. So no agent runs the CLI below. The chief's Task Flow
-awareness is conceptual — it reads flow status, linked tasks, sticky cancel
-intent, and the current flow revision through its native Task Flow context
-(`api.runtime.tasks.flow`), not by shelling out. The orchestration audit trail
+`openclaw tasks`. So no agent runs the CLI below — and the chief has no Task
+Flow *read* surface either. `api.runtime.tasks.*` is the plugin-SDK runtime
+handed to a plugin's `register(api)`, not an agent tool; this deployment loads
+exactly one plugin (`vc-trusted-context`), which registers hooks and no flow
+surface, and `vc-chief`'s tool allowlist carries no Task Flow reader. Its Task
+Flow awareness is therefore entirely second-hand: flow status, linked tasks,
+sticky cancel intent, and the current flow revision reach it only as an
+operator-supplied export attached to the request (`HEARTBEAT.md` step 2), and it
+reports `not_observable` when that export is absent. The orchestration audit trail
 (`delegation_eval`/`return_assessment`/`chief_output`) is persisted through the
 `orchestration-record` fixed workflow together with the Task Flow correlation
 handles (`flow_id`/`flow_revision`/`task_id`), so those handles are queryable

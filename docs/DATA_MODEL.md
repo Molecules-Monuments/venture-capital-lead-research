@@ -26,7 +26,7 @@ Workspace memory is operational convenience only. It may point to Postgres IDs b
 
 ## Installation and migration integrity
 
-`openclaw_owner` owns schema objects. `openclaw_runtime` is created by `000_roles.sh`; its grants begin in `002_runtime_grants.sql` and are extended by the later migrations that add tables, sequences, or functions it must reach (`004`, `005`, `006`, `009`, `010`, `012`, `013`, `014`, `015`, `016`, `017`, `018`). `017` also narrows the surface, revoking `UPDATE` on `contradiction_facts` and `trajectory_points`. It receives no grant outside that reviewed migration series.
+`openclaw_owner` owns schema objects. `openclaw_runtime` is created by `000_roles.sh`; its grants begin in `002_runtime_grants.sql` and are extended by the later migrations that add tables, sequences, or functions it must reach (`004`, `005`, `006`, `009`, `010`, `012`, `013`, `014`, `015`, `016`, `017`, `018`). Two of those also *narrow* the surface: `004` revokes `UPDATE` on `facts`, `fact_sources`, `document_facts`, `compiled_truth_facts` and `evaluation_criteria`, and `017` completes the same append-only privilege contract by revoking `UPDATE` on `contradiction_facts` and `trajectory_points`. The runtime therefore holds `SELECT`/`INSERT` but no `UPDATE` on all seven of those history tables, so the grant catalogue agrees with the triggers that already refused those writes. It receives no grant outside that reviewed migration series.
 
 Migration files are immutable after release. The installer computes each file's lowercase SHA-256 outside Postgres, applies it in a transaction, and then calls:
 
@@ -243,7 +243,7 @@ Terminal decisions cannot reopen. The trigger prevents mutation of token, canoni
 
 ## Governance proposals
 
-`proposals` persists schema-change, source-policy, and skill-candidate proposals for operator review. The runtime role may insert and read them and may move `submitted` to `under_review`, but a guard trigger rejects any INSERT born decided and any direct UPDATE that enters a decided status: `accepted`/`rejected` transitions pass only through the audited SECURITY DEFINER `decide_proposal(...)` function, which locks the row, requires a stable reviewer identity, refuses re-decision, and appends an audit event. Decided proposals are immutable to the runtime role. The helper exposes this lane as the operator-gated `proposal-decide` command.
+`proposals` persists schema-change, source-policy, skill-candidate, and catch-all `other` proposals for operator review — the four values the `proposal_kind` CHECK admits and the four `vcrun`'s `proposal-record` selector accepts. The runtime role may insert and read them and may move `submitted` to `under_review`, but a guard trigger rejects any INSERT born decided and any direct UPDATE that enters a decided status: `accepted`/`rejected` transitions pass only through the audited SECURITY DEFINER `decide_proposal(...)` function, which locks the row, requires a stable reviewer identity, refuses re-decision, and appends an audit event. Decided proposals are immutable to the runtime role. The helper exposes this lane as the operator-gated `proposal-decide` command.
 
 Stable allowlisted approver/channel identity is an application and configuration check in addition to these database constraints.
 

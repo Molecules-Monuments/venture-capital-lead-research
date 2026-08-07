@@ -90,8 +90,8 @@
     {
       "executable": false,
       "path": "README.md",
-      "sha256": "cff7e98912eae3da29df6e11b9a2dd7ae6528d4ccfcef6497667fad9a6c117fc",
-      "size": 93344
+      "sha256": "1baada4f07f30f9e0733bd2ddd40b6200d9ba648c68933b3bc13ce123c56f68e",
+      "size": 93821
     },
     {
       "executable": false,
@@ -180,14 +180,14 @@
     {
       "executable": false,
       "path": "docs/CHANNELS.md",
-      "sha256": "95b07a959791ee1a912c52fefb024794e2bb0b4e8ec4b934e2e9b059d22e6faf",
-      "size": 22260
+      "sha256": "c1f741b4719a360ac8d6416e3014b579e1c6b7f672adeb623ee6d55196ca98ee",
+      "size": 23224
     },
     {
       "executable": false,
       "path": "docs/DATA_MODEL.md",
-      "sha256": "ecda3844fd27e66f152af812da9dd03de36a42c7a1332a399624ad5474a87e07",
-      "size": 32384
+      "sha256": "481522b1b8dd9b2801d48b159f14facaf4504772af00d7db459ea8b8e631ad93",
+      "size": 32887
     },
     {
       "executable": false,
@@ -198,20 +198,20 @@
     {
       "executable": false,
       "path": "docs/OPERATIONS.md",
-      "sha256": "0d3ca8f94eb3a7c36d146ff1d650f43a4c15a16644bf41fafc1a963b206272fb",
-      "size": 22665
+      "sha256": "919b01c30c03575568af94665171158d76d012ed4e766ed8b9f86c65e7a7467a",
+      "size": 23228
     },
     {
       "executable": false,
       "path": "docs/PRODUCTION_READINESS.md",
-      "sha256": "9b8a85c46142b468310b560d45040c9029c495dbf7e9bcb7fe503d58648fffcc",
-      "size": 13216
+      "sha256": "1f9eeafd2c6058eaa98586160f021703af4cf9b985c7d17515f21ab81b4929ed",
+      "size": 13369
     },
     {
       "executable": false,
       "path": "docs/RUNBOOK.md",
-      "sha256": "16eb6b79b6f353de89678e979cdd1eed43ec6e4aca77af30d9fae428be0ce74e",
-      "size": 62041
+      "sha256": "6062ddc321eb3679d5475df686b3450deb3955acb7455627d360312346ffd999",
+      "size": 68322
     },
     {
       "executable": false,
@@ -228,20 +228,20 @@
     {
       "executable": false,
       "path": "docs/V3_RELEASE_EVIDENCE.md",
-      "sha256": "ca35b74eb7400c59e322ee6aafba3d5c3074b9e0d2aa9d57be6514e3c527f715",
-      "size": 11646
+      "sha256": "bf05c0e7978d21a357bcea791c3a510b0e20d960597f101621ba335c14e09f50",
+      "size": 12999
     },
     {
       "executable": false,
       "path": "docs/WORKFLOWS.md",
-      "sha256": "931936b990dfbd1b53f42fd9bb36e33e731995cfc1b3e9750127f6c7755343f7",
-      "size": 30090
+      "sha256": "11666bdc354d10a42b0cdead6dc00a90cc1d632f9e26bb4b56bd3b3e582b334b",
+      "size": 30752
     },
     {
       "executable": false,
       "path": "evals/V3_EVAL_RESULTS.md",
-      "sha256": "aab16ed85d0950fec874221814317636213429332f3e4a0abb23f3c661e24c41",
-      "size": 9594
+      "sha256": "6a382495fc1a79608c2d15c2de3d2c880bacafe6537e0065632123af377833d2",
+      "size": 10118
     },
     {
       "executable": false,
@@ -402,8 +402,8 @@
     {
       "executable": false,
       "path": "research/13-memory-retrieval.md",
-      "sha256": "46221a2e5a74694682c022d956eb2a6aeef33b25c5db7a6e4e9db822115e68c7",
-      "size": 10696
+      "sha256": "2f76aeb5591db0d0e4a63dd0fc7ea4b12dc29c2509cd2972f341b62da1990483",
+      "size": 11375
     },
     {
       "executable": false,
@@ -552,8 +552,8 @@
     {
       "executable": true,
       "path": "scripts/check_env.py",
-      "sha256": "9af987b99ab990b26cc1bbbe0d11f325746fb631ed4be96741cb3a7360fbfd54",
-      "size": 38628
+      "sha256": "300904f23d2ba39ed1c1f8f09ef10b3c9c898a85162cf81795776079f15fc5bc",
+      "size": 38831
     },
     {
       "executable": true,
@@ -1380,8 +1380,8 @@
     {
       "executable": false,
       "path": "workspaces/vc-chief/HEARTBEAT.md",
-      "sha256": "83f46102780432e4ce5ff24cd13f4226c0085e425fd4a80c7a1e1a4af58fbbf7",
-      "size": 2416
+      "sha256": "a688032a5f4d2b73b58ad7ce0e7d243a6a31f4ea519dd050bc582e2f0ec51f9c",
+      "size": 2727
     },
     {
       "executable": false,
@@ -1770,8 +1770,8 @@
     {
       "executable": false,
       "path": "workspaces/vc-chief/vc/taskflow.md",
-      "sha256": "c3c54e9b34f7d1e14c0986eb2ffbdccb3b0d3eadec2afade1a0a9fe0dc0f87ed",
-      "size": 10541
+      "sha256": "862190ca47fc9d5d1511e7a199aecaa21907b4c492370c2bceeea1749fa0dddc",
+      "size": 11392
     },
     {
       "executable": false,

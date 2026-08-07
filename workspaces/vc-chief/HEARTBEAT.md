@@ -19,7 +19,7 @@ silently or guessing from memory.
 1. Confirm gateway readiness and Postgres reachability through the approved deterministic health workflow.
 2. Review Task Flow runs in `queued`, `running`, `waiting`, `blocked`, `failed`, or `lost`; flag stale revisions and sticky cancellations.
 3. Review failed or resumable Lobster runs without replaying side-effecting steps.
-4. Review leads and workflow runs marked `needs_human_review`.
+4. Review leads and workflow runs marked `needs_human_review`. The mark lives on `evaluations.recommendation_band`, which is the only place that value exists — `evaluations` is also the only table keying both a lead and a workflow run, so one filter covers both halves of this step. Do not look for it on `leads.status` or `workflow_runs.status`; neither CHECK admits it.
 5. Review pending, expired, consumed, or scope-mismatched approvals and held notifications.
 6. Return observed timestamps, identifiers, and the last confirmed state. Memory is not health evidence.
 

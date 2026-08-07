@@ -177,10 +177,19 @@ acceptance.
 >   workflows order `workflow_request_claim` → `company_resolve_create` →
 >   `create_lead` with no `memory-lookup` call — the exact bypass this section
 >   identified as undetectable by a static gate is now the assertion.
-> - The precommitted thresholds below were executed as gate D on the
->   declared 100k-company/1m-fact reference dataset via
->   `scripts/run_retrieval_scale.py`. (The p95 ceiling is Gate D's; Gate I
->   covers research budgets, whose adherence half stays BLOCKED.)
+> - The *scale* limbs of the thresholds proposed below were executed as gate D
+>   on the declared 100k-company/1m-fact reference dataset via
+>   `scripts/run_retrieval_scale.py`. That gate asserts four things and only
+>   those four: overall p95 at most 250 ms, fuzzy recall at least 0.90, fuzzy
+>   precision@1 at least 0.90, and a mean candidate count of at least 1.5. (The
+>   p95 ceiling is Gate D's; Gate I covers research budgets, whose adherence
+>   half stays BLOCKED.)
+> - The remaining limbs proposed below were **not adopted as executable
+>   thresholds** and nothing in the package measures them: MRR, alias recall,
+>   fuzzy duplicate recall@5, and a separate 100 ms ceiling on *exact* p95. The
+>   gate reports an exact p95 but asserts no bound on it. Treat this section's
+>   threshold list as the Version 3 design proposal it was; the frozen authority
+>   for what the release committed to is `01_PRECOMMITTED_EVALS.md` gate D.
 >
 > The design half of this document — staged entity resolution and the disabling
 > of Markdown recall as a factual store — shipped in

@@ -165,10 +165,26 @@ correct.
    compose exec openclaw-gateway openclaw security audit
    compose exec openclaw-gateway openclaw channels status
    ```
+
+   Every one of the four exits `0` on every profile. They still emit findings,
+   and `docs/RUNBOOK.md` §5.1 carries the complete expected set with a
+   disposition for each — read it before step 9, because two of those findings
+   are channel-dependent and look like deviations otherwise:
+
+   - `openclaw doctor` adds a `Doctor warnings` block about `vc-chief` lacking
+     the `message` tool on *any* selected channel;
+   - `openclaw security audit` adds `security.trust_model.multi_user_heuristic`
+     on `slack`, `discord`, and `telegram` — but not on `msteams` — taking the
+     totals from `0 critical · 2 warn · 1 info` to `0 critical · 3 warn · 1 info`.
+
+   Both are expected, both restate reviewed design decisions, and **none of
+   their suggested remedies may be applied.**
 8. Test each applicable matrix row below. Retain timestamps, config/image
    digests, redacted stable IDs, provider event IDs, database counts, and logs.
 9. Resolve every warning. `FAIL`, `NOT RUN`, missing evidence, or an unexplained
-   warning is not a channel pass.
+   warning is not a channel pass. "Unexplained" means absent from RUNBOOK §5.1's
+   expected set: a finding listed there with its disposition recorded *is*
+   resolved for the purposes of this step.
 10. Only then admit real messages.
 
 Rollback is the same sequence in reverse, and the profile has to come with it:

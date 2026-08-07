@@ -119,9 +119,11 @@ ALLOWED_KEYS = REQUIRED | DEPLOYMENT_FIELDS | {
     # Optional: raises the bound backup.sh/restore.sh apply to the state
     # recovery archive. Document intake snapshots accumulate in that tier, so a
     # deployment with sustained attachment volume outgrows the shipped default.
+    # Left empty, backup.sh and restore.sh each apply their own 2 GiB
+    # (2147483648) default; this validator only bounds an explicit value, so
+    # the default deliberately has no constant here.
     "OPENCLAW_STATE_ARCHIVE_MAX_BYTES",
 }
-STATE_ARCHIVE_DEFAULT_BYTES = 2 * 1024 * 1024 * 1024
 STATE_ARCHIVE_MAX_BYTES = 100 * 1024 * 1024 * 1024
 # The harness reserves a fixed slice of every context window for compaction
 # headroom (`reserveTokensFloor ... ?? 2e4` in the pinned image's memory-core
@@ -682,8 +684,9 @@ def main() -> int:
     if not re.fullmatch(r"[0-9a-fA-F]{64}", values.get("BACKUP_HMAC_KEY", "")):
         errors.append("BACKUP_HMAC_KEY must be exactly 64 hexadecimal characters")
     # Every one of the six deployment secrets must be independently generated.
-    # README, RUNBOOK, and .env.example each print a separate `openssl rand`
-    # line per field, but that rule was previously machine-checked for only two
+    # README prints a separate `openssl rand` line per field; RUNBOOK §3 and
+    # .env.example state the same rule in prose rather than per field. Either
+    # way it was previously machine-checked for only two
     # of the fifteen possible pairings. Reuse is not symmetric in consequence:
     # OPENCLAW_GATEWAY_TOKEN is handed to every gateway client and is visible in
     # `docker inspect`, while VC_TRUSTED_CONTEXT_KEY signs the capability tokens

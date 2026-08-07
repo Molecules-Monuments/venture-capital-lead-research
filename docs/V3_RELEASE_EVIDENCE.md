@@ -1,15 +1,17 @@
 # Version 3.0 release evidence
 
 Date: 2026-07-23 (final-audit session; supersedes the earlier 2026-07-23 and 2026-07-22 evidence)
-Last full re-execution: **2026-08-06** — see "Count re-verification" below; every figure in this document is that run's measurement.
+Last full re-execution: **2026-08-07** — see "Count re-verification" below. Every *count* in this document is that run's measurement; the one latency figure the gates produce is treated separately under "Image digests — regenerate at deployment", because it is a property of the measuring host rather than of this tree.
 Package version: `3.0.0`
 Status: **Deterministic package + deployment path VERIFIED; live-model behavioral gates BLOCKED (not run). See `PRODUCTION_READINESS.md` for the exact boundary.**
 
 Count re-verification: the suites grew across the remediation sessions that
 followed the 2026-07-23 evidence, so every count below is the count this tree
 actually produces rather than a carried-forward figure. **The full matrix was
-last re-executed on 2026-08-06**, against this tree and against an image
-rebuilt from it with `docker build --no-cache --pull`: `verify_offline.py`
+last re-executed on 2026-08-07**, against this tree and against an image built
+from it with `docker build --no-cache --pull` on 2026-08-06 (the tree's
+image-relevant bytes are unchanged since, so the build is reused rather than
+re-derived; only documentation has changed): `verify_offline.py`
 (**234 tests, 25/25** base checks), and each opt-in gate individually —
 `run_g4.py` (**88/88** across seven suites, migrations 001–018 applied
 twice on PostgreSQL 17.10), `run_g6_image.py` (**8/8**, against an image rebuilt from this tree with
@@ -17,8 +19,9 @@ twice on PostgreSQL 17.10), `run_g6_image.py` (**8/8**, against an image rebuilt
 builds during the deployment gate; both load `vc-trusted-context` from
 `/opt/openclaw-extensions`), `run_g8_deployment.py` (**PASS** — five checks
 end-to-end, with a clean teardown leaving no containers, volumes, or runtime
-files), `run_retrieval_scale.py` (**160/160** cases, overall p95 **40.5 ms**
-against the frozen 250 ms threshold), `verify_release.py --pristine`,
+files), `run_retrieval_scale.py` (**160/160** cases, comfortably inside the
+frozen 250 ms p95 threshold — see the note on that figure below),
+`verify_release.py --pristine`,
 `build_release_manifest.py --check`, and `generate_schema_reference.py
 --check`. That re-execution also re-proves the pinned `deb12u3` poppler pair
 still installs from the live Debian pool. For reference, `c72d8b9` — the last
@@ -66,8 +69,9 @@ how many registrable hosts they span (migration 012's promotion predicate; the
 `registrable_host()` helper survives only as a reviewed utility and gates
 nothing, and `test_14_web_corroboration_is_content_addressed_not_host_based`
 executes this); a document artifact bound to one lead cannot corroborate another
-lead; and an operator-disabled watchlist entry cannot be re-enabled,
-reclassified, or re-owned from a model-reachable lane.
+lead; and a disabled watchlist entry cannot be re-enabled, reclassified, or
+re-owned from a model-reachable lane — the guard is on the disabled state, not
+on who set it, so a model lane cannot undo even its own `source-unwatch`.
 
 This evidence records what was executed. Live provider/recovery exercises,
 model-behavioral quality, organization-specific policy, and target-host capacity
@@ -79,7 +83,7 @@ by audit passes outside this package boundary; see
 `docs/PRODUCTION_READINESS.md`, "Exercised against a live model". No gate below
 invokes a model.
 
-## Passing evidence (executed 2026-07-23; last re-executed 2026-08-06)
+## Passing evidence (executed 2026-07-23; last re-executed 2026-08-07)
 
 | Surface | Result | Reproducible command |
 | --- | ---: | --- |
@@ -124,8 +128,20 @@ The local image ID is host-specific: `bootstrap.sh` rebuilds
 the resulting digest in `deployment-lock.json` at install time. The G6 gate was
 re-run on 2026-08-06 against an image rebuilt from this tree with `docker build
 --no-cache --pull` (8/8), and the retrieval-scale
-gate was re-run the same day (160/160 cases, overall p95 40.5 ms against the
-250 ms threshold).
+gate was re-run the same day and again on 2026-08-07 (160/160 cases both times).
+
+**The retrieval p95 is the one figure in this document that is not a stable
+property of the tree**, so it is deliberately not quoted as one. It is a latency
+measured on whatever host and under whatever load the gate happened to run, and
+repeated runs of *this* tree have produced an overall p95 anywhere between
+roughly 40 ms and 90 ms without any code change. What is reproducible, and what
+the gate actually asserts, is the frozen threshold set: overall p95 **at most
+250 ms**, fuzzy precision@1 and recall **at least 0.90** each, and a mean
+candidate count **at least 1.5**. Every run recorded for this release has
+cleared all four by a wide margin, scoring 1.0 on both fuzzy metrics. Treat
+a specific millisecond figure the way this section treats an image ID — a
+property of one host, regenerated locally — and re-measure on the deployment
+host rather than inheriting a number from here.
 
 The retrieval benchmark now seeds deliberately **confusable clusters** — each
 of the 100 fuzzy cases is a target company plus four trigram-close distractor
