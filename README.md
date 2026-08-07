@@ -487,13 +487,21 @@ floor, a 65699-character message produced **CLI exit code 0** and a top-level
 `status: "ok"`. Anything that shells out to `openclaw agent` and checks the exit
 code or that field sees a completed turn.
 
-The turn *is* classified, two levels down. Check these instead:
+The turn *is* classified, two levels down, at `.result.meta.error.kind` and
+`.result.meta.livenessState`. Read those instead of the exit code — `jq` is
+already in the derived image:
 
 ```sh
-# both are set on an overflow; neither is reflected in the exit code
-.result.meta.error.kind      # "context_overflow"
-.result.meta.livenessState   # "blocked"
+docker compose --profile tools --env-file .env run --rm openclaw-cli \
+  agent --agent vc-chief --message "<your message>" --json \
+  | jq -r '.result.meta.error.kind // "none", .result.meta.livenessState'
+# on an overflow this prints:  context_overflow
+#                              blocked
 ```
+
+`error.kind` is absent on a turn that completed, which is why the `// "none"`
+default is there. `livenessState` is one of `working`, `paused`, `blocked`, or
+`abandoned`; `blocked` is the one that accompanies a refused turn.
 
 This matters most where nobody is watching the output. A cron job seeded by
 `scripts/schedule_jobs.sh` runs an agent turn, so a scheduled scan that overflows
@@ -1442,7 +1450,7 @@ python3 -B scripts/verify_release.py --pristine
 │   ├── render_channel_config.py      # Model/search/channel effective config
 │   ├── migrate.sh                    # Locked transactional migrations
 │   ├── verify_offline.py             # Unified source gate
-│   ├── validate_skill_system.py       # Exact skill/agent/router/workflow gate
+│   ├── validate_skill_system.py      # Exact skill/agent/router/workflow gate
 │   ├── validate_workflows.py         # Workflow/helper static contract gate
 │   ├── run_g4.py                     # Disposable PostgreSQL integration gate
 │   ├── generate_schema_reference.py  # Regenerates/verifies docs/SCHEMA.sql

@@ -80,13 +80,23 @@ marked optional.
 The outer runner cap is 360 seconds and 512 KiB output. Individual helper
 steps use lower operation-specific limits.
 
-Two size ceilings apply to the argument object and the smaller one binds first:
-the whole JSON payload may not exceed 32 KiB, and **no single argument value may
-exceed 16 384 characters**. The per-value ceiling is the one a long
-`memo_markdown`, `evidence_json` or `citations_json` meets first; the refusal is
-`<field> exceeds 16384 characters`, raised before the first step runs, so
-nothing is written and the same idempotency key remains usable for the corrected
-call. Budget memo prose against that ceiling rather than against 32 KiB.
+Two size ceilings apply to the argument object: the whole JSON payload may not
+exceed 32 KiB, and **no single argument value may exceed 16 384 characters**.
+The per-value ceiling is the lower of the two, so it is the one a long
+`memo_markdown`, `evidence_json` or `citations_json` normally meets first, and
+the refusal is `<field> exceeds 16384 characters`.
+
+The two are checked in the opposite order to that, which decides which message
+you get. `vcrun` measures the raw payload *before* it parses, so the 32 KiB
+check runs first and a value large enough to push the whole object past 32 KiB
+is refused as `args JSON exceeds 32768 bytes` instead — naming the payload, not
+the field. Measured on `memo-record`: a 16 385-character `memo_markdown` gives
+the per-field message, and so does 32 000; at 40 000 the payload message takes
+over. Either way the refusal is raised before the first step runs, so nothing is
+written and the same idempotency key remains usable for the corrected call.
+Budget memo prose against the 16 384-character per-value ceiling rather than
+against 32 KiB, and read a payload-size error as "one of these fields is far
+over its own limit" rather than as a different problem.
 
 The inner payload contracts are reviewed model-facing documentation: the
 `evidence_json` field set and researcher-packet mapping live in

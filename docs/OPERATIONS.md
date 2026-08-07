@@ -247,14 +247,29 @@ PDF/PPTX/XLSX/CSV intake. Unsupported media is blocked before model input.
 ## Decommissioning a deployment
 
 Take a final recovery point first if the data is still needed; the sequence
-below destroys it. **`docker compose down --volumes` is not sufficient**, and
-its shortfall is silent: `openclaw-cli` sits behind `profiles: ["tools"]`, so a
-`down` without that profile neither removes the container `bootstrap.sh`
-created for it nor — because that container still references them — the named
-volumes. `openclaw-state` (sessions, inbound media, Lobster continuation) and
-`vc-quarantine` (rejected uploads) survive, and `docker compose ps` reports
-nothing, so the operator sees an empty stack over retained data. Name the
-profile:
+below destroys it. **`docker compose down --volumes` is not sufficient.**
+`openclaw-cli` sits behind `profiles: ["tools"]`, so a `down` without that
+profile neither removes the container `bootstrap.sh` created for it nor —
+because that container still references them — **three** of the four named
+volumes:
+
+- `openclaw-state` — sessions, inbound media, Task Flow SQLite, Lobster
+  continuation;
+- `vc-quarantine` — rejected uploads;
+- `openclaw-runtime-config` — the rendered effective configuration.
+
+Only `postgres-data` is actually removed. Compose does say so, in lines that are
+easy to lose among the successful removals:
+
+```text
+Volume openclaw-lead-research-v3_runtime-config  Resource is still in use
+Volume openclaw-lead-research-v3_openclaw-state  Resource is still in use
+Volume openclaw-lead-research-v3_vc-quarantine   Resource is still in use
+```
+
+Afterwards `docker compose ps` reports nothing, so the operator sees an empty
+stack over retained data. The database is gone but `openclaw-state` is not, and
+that is the tier holding inbound media and document snapshots. Name the profile:
 
 ```sh
 docker compose -f docker-compose.yml -p openclaw-lead-research-v3 --env-file .env \

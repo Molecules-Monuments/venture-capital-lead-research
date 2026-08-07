@@ -44,11 +44,12 @@ release inventory.
 The component-by-component basis is retained in the project's internal audit
 archive (excluded from the published package).
 
-## Release proof (executed 2026-07-23; last re-executed 2026-08-06)
+## Release proof (executed 2026-07-23; last re-executed 2026-08-07)
 
-Every figure in the table below is the measurement of a **2026-08-06**
-re-execution against this tree and against an image rebuilt from it with
-`docker build --no-cache --pull`, not a figure carried forward from the
+Every figure in the table below is the measurement of a **2026-08-07**
+re-execution against this tree, and against an image rebuilt from it with
+`docker build --no-cache --pull` on 2026-08-06 — nothing image-relevant has
+changed between the two dates — not a figure carried forward from the
 2026-07-23 session. That re-execution was necessary rather than ceremonial: the
 migrations, `vcops.py`, the eighteen `.lobster` workflows and
 `Dockerfile.openclaw` — the file that defines the very image G6 and G8 build —
@@ -196,8 +197,9 @@ G4/G5/G7/v3 tests: the build-context secret exclusion (`.dockerignore`), the
 stage-first restore contract, pre-quiesce update preconditions, runtime-role
 session time bounds (`statement_timeout`/`lock_timeout`/idle-in-transaction,
 re-applied on every reconcile), model-lane watchlist boundary protection
-(`source-watch` cannot re-enable, reclassify, or re-own an operator-guarded
-entry), cross-lead document-provenance binding on `evidence-record`, the
+(`source-watch` cannot re-enable a disabled entry — whoever disabled it,
+including the model lane's own `source-unwatch` — nor reclassify or re-own
+one), cross-lead document-provenance binding on `evidence-record`, the
 operator-lane verified-fact source requirement and source trust-downgrade
 refusal, quarantine containment for malformed OOXML, the approval-resume
 run-budget and cancel workflow-binding in `vcrun-control`, the `vcrun`

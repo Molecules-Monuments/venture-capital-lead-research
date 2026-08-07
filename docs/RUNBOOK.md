@@ -363,8 +363,10 @@ The restore drill in §5.4 is the one item no gate covers.
     model is a small one**, which in practice means every Ollama deployment and
     any custom provider serving a small model. It does not appear on a hosted
     frontier model, which is why an OpenAI-mode commissioning of this release
-    records `0 critical · 2 warn · 1 info` while an Ollama-mode one records
-    `1 critical · 2 warn · 1 info`. The audit classifies any model at or below
+    records `0 critical` while an Ollama-mode one records `1 critical` against
+    the same warn/info baseline (the two baselines are tabulated after the next
+    entry, because the selected channel changes the warning count). The audit
+    classifies any model at or below
     300B parameters as small and reports CRITICAL when one is granted
     `web_search`/`web_fetch`. Measured on an `ollama/llama3.2:1b` deployment it
     names the five specialists that hold web tools: `lead-signal-detector`,
@@ -393,6 +395,36 @@ The restore drill in §5.4 is the one item no gate covers.
     expected and move on: on a small model this finding is describing a real
     property of the deployment you are commissioning.
 
+  - `security.trust_model.multi_user_heuristic` — **on a `slack`, `discord`, or
+    `telegram` profile only.** "Potential multi-user setup detected
+    (personal-assistant model warning)", citing
+    `channels.<provider>.groupPolicy="allowlist" with configured group targets`
+    together with the un-sandboxed `exec` contexts. Expected, and it is
+    restating this package's documented threat model back to you rather than
+    reporting a misconfiguration: an allowlisted group destination *is* the
+    reviewed multi-user design (README, "Channels, users, and document
+    uploads"), and README's "Threat model" already states that this is a
+    single-organization trusted-control-plane design and **not** isolation for
+    mutually hostile tenants. **Its suggested fix must not be applied**:
+    `agents.defaults.sandbox.mode="all"` is exactly the setting README's "Why
+    OpenClaw sandbox mode is off" explains this package cannot use, because the
+    fixed Lobster surface is unavailable in a sandboxed tool context. Record the
+    finding with that disposition, and treat it as the prompt to re-confirm that
+    every ID in `*_ALLOWED_USER_IDS` belongs to one organization that shares one
+    trust boundary — if they do not, the correct answer is separate deployments,
+    not a configuration change. The `msteams` profile does not raise it: its
+    group scope is expressed under `channels.msteams.teams`, which the upstream
+    heuristic does not scan.
+
+  Those per-profile differences change the totals, so compare against the right
+  baseline. Measured on this release with an OpenAI-mode configuration, by
+  rendering each profile and running the audit inside the exact built image:
+  `PRIMARY_CHANNEL=none` and `msteams` report **0 critical · 2 warn · 1 info**;
+  `slack`, `discord`, and `telegram` report **0 critical · 3 warn · 1 info**,
+  the extra warning being the one immediately above. An Ollama-mode or other
+  small-model deployment adds `models.small_params` as a CRITICAL to whichever
+  of those baselines applies.
+
   You should **not** see `gateway.auth_no_rate_limit`. `gateway.bind` is `lan`
   because Docker forwards a published port to the container's network
   interface, so a loopback bind inside the container would make the gateway
@@ -404,8 +436,26 @@ The restore drill in §5.4 is the one item no gate covers.
 
   From `openclaw secrets audit`:
 
-  - `gateway.auth.token` reported as plaintext: a false positive — the rendered
-    value is a SecretRef to `OPENCLAW_GATEWAY_TOKEN`, not a literal.
+  - `gateway.auth.token` reported as plaintext: expected, and not a literal
+    secret. Measured on this release, every profile reports exactly
+
+    ```text
+    Secrets audit: findings. plaintext=1, unresolved=0, shadowed=0, legacy=0.
+    - [PLAINTEXT_FOUND] …:gateway.auth.token gateway.auth.token is stored as plaintext.
+    ```
+
+    The renderer writes the *environment substitution string*
+    `"${OPENCLAW_GATEWAY_TOKEN}"` at that key, which the gateway expands when it
+    loads the config; the audit reports the unexpanded string rather than a
+    leaked credential. Note the contrast in the same output: the channel
+    credentials are written as object-shaped SecretRefs
+    (`{"id": "SLACK_BOT_TOKEN", "provider": "default", "source": "env"}`) and
+    resolve cleanly, which is why `unresolved` stays `0` on a channel profile
+    with its credentials present. Confirm the row rather than assuming it:
+    `grep -c '"token": "\${OPENCLAW_GATEWAY_TOKEN}"'` on the rendered
+    `config/runtime/openclaw.json` must return 1, and the file must contain no
+    64-hex literal. If either check disagrees, a real token has been written
+    into the config and the finding is not this one.
 
   From `openclaw doctor`:
 
@@ -432,6 +482,23 @@ The restore drill in §5.4 is the one item no gate covers.
     channel already owns and never performs an explicit channel action. The
     warning describes a capability this deployment deliberately does not have,
     not a misconfiguration. Record it with that disposition.
+  - A `Command owner` block — `No command owner is configured.` — on **every**
+    profile including `none`, whose `Fix:` line suggests
+    `openclaw config set commands.ownerAllowFrom '["telegram:123456789"]'`.
+    Expected, and **that edit must not be applied.** A command owner gates
+    owner-only *chat* commands (`/diagnostics`, `/export-trajectory`, `/config`,
+    chat exec approvals); this deployment exposes no chat command surface at
+    all. Verified on all five rendered profiles, the effective `commands` block
+    is `native`, `nativeSkills`, `text`, `bash`, `config`, `mcp`, `plugins`,
+    `debug` and `restart` — every one of them `false` — so there is no
+    owner-scoped command for an owner ID to protect. Operator actions run
+    through the administrative control plane
+    (`vcops-operator`, `vcrun-control`) under `VCOPS_OPERATOR_ID`, never through
+    a channel. Setting `commands.ownerAllowFrom` would also grant a channel
+    identity a privileged role the threat model deliberately withholds from
+    channel identities, and `config/openclaw.json` is a hash-pinned reviewed
+    artifact, so the edit costs a re-pin for a control this deployment does not
+    use.
 
   In the gateway log at every start and every config reload:
 
@@ -783,9 +850,32 @@ For an accepted pending proposal:
      /app/skills/skill-creator/scripts/quick_validate.py /skills/<skill-name>
    ```
 
-   Then run `python3 -B scripts/validate_skill_system.py`, which is the fast
-   check that step 3 and step 4 agree — it reports the new total and lists any
-   touchpoint still holding the old one.
+   Then run `python3 -B scripts/validate_skill_system.py`. It reports the new
+   total and names any stale touchpoint **it can see** — and its reach is
+   narrower than step 3's list, so do not treat a clean run as proof that step 3
+   is finished. It reads `config/openclaw.json`, `config/exec-approvals.json`,
+   `workspaces/shared-skills/*/SKILL.md`, each agent's `AGENTS.md`/`TOOLS.md`,
+   `RESOLVER.md`, `workspaces/schemas/`, the `.lobster` inventory,
+   `runtime-extensions/vc-trusted-context/index.js` and `vcrun.py`. It opens
+   nothing under `docs/`, `evals/` or `tests/`.
+
+   That leaves two classes of touchpoint to close by hand:
+
+   - the two `tests/v3` files above, which freeze the counts — these do fail
+     loudly, but under `verify_offline.py`, not under this validator; and
+   - the five documents listed in step 3, whose stated counts **nothing**
+     checks. Grep for the outgoing number before you move on — with the shipped
+     inventory that is `26`:
+
+     ```sh
+     grep -rn --include='*.md' '\b26\b' docs evals \
+       workspaces/vc-chief/vc/RESOLVER.md \
+       workspaces/vc-chief/vc/system_health.md \
+       workspaces/shared-skills/resolver-check/SKILL.md
+     ```
+
+     `RESOLVER.md`'s inventory line is the one hit the validator does cover; the
+     rest are yours.
 
    **Regenerate the manifest before the full gate, not after.**
    `python3 -B scripts/build_release_manifest.py` first, then the complete
@@ -835,8 +925,24 @@ record. Autonomous transcript review remains disabled.
   office application, record its hash/provenance, and preserve the governed
   rejection evidence.
 - **Integrity mismatch:** if the reported paths are edits you deliberately made
-  — customized policy artifacts, a replaced rubric — re-pin the inventory with
-  `python3 -B scripts/build_release_manifest.py` and re-run the gate. Otherwise
+  — customized policy artifacts, a replaced rubric — re-pin **both** inventories
+  and re-run the gate:
+
+  ```sh
+  python3 -B scripts/init_customization.py --update-hashes
+  python3 -B scripts/build_release_manifest.py
+  ```
+
+  The manifest re-pin alone clears `verify_release.py --pristine` and stops
+  there, which reads like the remediation is complete. It is not: most
+  customizable policy artifacts — the rubric this entry names, `thesis.md`,
+  `exclusion_criteria.md`, `config/openclaw.json`, the eval fixtures — are also
+  among the twenty hash-pinned artifacts recorded in
+  `config/customization-profile.json`, and `bootstrap.sh` runs
+  `check_customization.py` as its second step. Skip the profile re-pin and the
+  bootstrap this entry mandates below aborts immediately with
+  `reviewed artifact changed after review: <path>`. `CUSTOMIZATION.md` step 4
+  carries the same pair for the same reason. Otherwise
   stop installation/update and reacquire the reviewed release. Never regenerate
   hashes around a change you cannot account for. On an **already-bootstrapped**
   deployment, re-running `./scripts/bootstrap.sh` afterwards is required, not
