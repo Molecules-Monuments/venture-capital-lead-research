@@ -40,7 +40,8 @@ Selectors are `runtime-preflight`, `outbound-scout`, `inbound-intake`, `inbound-
 
 `vcrun` rejects unknown selectors, paths, `--file`, inline pipelines, arbitrary
 commands, passthrough flags, cwd/env overrides, caller time/output overrides,
-duplicate JSON keys, non-object JSON, NULs, input above 32 KiB, wrong value
+duplicate JSON keys, non-object JSON, NULs, input above 32 KiB, any single
+argument value above 16 384 characters, wrong value
 types, missing fields, extra fields, invalid domain, BIGINT and
 preference-*key* values, and paths outside the exact permitted intake root.
 (`preference_value` is the one closed domain the helper rather than the runner
@@ -78,6 +79,14 @@ marked optional.
 
 The outer runner cap is 360 seconds and 512 KiB output. Individual helper
 steps use lower operation-specific limits.
+
+Two size ceilings apply to the argument object and the smaller one binds first:
+the whole JSON payload may not exceed 32 KiB, and **no single argument value may
+exceed 16 384 characters**. The per-value ceiling is the one a long
+`memo_markdown`, `evidence_json` or `citations_json` meets first; the refusal is
+`<field> exceeds 16384 characters`, raised before the first step runs, so
+nothing is written and the same idempotency key remains usable for the corrected
+call. Budget memo prose against that ceiling rather than against 32 KiB.
 
 The inner payload contracts are reviewed model-facing documentation: the
 `evidence_json` field set and researcher-packet mapping live in
@@ -303,11 +312,16 @@ supersedes the claim (`supersedes_fact_id`, `version + 1`) and copies its
 provenance links. So a promoted claim is two rows on purpose — version 1
 (`submitted_claim`, superseded) and version 2 (`verified_fact`) — and not a
 duplicate. `facts` is append-only; nothing is rewritten or deleted, exactly as
-for the erasure tombstone and the other history tables. `lead-show` and the
-dedup lookup exclude rows that something supersedes, so a superseded predecessor
-never reaches a score or a memo. Query current facts that way — with
+for the erasure tombstone and the other history tables. `entity-resolve` (whose
+`current_facts` block is the model's normal view of a company's facts) and the
+`evidence-record` dedup lookup both exclude rows that something supersedes, so a
+superseded predecessor never appears there and never has a second source
+attached to it. Query current facts that way — with
 `NOT EXISTS (SELECT 1 FROM facts newer WHERE newer.supersedes_fact_id = f.id)`
-rather than by counting rows.
+rather than by counting rows. What keeps a superseded predecessor out of a score
+or a memo is the `support_role` rule below, not either of those reads.
+`lead-show` is not part of this: it returns the lead and its artifacts, never
+facts.
 
 `compiled-truth` is the deliberate exception: it snapshots *every* fact the lead
 holds and labels each with a `support_role`, so the superseded predecessor is

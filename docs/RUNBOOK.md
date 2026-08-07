@@ -60,6 +60,17 @@ Use a dedicated Linux host inside one organizational trust boundary. Require:
   boundary, matching `.env`; the directory is ignored by git and the release
   manifest) — environment-backed secrets cannot be injected into
   read-only services;
+- **at least 2 CPUs and 4 GiB RAM**, and about 3 GB of Docker image storage
+  before any data. These are floors for bootstrap to complete, not a capacity
+  target. The gateway service declares `cpus: ${OPENCLAW_GATEWAY_CPU_LIMIT:-2.0}`,
+  and the Docker daemon validates a container's CPU quota against the host CPU
+  count at create time — on a 1-vCPU host the create fails outright, after
+  `bootstrap.sh` has already begun mutating. `bootstrap.sh` also builds the
+  derived image, whose `npm ci` and apt steps are OOM-killed (exit 137) on a
+  host with under ~2 GiB free, and the two pinned images occupy roughly
+  0.6 GB + 2.2 GB before Postgres holds a row. Size the host for the workload
+  above these floors, and lower `OPENCLAW_GATEWAY_CPU_LIMIT` deliberately if
+  you must run smaller;
 - sufficient durable storage for Postgres (including scoped user preferences),
   OpenClaw/Task Flow/Lobster state, inbound document snapshots, quarantine,
   backups, and expected retention;
@@ -75,9 +86,12 @@ Use a dedicated Linux host inside one organizational trust boundary. Require:
   imports `zoneinfo`, which is 3.9+ (`migrate.sh` needs no python3; it uses
   POSIX utilities — `awk`, `sed`, `grep`, `cmp`, `command`, and
   `sha256sum`/`shasum`). The backup and restore paths additionally call `tar`,
-  `mktemp`, `tr`, `cut`, `head`, `stat` and `chmod`, all present in a normal
-  distribution base install — check them explicitly if you build a minimal
-  recovery host for the §5.4 drill;
+  `mktemp`, `tr`, `head`, `find`, `cp` and `chmod`, and `bootstrap.sh` — which
+  §5.4 requires on the recovery host before `restore.sh` — also calls `cut`;
+  all are present in a normal distribution base install, but check them
+  explicitly if you build a minimal recovery host for the §5.4 drill, because
+  `restore.sh` reaches `find` only *after* it has begun replacing production
+  state;
 - `openssl`, used to generate the six deployment secrets; and
 - a non-root deployment operator with exclusive control of the package and
   `.env`.
@@ -405,6 +419,19 @@ The restore drill in §5.4 is the one item no gate covers.
     which is the evidence for this row. `plugins.allow` and memory-provider
     migration hints are legacy-key advice that does **not** apply to this
     configuration and must not be applied.
+  - **On a channel profile only** (`PRIMARY_CHANNEL` other than `none`), one
+    additional `Doctor warnings` block: `Agent "vc-chief" is routed from
+    channel "<provider>", but the message tool is unavailable for that agent;
+    explicit channel actions such as sendAttachment, upload-file, thread-reply,
+    or reply can fail. Add "message" to the agent tool allowlist, add
+    "group:messaging", or switch the agent to a profile that includes messaging
+    tools.` Expected, and **none of the three suggested edits may be applied.**
+    Withholding channel-action tools from every agent is the reviewed design
+    (`workspaces/vc-chief/vc/channel_policy.md`, and the "Tools" row of
+    README.md's sandboxing table): the chief answers in the reply stream the
+    channel already owns and never performs an explicit channel action. The
+    warning describes a capability this deployment deliberately does not have,
+    not a misconfiguration. Record it with that disposition.
 
   In the gateway log at every start and every config reload:
 
@@ -829,10 +856,13 @@ record. Autonomous transcript review remains disabled.
   slow model call dies — unless you keep the two in the right order.** The
   harness aborts an agent run after a period with no *streaming* progress, and a
   prefill emits nothing until it completes, so it cannot distinguish a slow
-  local model from a stalled provider. Upstream defaults are 120 s to warn and
-  **300 s to abort**, both below the 600 s minimum this package requires for
-  `VC_MODEL_TIMEOUT_SECONDS` in Ollama mode — so at the defaults the package
-  mandated a per-call budget the runtime would never grant. Measured on a
+  local model from a stalled provider. With `diagnostics.stuckSessionAbortMs`
+  unset the abort threshold is not a constant: the harness computes
+  `max(300 s, stuckSessionWarnMs x 3)`, so the upstream defaults are 120 s to
+  warn and **360 s to abort**, both below the 600 s minimum this package
+  requires for `VC_MODEL_TIMEOUT_SECONDS` in Ollama mode — so at the defaults
+  the package mandated a per-call budget the runtime would never grant.
+  Measured on a
   CPU-only host: a legitimate 481 s cold prefill was aborted at 392 s with
   `AbortError: agent run aborted: code=OPENCLAW_DIRECT_ABORT`, a message that
   names neither the provider nor the prefill. `config/openclaw.json` therefore
@@ -841,8 +871,14 @@ record. Autonomous transcript review remains disabled.
   validator allows for the per-call timeout. **The shipped abort therefore
   already clears the whole legal range, so slower hardware needs no retuning;
   if you raise `VC_MODEL_TIMEOUT_SECONDS` within its 30–900 s range, keep
-  `stuckSessionAbortMs` above it.** Both are reviewed artifacts: edit, re-pin
-  with `init_customization.py --update-hashes`, and re-bootstrap.
+  `stuckSessionAbortMs` above it.** `VC_MODEL_TIMEOUT_SECONDS` lives in `.env`,
+  which the gate treats as runtime state: edit it and re-bootstrap.
+  `config/openclaw.json` is both a hash-pinned reviewed artifact *and* a
+  `manifest.json`-declared file, so an edit there takes three steps — re-pin the
+  profile (`python3 -B scripts/init_customization.py --update-hashes`),
+  regenerate the inventory (`python3 -B scripts/build_release_manifest.py`) or
+  `verify_release.py` reports a permanent `hash mismatch` for it, and re-run
+  `./scripts/bootstrap.sh`.
 - **Channel plugins must stay under the harness's own extension scan root.** Not
   a limitation so much as a constraint that is easy to undo by accident, and it
   is load-bearing. The GHCR base image prunes the Slack, Teams, and Discord

@@ -93,9 +93,16 @@ graph is not permissive-only: `psycopg` and `psycopg-binary` 3.2.13, pinned in
 distributions in either Python lockfile, and redistributing the image or that
 venv carries the LGPL's notice and license-text obligations for them.
 
-The derived image also inherits the `debian:bookworm` base layer that the
-pinned OpenClaw image is built on, plus the Debian packages
-`Dockerfile.openclaw` installs. That layer is **not** permissive-only: it
+The derived image also inherits the base the pinned OpenClaw image is built on
+— `docker.io/library/node:24-bookworm-slim`, recorded in that image's own
+`org.opencontainers.image.base.name`/`.base.digest` labels — plus the Debian
+packages `Dockerfile.openclaw` installs. That base contributes **Node.js
+24.16.0** with npm, corepack, yarn and pnpm, installed from upstream tarballs
+into `/usr/local` rather than from apt, so they appear in neither Python
+lockfile, neither npm lockfile, nor `dpkg`; their required notices (Node.js MIT
+plus the bundled OpenSSL, ICU, V8, c-ares, llhttp and zlib notices) ship only as
+`/usr/local/LICENSE` inside the built image, and a redistributor must preserve
+that file. The Debian layer beneath it is **not** permissive-only: it
 contains substantial GPL/LGPL material — `poppler-utils` (used for PDF
 extraction) is GPL-2/GPL-3, and the majority of the shipped Debian packages
 declare a GPL, LGPL, or MPL licence. Redistributing the built image therefore

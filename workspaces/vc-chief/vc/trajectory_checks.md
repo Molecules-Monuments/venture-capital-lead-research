@@ -8,7 +8,7 @@ Compare only the same entity, metric definition, unit/currency, period length, c
 
 ## Direction
 
-- one point: `unknown_baseline`;
+- one point: `unknown`;
 - at least two non-overlapping comparable points: `up`, `down`, or `flat`;
 - at least three comparable points with material reversals: `volatile`;
 - incompatible or unparseable points: `not_comparable`.

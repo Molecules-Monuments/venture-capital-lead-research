@@ -45,7 +45,30 @@ RUN npm ci --prefix /opt/openclaw-runtime \
 # location.
   && mv /opt/openclaw-runtime/node_modules/@openclaw/slack /app/dist/extensions/slack \
   && mv /opt/openclaw-runtime/node_modules/@openclaw/msteams /app/dist/extensions/msteams \
-  && mv /opt/openclaw-runtime/node_modules/@openclaw/discord /app/dist/extensions/discord
+  && mv /opt/openclaw-runtime/node_modules/@openclaw/discord /app/dist/extensions/discord \
+# These three npm builds import the host runtime by bare specifier
+# ("openclaw/plugin-sdk/..."). A *bundled* plugin gets that specifier for free
+# by Node self-reference from /app/package.json (name "openclaw", with a
+# ./plugin-sdk/* exports map); a moved npm package cannot, because its nearest
+# package.json is @openclaw/<name>, and `openclaw` is an optional peer that
+# --omit=peer above never installs. The gateway's plugin loader installs its
+# own alias resolver, so the providers themselves run either way — but the CLI
+# paths that lazily import a plugin's doctor / security-audit chunk do not.
+# Measured on this image before the symlink: `openclaw doctor` and
+# `openclaw security audit` both exit 1 with
+# "ERR_MODULE_NOT_FOUND: Cannot find package 'openclaw' imported from
+# /app/dist/extensions/discord/dist/doctor-*.js" whenever PRIMARY_CHANNEL is
+# discord — a command docs/RUNBOOK.md §5.1 and docs/CHANNELS.md step 7 both
+# mandate for commissioning. Slack carries the same latent defect in its
+# security-audit chunk. One symlink per extension restores the resolution the
+# bundled layout would have given them.
+  && for id in slack msteams discord; do \
+       mkdir -p "/app/dist/extensions/$id/node_modules" \
+       && ln -sfn /app "/app/dist/extensions/$id/node_modules/openclaw" \
+       && ( cd "/app/dist/extensions/$id/dist" \
+            && node --input-type=module \
+                 -e "await import('openclaw/plugin-sdk/runtime-doctor')" ); \
+     done
 
 # Exact Debian point-release pins are a deliberate part of the reviewed release
 # contract (a byte-reproducible runtime). The bookworm main pool keeps only the

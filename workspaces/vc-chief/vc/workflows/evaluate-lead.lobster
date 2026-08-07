@@ -67,13 +67,16 @@ steps:
   # surfaces them once the run is paused (docs/WORKFLOWS.md).
   #
   # It is the one place this package composes references inside a larger string
-  # rather than using a whole-value reference. An unresolved reference in a
-  # string collapses to an empty string instead of throwing, so that form is
-  # normally forbidden for identifiers. It is safe here and only here: every
-  # field comes from `workflow_running`, a transition step that cannot succeed
-  # without returning them, so the run never reaches this gate with any of them
-  # missing. Each referenced path is also on the validator's reviewed-path
-  # allowlist.
+  # rather than using a whole-value reference. No reference surface in the
+  # pinned runtime fails closed on a missing field — a known step with a
+  # missing path resolves to nothing on every surface — but the composed form
+  # is worse still, because the empty value disappears inside otherwise valid
+  # JSON rather than arriving as an empty argument the helper can reject. That
+  # is why the form is normally forbidden for identifiers. It is safe here and
+  # only here: every field comes from `workflow_running`, a transition step
+  # that cannot succeed without returning them, so the run never reaches this
+  # gate with any of them missing. Each referenced path is also on the
+  # validator's reviewed-path allowlist.
   - id: persist_approval
     approval:
       prompt: Persist this evaluation and its new compiled-truth snapshot?

@@ -26,7 +26,7 @@ Workspace memory is operational convenience only. It may point to Postgres IDs b
 
 ## Installation and migration integrity
 
-`openclaw_owner` owns schema objects. `openclaw_runtime` is created by `000_roles.sh`; its grants begin in `002_runtime_grants.sql` and are extended by the later migrations that add tables, sequences, or functions it must reach (`004`, `005`, `009`, `010`, `012`, `013`, `014`, `015`, `018`). It receives no grant outside that reviewed migration series.
+`openclaw_owner` owns schema objects. `openclaw_runtime` is created by `000_roles.sh`; its grants begin in `002_runtime_grants.sql` and are extended by the later migrations that add tables, sequences, or functions it must reach (`004`, `005`, `006`, `009`, `010`, `012`, `013`, `014`, `015`, `016`, `017`, `018`). `017` also narrows the surface, revoking `UPDATE` on `contradiction_facts` and `trajectory_points`. It receives no grant outside that reviewed migration series.
 
 Migration files are immutable after release. The installer computes each file's lowercase SHA-256 outside Postgres, applies it in a transaction, and then calls:
 
@@ -321,7 +321,9 @@ README but not previously named here. They complete the 42-table inventory:
 
 `memo_citations`, like the other history tables, is append-only. `signal_sources`
 is confidentiality-gated: model lanes are capped at the `internal` ceiling and
-cannot re-enable, reclassify, or re-own an entry an operator has disabled.
+cannot reclassify or re-own an entry, nor re-enable a disabled one — the guard
+is on the disabled state, not on who set it, so a model lane cannot undo even
+its own `source-unwatch`.
 
 ## Audit and retention
 

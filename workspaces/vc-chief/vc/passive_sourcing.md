@@ -39,8 +39,12 @@ Passive sourcing monitors configured sources and external signals without direct
 The watchlist is a database registry, not just this document. Manage and run it
 through the fixed workflows via `data-steward`:
 
-- `source-watch` — register or re-enable one watched source (name, URL, class,
-  cadence). This is how "monitor this website" is applied.
+- `source-watch` — register one watched source (name, URL, class, cadence), or
+  refresh the descriptive fields of an already-enabled one. This is how
+  "monitor this website" is applied. This lane cannot re-enable a **disabled**
+  entry — not even one it disabled itself through `source-unwatch`; that fails
+  with `source_watch_disabled` and must be escalated to the operator lane
+  (`vcops-operator source-watch`).
 - `source-unwatch` — disable a watched source without deleting its history.
 - `source-scan` — atomically claim the enabled sources **due this cycle** (by
   cadence) and return the worklist. The scan lane never browses; for each due

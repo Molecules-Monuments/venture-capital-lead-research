@@ -75,7 +75,8 @@ Taking the five preserved limitations in order:
    delivery, and any production-host result remain unclaimed.
 4. **Closed.** The 100k-company/1m-fact reference gate was built and executed:
    `scripts/run_retrieval_scale.py`, recall = precision@1 = 1.0 with reference
-   p95 under 250 ms (`evals/V3_EVAL_RESULTS.md`, gates D and I).
+   p95 under 250 ms (`evals/V3_EVAL_RESULTS.md`, gate D — that p95 is Gate D's
+   frozen threshold, not Gate I's).
 5. **Closed.** The Version 3 exact-image harness was rebuilt as
    `scripts/run_g6_image.py`, which carries no `memory-core` expectation
    (`docs/V3_RELEASE_EVIDENCE.md`).

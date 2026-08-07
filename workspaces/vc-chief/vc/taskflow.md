@@ -34,8 +34,12 @@ Agents may ask the data steward to execute only the exact approved runner:
 `vcrun` maps the selector to a reviewed file and rejects unknown selectors,
 `--file`, paths, inline pipelines, arbitrary commands, passthrough arguments,
 cwd/env overrides, timeout/output overrides, NUL characters, JSON larger than
-32 KiB, non-string values, missing required keys, and extra keys. The runner
-owns the time and output limits.
+32 KiB, any single argument value longer than 16 384 characters, non-string
+values, missing required keys, and extra keys. The runner owns the time and
+output limits. The per-value ceiling binds before the payload ceiling and is
+the one that a long `memo_markdown`, `evidence_json` or `citations_json` hits
+first: the refusal is `<field> exceeds 16384 characters`, raised before any
+step runs, so nothing is written and the same idempotency key stays usable.
 
 Only an authenticated operator environment may use the separate control
 binary, which is not present in any agent exec allowlist:

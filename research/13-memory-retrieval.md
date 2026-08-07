@@ -177,9 +177,10 @@ acceptance.
 >   workflows order `workflow_request_claim` → `company_resolve_create` →
 >   `create_lead` with no `memory-lookup` call — the exact bypass this section
 >   identified as undetectable by a static gate is now the assertion.
-> - The precommitted thresholds below were executed as gates D and I on the
+> - The precommitted thresholds below were executed as gate D on the
 >   declared 100k-company/1m-fact reference dataset via
->   `scripts/run_retrieval_scale.py`.
+>   `scripts/run_retrieval_scale.py`. (The p95 ceiling is Gate D's; Gate I
+>   covers research budgets, whose adherence half stays BLOCKED.)
 >
 > The design half of this document — staged entity resolution and the disabling
 > of Markdown recall as a factual store — shipped in

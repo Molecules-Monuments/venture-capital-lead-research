@@ -1,9 +1,11 @@
 name: vc-source-watch-v3
 # SPDX-License-Identifier: 0BSD
 
-# Register or re-enable one watched signal source in the surveillance watchlist
-# (the "monitor this website" path). Curates configuration only; it starts no
-# research and creates no lead.
+# Register one watched signal source in the surveillance watchlist, or refresh
+# an already-enabled one (the "monitor this website" path). This lane cannot
+# re-enable a disabled entry; that is operator-lane only (vcops-operator
+# source-watch). Curates configuration only; it starts no research and creates
+# no lead.
 args:
   idempotency_key:
     default: ""

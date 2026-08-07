@@ -184,7 +184,7 @@ Operational rules:
   `stdin: $prior.json.workflow_run.run_id` for structured transfer and let the
   receiving helper validate its schema. A genuinely new nested path has to be
   added to `SAFE_STEP_PATHS` in the same reviewed change.
-- A missing strict step reference throws. By contrast, an unresolved reference inside a larger string can become an empty string; do not use inline string templates for required identifiers.
+- **No reference surface fails closed on a missing field, so never rely on one to.** Measured on the pinned runtime: an `env:` value — the surface every shipped workflow uses to carry identifiers — is resolved non-strictly, so a *known* step with a missing path becomes an empty string and an *unknown* step id is left as literal text; in both cases the step still runs and the workflow returns `status: ok`. Only `condition:`, `for_each:`, and a `stdin:` that is *entirely* one reference resolve strictly, and even there the throw is for an unknown step id, not a missing path. What actually makes this fail closed is two other layers: `scripts/validate_workflows.py` rejects an unknown or out-of-order step id and any path outside `SAFE_STEP_PATHS` at release time, so the throwing case cannot ship; and the receiving `vcops` command rejects an empty or malformed required identifier at runtime. Still prefer a whole-value reference to an inline string template — a composed template hides the empty value inside otherwise valid JSON, where the helper's own validation is the only thing left to catch it.
 - A shell step attempts to parse its stdout as JSON. Emit one bounded JSON value on stdout and diagnostics on stderr.
 - Preserve evidence identifiers and business idempotency keys in every transition. Lobster retry does not create business idempotency automatically.
 
@@ -324,7 +324,7 @@ G5 passes only when every row has retained machine-readable evidence from the pa
 | Workflow inventory | Every accepted ID resolves to one immutable reviewed file; release checksums match; static validation proves steps invoke only the exact immutable `vcops` path and approved authoring subset |
 | State persistence | `LOBSTER_STATE_DIR` is writable, on a local durable volume, and included in backup/restore |
 | Argument injection | quotes, `$`, backticks, newlines, command substitution, normalized-name collision, and unknown keys cannot change the executed command |
-| Step references | fully qualified `$step.json.<field>` refs (and `$step.approved`) transfer schema-valid JSON; bare `$step.json`/`$step.stdout` and unlisted paths are rejected by `validate_workflows.py`; missing required refs fail closed |
+| Step references | fully qualified `$step.json.<field>` refs (and `$step.approved`) transfer schema-valid JSON; bare `$step.json`/`$step.stdout`, unknown/out-of-order step ids and unlisted paths are rejected by `validate_workflows.py`; a missing required ref fails closed at the receiving `vcops` command, not in Lobster, which resolves it to an empty value |
 | Timeout | a hung command is terminated within the configured bound and records a failed business/operational outcome |
 | Output limit | an oversized workflow-file command is stopped or rejected within a measured memory/output bound; the gateway remains ready |
 | Internal review pause | run returns `needs_approval`; the Lobster pause is labelled internal control-only; no evaluation persistence occurs before the authenticated operator decision |

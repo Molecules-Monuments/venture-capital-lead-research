@@ -32,7 +32,7 @@ Reject any change intended to bypass approval, expand data access, weaken sandbo
 
 Missing recurrence evidence is permitted only for an explicit operator request and must be identified as such. Missing fixtures, current contract, security review, compatibility plan, rollback, or operator ownership is blocking. Preserve failed and neutral shadow results; do not selectively report favorable cases.
 
-Only `skillify` may use the chief's bounded Skill Workshop proposal path. The running deployment blocks Workshop lifecycle actions, cannot apply the proposal, and never activates that pending artifact. Autonomous Self-learning and transcript review remain disabled.
+Only `skillify` may use the chief's bounded Skill Workshop proposal path. The running deployment blocks Workshop lifecycle actions, cannot apply the proposal, and never activates that pending artifact. Autonomous Workshop capture and transcript review remain disabled.
 
 ## Output
 
