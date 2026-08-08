@@ -2,7 +2,7 @@
 
 Evaluation date: 2026-07-23 (final-audit session: all gates re-executed after
 the security/correctness remediation; supersedes the 2026-07-22 results)
-Last full re-execution: **2026-08-07** — every count and threshold below is
+Last full re-execution: **2026-08-08** — every count and threshold below is
 that run's measurement against this tree, not a carried-forward figure. The one
 exception is the retrieval p95, which is a property of the measuring host and is
 therefore reported against its threshold rather than as a fixed number.
@@ -24,7 +24,7 @@ stays BLOCKED until a production-grade model is commissioned.
 | A release completeness | PASS | Complete inventory, manifest/pristine verification (every declared file verified, 0 errors), pinned upstream provenance, Version 3.0.0 check | External distribution signature remains an operator trust input. The recorded image digest is regenerated at build. |
 | B delegation contract | PASS (structural) · live routing BLOCKED | Closed delegation/return schemas, chief contract, orchestration and fixture tests | An agent turn was driven against a real (sub-1B, local) model, so the delegation *mechanism* carries end-to-end; whether routing selects the right specialist is judgement and was never run against a production-grade model. |
 | C specialist output quality | **BLOCKED** | Twelve closed schemas and 19 contract tests validate output *shape* only | Gate C's core requirement — ≥12 semantic cases per specialist and Cohen's κ ≥ 0.80 — is entirely live-provider and was not executed. Not a pass. |
-| D retrieval/memory | PASS (with a caveat) | 7 retrieval contracts; disposable-DB G4 (88/88); verified per-principal preferences and forget cutoffs; 100k/1m benchmark re-run 2026-08-07 (160/160 cases) | Reference p95 remains below 250 ms. The benchmark seeds confusable clusters (each case a target plus four trigram-close distractors, mean 5 candidates) and scores precision@1 = recall = 1.0 — the resolver ranks each target above its look-alikes, so this now establishes ranking discrimination (former CR-013 item closed). Target-host capacity is a commissioning exercise. |
+| D retrieval/memory | PASS (with a caveat) | 7 retrieval contracts; disposable-DB G4 (88/88); verified per-principal preferences and forget cutoffs; 100k/1m benchmark re-run 2026-08-07 (160/160 cases) | Reference p95 remains below 250 ms. The benchmark seeds confusable clusters (each case a target plus four trigram-close distractors, mean 5 candidates) and scores precision@1 = recall = 1.0 — the resolver ranks each target above its look-alikes, so this now establishes ranking discrimination (former CR-013 item closed). Second caveat: gate D's committed "alias recall on adjudicated fixtures ≥ 95%" threshold is **not computed by any gate** — the scale gate asserts only the four thresholds above, and G4 proves alias *resolution* on specific adjudicated cases without expressing a rate, so that one number is unmeasured rather than met. Target-host capacity is a commissioning exercise. |
 | E evidence/decision | PASS (structural) · memo usefulness BLOCKED | Typed missing/negative scoring, provenance contracts, database-derived readiness, claim-evidence memo contract, the autonomous claim→verified-fact promotion predicate, and the new cross-lead document-provenance and disguised-URI independence guards (all execution-tested in G4) | Whether the model's memo prose is decision-useful and its citations entail their sources was never measured against a production-grade model. |
 | F deterministic data/workflow | PASS | G4 88/88 across seven suites; G5 48/48; G7 28/28; migrations 001–018 twice; **eighteen** workflows execution-verified end-to-end across three executing G4 suites (`test_workflow_execution.py` + `test_source_surveillance.py` + `test_research_intelligence.py`), where `test_workflow_execution.py` drives a test step-interpreter over the vcops command path (not the real Lobster engine); the real-engine execution subset and the real deployment path are verified by the G8 gate (re-run 2026-08-07, 5/5 checks); recovery authenticity and archive attacks; the stage-first restore contract | Live destructive recovery on a target is a commissioning exercise. |
 | G customization safety | PASS | Fail-closed sample, exact `.env` binding, artifact hashes, review/change controls; the fact-promotion strictness knob is reviewed configuration; the renderer refuses lifecycle renders from a non-package env | Jurisdiction/fund choices are explicitly excluded deployment data. |
@@ -47,12 +47,13 @@ No missing environmental evidence is presented as a passing result.
 ## Final deterministic summary
 
 Originally executed 2026-07-23; **the complete matrix was last re-executed on
-2026-08-07** against this tree, and against an image built from it with
-`docker build --no-cache --pull` on 2026-08-06 (nothing image-relevant has
-changed since; only documentation has). Every count below is that run's
-measurement, not a carried-forward one.
+2026-08-08** against this tree, and against the derived image rebuilt from it
+with `docker build --no-cache --pull` on 2026-08-08, after that day's edits to
+five image-baked `workspaces/` files — so the image is derived from exactly this
+tree. Every count below is that run's measurement, not a
+carried-forward one.
 
-- 234 offline unittest cases pass, 0 fail, 0 skip; 25/25 offline checks pass.
+- 235 offline unittest cases pass, 0 fail, 0 skip; 25/25 offline checks pass.
 - Disposable PostgreSQL G4 passes **88/88** across seven suites with migrations
   001–018 applied and registered twice, including step-interpreter execution
   of all eighteen real `.lobster` workflows across the three executing G4 suites

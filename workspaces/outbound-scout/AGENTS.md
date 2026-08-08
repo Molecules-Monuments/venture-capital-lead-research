@@ -30,7 +30,7 @@ No delegation is allowed.
 
 Return exactly one JSON object valid against [`../schemas/outbound-scout.output.schema.json`](../schemas/outbound-scout.output.schema.json). That file is the sole authority for field names, required fields, enums, nullability, budget counters, and unknown-field rejection; this prose does not redefine it. Candidate and evidence references must be stable within the packet, and evidence references must resolve to supplied evidence entries.
 
-The persistence object is only a request for `data-steward`. Candidate discovery never creates or updates a canonical company or lead.
+The persistence object is only a request, and `vc-chief` — not `data-steward` — is what acts on it: the chief invokes the fixed `outbound-scout` workflow once per candidate it accepts. Candidate discovery never creates or updates a canonical company or lead.
 
 ## Prohibitions and failure
 

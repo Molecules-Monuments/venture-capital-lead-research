@@ -185,9 +185,19 @@ acceptance.
 >   p95 ceiling is Gate D's; Gate I covers research budgets, whose adherence
 >   half stays BLOCKED.)
 > - The remaining limbs proposed below were **not adopted as executable
->   thresholds** and nothing in the package measures them: MRR, alias recall,
->   fuzzy duplicate recall@5, and a separate 100 ms ceiling on *exact* p95. The
->   gate reports an exact p95 but asserts no bound on it. Treat this section's
+>   thresholds** and nothing in the package measures them: MRR, fuzzy duplicate
+>   recall@5, and a separate 100 ms ceiling on *exact* p95. The
+>   gate reports an exact p95 but asserts no bound on it.
+> - **Alias recall is the exception, and it sits in between.** It *was* adopted:
+>   `01_PRECOMMITTED_EVALS.md` gate D commits "Alias recall on adjudicated
+>   fixtures: at least 95%". But no gate computes that percentage. `run_retrieval_scale.py`
+>   seeds aliases and queries them, yet asserts only the four thresholds above;
+>   G4's `test_helper_cli_database.py` proves alias *resolution* behaves
+>   correctly on specific adjudicated cases (a legacy upper-cased alias resolves
+>   to the existing company, a literal `%_` is not treated as a pattern) without
+>   ever expressing a recall rate. So the threshold is committed and the
+>   mechanism is execution-tested, while the 95% figure itself is unmeasured —
+>   `evals/V3_EVAL_RESULTS.md` gate D records that as its second caveat. Treat this section's
 >   threshold list as the Version 3 design proposal it was; the frozen authority
 >   for what the release committed to is `01_PRECOMMITTED_EVALS.md` gate D.
 >

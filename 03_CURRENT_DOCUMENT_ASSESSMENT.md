@@ -58,7 +58,7 @@ product policy.
 
 ### Closed-since note
 
-Last updated 2026-08-06. This assessment is frozen at 2026-07-20: everything
+Last updated 2026-08-08. This assessment is frozen at 2026-07-20: everything
 above keeps its original text for provenance, and only this note is maintained.
 Taking the five preserved limitations in order:
 

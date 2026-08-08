@@ -272,6 +272,38 @@ class RuntimeProviderTests(unittest.TestCase):
                         f"{channel} must load as a bundled plugin, not from {path}",
                     )
 
+    def test_rendered_config_disables_the_harness_heartbeat(self) -> None:
+        # The harness runs a periodic main-session agent turn independently of
+        # cron, and it is ON unless explicitly switched off. In the pinned
+        # release isHeartbeatEnabledForAgent() falls through to
+        # "resolvedAgentId === resolveDefaultAgentId(cfg)" when no heartbeat
+        # config exists, so the default agent gets one; resolveHeartbeatIntervalMs
+        # then defaults to "30m" and the module-level heartbeatsEnabled is true.
+        # Measured on a live deployment: without this key the gateway logs
+        # "[heartbeat] started" and vc-chief runs an autonomous turn every 30
+        # minutes against the configured model, delivered nowhere (target
+        # defaults to "none"). With it, the same gateway logs
+        # "[heartbeat] disabled". Dropping the key would silently re-enable
+        # autonomous execution that README, RUNBOOK and PRODUCTION_READINESS all
+        # state this release does not perform, so it must never come back.
+        for channel in ("none", "telegram"):
+            with self.subTest(channel=channel):
+                body = replace_line(configured_example(), "PRIMARY_CHANNEL", channel)
+                if channel == "telegram":
+                    for key, value in {
+                        "TELEGRAM_BOT_TOKEN": "123456789:AAHrendertestinerttokenvalue00000000",
+                        "TELEGRAM_ALLOWED_USER_IDS": "123456789",
+                        "TELEGRAM_ALLOWED_GROUP_ID": "-1001234567890",
+                    }.items():
+                        body = replace_line(body, key, value)
+                heartbeat = self.render(body)["agents"]["defaults"]["heartbeat"]
+                self.assertEqual(
+                    heartbeat["every"], "0m",
+                    "agents.defaults.heartbeat.every must stay '0m'; any other "
+                    "value (or removing the key) restores the harness default of "
+                    "an autonomous vc-chief turn every 30 minutes",
+                )
+
     def test_control_ui_origins_follow_the_configured_gateway_port(self) -> None:
         body = configured_example().replace(
             "OPENCLAW_GATEWAY_PORT=18789", "OPENCLAW_GATEWAY_PORT=28789"

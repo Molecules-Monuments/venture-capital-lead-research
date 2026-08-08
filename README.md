@@ -488,8 +488,11 @@ floor, a 65699-character message produced **CLI exit code 0** and a top-level
 code or that field sees a completed turn.
 
 The turn *is* classified, two levels down, at `.result.meta.error.kind` and
-`.result.meta.livenessState`. Read those instead of the exit code — `jq` is
-already in the derived image:
+`.result.meta.livenessState`. Read those instead of the exit code. The filter
+below runs on the **host**, not in the container, so it needs a host `jq`; the
+`jq` inside the derived image is not on this pipeline. `jq` is not otherwise a
+prerequisite of this package, so the host `python3` that `docs/RUNBOOK.md` §2
+does require is given as the equivalent:
 
 ```sh
 docker compose --profile tools --env-file .env run --rm openclaw-cli \
@@ -497,6 +500,12 @@ docker compose --profile tools --env-file .env run --rm openclaw-cli \
   | jq -r '.result.meta.error.kind // "none", .result.meta.livenessState'
 # on an overflow this prints:  context_overflow
 #                              blocked
+
+# same thing without jq:
+docker compose --profile tools --env-file .env run --rm openclaw-cli \
+  agent --agent vc-chief --message "<your message>" --json \
+  | python3 -c 'import json,sys; m=json.load(sys.stdin)["result"]["meta"]; \
+print(m.get("error",{}).get("kind","none")); print(m.get("livenessState"))'
 ```
 
 `error.kind` is absent on a turn that completed, which is why the `// "none"`

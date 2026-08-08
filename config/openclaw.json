@@ -220,6 +220,9 @@
     "defaults": {
       "userTimezone": "Europe/Berlin",
       "skipBootstrap": true,
+      "heartbeat": {
+        "every": "0m"
+      },
       "sandbox": {
         "mode": "off",
         "workspaceAccess": "none"
