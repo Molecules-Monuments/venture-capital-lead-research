@@ -2,8 +2,11 @@
 
 Heartbeat work is observational and advisory. It must not enable cron, restart services, repair records, deliver notifications, or alter external systems.
 
-Reachability (Version 3.0): this review runs only when an operator triggers it
-(cron ships disabled), and the agent read surface has no run/lead/approval/
+Reachability (Version 3.0): this review runs only when an operator triggers it.
+Both automatic paths that could otherwise run it ship disabled: cron
+(`cron.enabled: false`) and the harness's own periodic heartbeat turn
+(`agents.defaults.heartbeat.every: "0m"`, which the gateway reports at startup
+as `[heartbeat] disabled`). The agent read surface also has no run/lead/approval/
 notification LIST commands — steps 2, 3, 4, and 5 and the weekly outbox item are
 therefore performed over operator-supplied exports attached to the heartbeat
 request. Steps 2, 4 and 5 export from Postgres. Step 3 is the one that is not a
@@ -16,10 +19,10 @@ silently or guessing from memory.
 
 ## Each run
 
-1. Confirm gateway readiness and Postgres reachability through the approved deterministic health workflow.
+1. Confirm Postgres reachability and a healthy fixed-runner boundary through the approved deterministic health workflow. That workflow carries no gateway probe — `/healthz` and `/readyz` are operator-side checks with no agent tool — so treat gateway readiness as observed only if the operator supplied it, and otherwise report it `not_observable` rather than inferring it from this run having started.
 2. Review Task Flow runs in `queued`, `running`, `waiting`, `blocked`, `failed`, or `lost`; flag stale revisions and sticky cancellations.
 3. Review failed or resumable Lobster runs without replaying side-effecting steps.
-4. Review leads and workflow runs marked `needs_human_review`. The mark lives on `evaluations.recommendation_band`, which is the only place that value exists — `evaluations` is also the only table keying both a lead and a workflow run, so one filter covers both halves of this step. Do not look for it on `leads.status` or `workflow_runs.status`; neither CHECK admits it.
+4. Review leads and workflow runs marked `needs_human_review`. The mark lives on `evaluations.recommendation_band`, which is the only place that value exists, and that row carries both `lead_id` and `workflow_run_id` — so one filter over `evaluations` covers both halves of this step. Do not look for it on `leads.status` or `workflow_runs.status`; neither CHECK admits it (`leads.status` admits the different value `needs_review`, which no shipped writer produces).
 5. Review pending, expired, consumed, or scope-mismatched approvals and held notifications.
 6. Return observed timestamps, identifiers, and the last confirmed state. Memory is not health evidence.
 

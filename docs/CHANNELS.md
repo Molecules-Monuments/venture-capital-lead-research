@@ -174,11 +174,25 @@ correct.
    - `openclaw doctor` adds a `Doctor warnings` block about `vc-chief` lacking
      the `message` tool on *any* selected channel;
    - `openclaw security audit` adds `security.trust_model.multi_user_heuristic`
-     on `slack`, `discord`, and `telegram` — but not on `msteams` — taking the
-     totals from `0 critical · 2 warn · 1 info` to `0 critical · 3 warn · 1 info`.
+     on `slack`, `discord`, and `telegram` — but not on `msteams` — which adds
+     **one warning** to whichever baseline applies.
 
    Both are expected, both restate reviewed design decisions, and **none of
    their suggested remedies may be applied.**
+
+   Compare against the totals for the form you actually ran, because the two
+   forms of the audit do not report the same count. `gateway.probe_failed` is a
+   **`--deep`-only** check, so the plain `security audit` above reports one
+   warning fewer than the `--deep` baselines RUNBOOK §5.1 tabulates. Measured on
+   this release, on a live deployment and again inside the exact built image:
+
+   | Command | `none`, `msteams` | `slack`, `discord`, `telegram` |
+   | --- | --- | --- |
+   | `openclaw security audit` (this step) | 0 critical · **1** warn · 1 info | 0 critical · **2** warn · 1 info |
+   | `openclaw security audit --deep` (RUNBOOK §5.1) | 0 critical · **2** warn · 1 info | 0 critical · **3** warn · 1 info |
+
+   An Ollama-mode or other small-model deployment adds `models.small_params` as
+   a CRITICAL to whichever cell applies; RUNBOOK §5.1 carries its disposition.
 8. Test each applicable matrix row below. Retain timestamps, config/image
    digests, redacted stable IDs, provider event IDs, database counts, and logs.
 9. Resolve every warning. `FAIL`, `NOT RUN`, missing evidence, or an unexplained

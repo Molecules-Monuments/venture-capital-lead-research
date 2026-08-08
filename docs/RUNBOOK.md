@@ -416,14 +416,29 @@ The restore drill in §5.4 is the one item no gate covers.
     group scope is expressed under `channels.msteams.teams`, which the upstream
     heuristic does not scan.
 
+  - `summary.attack_surface` (**INFO**) — the audit's own closing summary, not a
+    fault. It is emitted on every profile and is the `1 info` in every baseline
+    below, so it is listed here to keep the expected set complete: it reads
+    `groups: open=0, allowlist=<0 on none, 1 on a channel profile>`, then
+    `tools.elevated`, `hooks.webhooks`, `hooks.internal` and `browser control`
+    all `disabled`, and restates the personal-assistant trust model. Nothing to
+    apply or disposition beyond confirming those five values.
+
   Those per-profile differences change the totals, so compare against the right
-  baseline. Measured on this release with an OpenAI-mode configuration, by
+  baseline — **and against the right form of the command.** `gateway.probe_failed`
+  is a `--deep`-only check, so plain `openclaw security audit` reports exactly one
+  warning fewer than the `--deep` form this section prescribes. Measured on this
+  release with an OpenAI-mode configuration, on a live deployment and again by
   rendering each profile and running the audit inside the exact built image:
-  `PRIMARY_CHANNEL=none` and `msteams` report **0 critical · 2 warn · 1 info**;
-  `slack`, `discord`, and `telegram` report **0 critical · 3 warn · 1 info**,
-  the extra warning being the one immediately above. An Ollama-mode or other
-  small-model deployment adds `models.small_params` as a CRITICAL to whichever
-  of those baselines applies.
+
+  | Command | `none`, `msteams` | `slack`, `discord`, `telegram` |
+  | --- | --- | --- |
+  | `openclaw security audit --deep` (this section) | 0 critical · 2 warn · 1 info | 0 critical · 3 warn · 1 info |
+  | `openclaw security audit` (`docs/CHANNELS.md` step 7) | 0 critical · 1 warn · 1 info | 0 critical · 2 warn · 1 info |
+
+  In each row the extra warning on the three channel profiles is the
+  multi-user heuristic immediately above. An Ollama-mode or other small-model
+  deployment adds `models.small_params` as a CRITICAL to whichever cell applies.
 
   You should **not** see `gateway.auth_no_rate_limit`. `gateway.bind` is `lan`
   because Docker forwards a published port to the container's network
@@ -499,6 +514,52 @@ The restore drill in §5.4 is the one item no gate covers.
     channel identities, and `config/openclaw.json` is a hash-pinned reviewed
     artifact, so the edit costs a re-pin for a control this deployment does not
     use.
+  - A `Security` block whose first entries read `… is broader than the host exec
+    policy` — **twelve of them**: one global `tools.exec`, then one per agent for
+    the eleven agents other than `data-steward` (which appears in the same block
+    under the separate filesystem/exec entry instead). Each ends `Effective host
+    exec stays security="deny" ask="off" because the stricter side wins`. Expected,
+    and its `Fix` ("align both files or enable Web UI, terminal UI, or chat exec
+    approvals") **must not be applied.** The two files are meant to disagree in
+    exactly this direction: `config/openclaw.json` declares
+    `tools.exec.mode="allowlist"`, while the image-baked
+    `config/exec-approvals.json` seeds `defaults.security="deny"` with the two
+    reviewed `data-steward` launcher paths as its only entries. The harness
+    resolves the pair by taking the stricter side, which is the reviewed
+    boundary. Enabling any interactive approval surface would create the chat
+    exec-approval path the threat model withholds. The same block then carries
+    the `data-steward` filesystem/exec entry and the `Gateway bound to "lan"`
+    warning, both dispositioned above.
+  - A `Startup optimization` block suggesting `NODE_COMPILE_CACHE` and
+    `OPENCLAW_NO_RESPAWN`. Expected on every profile; it is host-tuning advice
+    for low-power machines, not a finding about this configuration. Neither
+    variable is part of the reviewed environment contract, and `check_env.py`
+    rejects both in `.env` as unknown keys.
+  - A `Plugin registry` block — `Persisted plugin registry is missing or stale.`
+    Expected on every profile, and it does **not** clear: its only remedy is
+    `openclaw doctor --fix`, which this section forbids because the runtime
+    config is mounted read-only. The gateway builds its effective plugin set
+    from that config on every start — `openclaw doctor`'s own `Plugins` block
+    reports `Errors: 0` and the gateway log lists the loaded plugins by name —
+    so the persisted cache in `state/openclaw.sqlite` is an optimization this
+    deployment does without.
+  - A `State integrity` block. On every profile it reports `OAuth dir not
+    present (~/.openclaw/credentials). Skipping create because no
+    WhatsApp/pairing channel config is active` — expected, no pairing channel is
+    configured. On a deployment where **no agent has run yet** it additionally
+    reports `CRITICAL: Session store dir missing
+    (~/.openclaw/agents/<agent>/sessions)`. That one is a first-run artifact, not
+    a fault: the store is created by the first agent session. Measured on this
+    release — one `openclaw agent --agent vc-chief` run creates
+    `sessions/sessions.json` and the CRITICAL is gone from the next `doctor`.
+    Run one agent turn before recording this row, and treat the CRITICAL as
+    resolved only once you have seen it clear.
+  - Informational `Skills status`, `Plugins`, and `Memory search` blocks. Not
+    findings: they report counts (eligible/missing/incompatible skills, loaded
+    and disabled plugins with `Errors: 0`) and confirm `Memory search is
+    explicitly disabled (enabled: false)`, which is the reviewed design — see
+    "Memory and personalization" in `README.md`. The counts vary with host
+    platform, so record yours rather than matching a number from here.
 
   In the gateway log at every start and every config reload:
 
@@ -905,12 +966,28 @@ record. Autonomous transcript review remains disabled.
   stopped the gateway and CLI, and both database passwords in `.env` may now
   differ from what Postgres holds. Do not re-run the script blindly. Confirm
   Postgres is up (`compose ps`), then check which credentials actually work by
-  connecting as each role from the Postgres container; if `.env` is ahead of the
-  database, the owner password in `.env` is the one to correct. Once a working
-  owner credential is in `.env`, re-run the script — it is idempotent. If
-  neither credential works, restore from the last verified recovery point
-  (§5.4); the database is the authoritative state and the gateway is stateless
-  against it.
+  connecting as each role from the Postgres container **over TCP**:
+
+  ```sh
+  compose exec -e PGPASSWORD="<the password from .env>" postgres \
+    psql -h 127.0.0.1 -U openclaw_owner -d openclaw -tAc 'select 1'
+  ```
+
+  The `-h 127.0.0.1` is load-bearing and this test is worthless without it. The
+  pinned image's generated `pg_hba.conf` begins `local all all trust`, so a
+  connection over the container's Unix socket — which is what plain
+  `psql -U openclaw_owner` uses — succeeds with **any** password, including a
+  wrong one. Only the `host` rules carry `scram-sha-256`
+  (`POSTGRES_HOST_AUTH_METHOD` and `--auth-host` in `docker-compose.yml` set
+  them), so TCP is the only path that actually tests the credential. A correct
+  password returns `1`; a wrong one fails with
+  `FATAL: password authentication failed for user "openclaw_owner"`.
+
+  If `.env` is ahead of the database, the owner password in `.env` is the one to
+  correct. Once a working owner credential is in `.env`, re-run the script — it
+  is idempotent. Only if neither credential authenticates over TCP should you
+  restore from the last verified recovery point (§5.4); the database is the
+  authoritative state and the gateway is stateless against it.
 - **Database/auth anomaly:** stop gateway and CLI, preserve evidence, run the
   locked role reconciler, and do not restore traffic until both positive and
   negative authentication proofs pass.
@@ -1018,7 +1095,21 @@ record. Autonomous transcript review remains disabled.
   deployment-commissioning responsibilities excluded from the package
   readiness decision.
 - Cron and autonomous production execution are not enabled by this release's
-  fail-closed default. Autonomous source surveillance is available as a
+  fail-closed default. **There are two separate mechanisms here and disabling
+  one does not disable the other.** Besides `cron.enabled: false`,
+  `config/openclaw.json` sets `agents.defaults.heartbeat.every: "0m"`, which
+  switches off the harness's own periodic *heartbeat* — a main-session agent
+  turn that upstream runs **every 30 minutes by default** for the default agent
+  whenever no heartbeat key is present (the pinned release resolves an absent
+  key to enabled-at-`30m`, not to off). Without that key a shipped deployment
+  would run an autonomous `vc-chief` turn against the configured model twice an
+  hour, delivered nowhere, while every document here said it performed no
+  autonomous execution. Confirm it on your deployment: the gateway logs
+  `[heartbeat] disabled` at startup — `[heartbeat] started` means the key was
+  lost and the render is stale. `tests/v3/test_runtime_provider_and_context.py`
+  asserts the rendered value, and `workspaces/vc-chief/HEARTBEAT.md` is the
+  operator-triggered checklist that mechanism would otherwise have run
+  unattended. Autonomous source surveillance is available as a
   deliberate four-step opt-in. (1) Set `config/openclaw.json`
   `cron.enabled: true`. (2) Because that file is a hash-pinned reviewed
   artifact, record the edit in `config/customization-profile.json` — update its

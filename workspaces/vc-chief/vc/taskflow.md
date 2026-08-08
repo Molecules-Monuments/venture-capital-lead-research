@@ -177,9 +177,12 @@ The chief has no `exec` or gateway tool and cannot run shell commands; the data
 steward's narrow exec allowlist is `vcops` + `vcrun` only and does not include
 `openclaw tasks`. So no agent runs the CLI below — and the chief has no Task
 Flow *read* surface either. `api.runtime.tasks.*` is the plugin-SDK runtime
-handed to a plugin's `register(api)`, not an agent tool; this deployment loads
-exactly one plugin (`vc-trusted-context`), which registers hooks and no flow
-surface, and `vc-chief`'s tool allowlist carries no Task Flow reader. Its Task
+handed to a plugin's `register(api)`, not an agent tool. This deployment loads
+the image-owned `vc-trusted-context` extension — which registers hooks and no
+flow surface — alongside the provider and utility plugins the renderer always
+allows (`openai`, `web-readability`, plus the selected channel plugin when one
+is configured); none of them contributes an agent-callable Task Flow tool, and
+`vc-chief`'s tool allowlist carries no Task Flow reader. Its Task
 Flow awareness is therefore entirely second-hand: flow status, linked tasks,
 sticky cancel intent, and the current flow revision reach it only as an
 operator-supplied export attached to the request (`HEARTBEAT.md` step 2), and it

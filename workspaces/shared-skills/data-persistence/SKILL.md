@@ -28,7 +28,8 @@ Map the packet's `operation` to a lane before doing anything else:
 | `operation` | Lane |
 |---|---|
 | `record_evidence` (founder/traction/market researchers) | fixed workflow `evidence-record`, one invocation per claim |
-| `record_intake`, `capture_candidates` | already persisted by the intake/scout fixed workflows that produced the packet; do not re-persist |
+| `record_intake` | already persisted by the intake fixed workflow that produced the packet; do not re-persist |
+| `capture_candidates` | **not a steward lane, and not yet persisted.** A discovered candidate becomes a lead only when the chief invokes the fixed `outbound-scout` workflow **once per candidate** (that workflow takes one `company_name`/`company_domain`/`lead_title` and creates one lead). Refuse the request, and say the candidates are *awaiting* the chief's per-candidate `outbound-scout` invocation — never report them as already persisted, which would strand every candidate in the packet |
 | `record_route`, `record_source_outcomes` | no fixed workflow exists in 3.0 — classify `operator_only` and refuse, naming the operation |
 | anything else | classify `operator_only` and refuse |
 

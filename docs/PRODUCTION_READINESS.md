@@ -44,13 +44,13 @@ release inventory.
 The component-by-component basis is retained in the project's internal audit
 archive (excluded from the published package).
 
-## Release proof (executed 2026-07-23; last re-executed 2026-08-07)
+## Release proof (executed 2026-07-23; last re-executed 2026-08-08)
 
-Every figure in the table below is the measurement of a **2026-08-07**
-re-execution against this tree, and against an image rebuilt from it with
-`docker build --no-cache --pull` on 2026-08-06 — nothing image-relevant has
-changed between the two dates — not a figure carried forward from the
-2026-07-23 session. That re-execution was necessary rather than ceremonial: the
+Every figure in the table below is the measurement of a **2026-08-08**
+re-execution against this tree, and against the derived image rebuilt from it
+with `docker build --no-cache --pull` on 2026-08-08, after that day's edits to
+five image-baked `workspaces/` files — so the image is derived from exactly this
+tree, not a figure carried forward from the 2026-07-23 session. That re-execution was necessary rather than ceremonial: the
 migrations, `vcops.py`, the eighteen `.lobster` workflows and
 `Dockerfile.openclaw` — the file that defines the very image G6 and G8 build —
 all changed after the original decision date. The counts reproduced exactly; only
@@ -59,7 +59,7 @@ their provenance had gone stale. `docs/V3_RELEASE_EVIDENCE.md` and
 
 | Proof | Result |
 | --- | --- |
-| Complete aggregate offline suites | 234 tests passed; 0 failed; 0 skipped; 25/25 offline checks pass (count re-verified 2026-08-04; the three runtime-provider/context regression tests that accompanied the context-window and Ollama-timeout floors moved it from 231) |
+| Complete aggregate offline suites | 235 tests passed; 0 failed; 0 skipped; 25/25 offline checks pass (count re-verified 2026-08-08; the three runtime-provider/context regression tests that accompanied the context-window and Ollama-timeout floors moved it from 231 to 234, and the heartbeat-disabled render assertion added on 2026-08-08 moved it to 235) |
 | Disposable PostgreSQL G4 | 88/88 across seven suites (semantics 6, document security 15, database contract 8, helper CLI 22, workflow execution 10, research intelligence 19, source surveillance 8); migrations 001–018 applied and registered twice |
 | Real deployment gate (G8) | PASS — `./scripts/bootstrap.sh` completes on the pinned images; the negative credential proof is rejected over TCP with no host trust rules remaining; fixed workflows run through real `vcrun`/Lobster inside the deployed gateway; an unchanged retry of a succeeded workflow returns an idempotent replay without re-executing, and the same key with changed arguments fails closed as `idempotency_payload_mismatch` leaving no new rows; an autonomous run leaves a non-empty knowledge base; teardown removes all state |
 | Exact-image gate (G6) | PASS — 8/8 against the image rebuilt from this tree |
@@ -130,7 +130,9 @@ gates, on a production-grade model that this package boundary does not supply.
 ## Production operating boundary
 
 The distributed package is deliberately inert: `PRIMARY_CHANNEL=none`, no
-credentials, no cron, no autonomous outreach. An operator must create a
+credentials, no cron, no harness heartbeat (`agents.defaults.heartbeat.every:
+"0m"` — the upstream default is an agent turn every 30 minutes, and cron and
+heartbeat are independent switches), no autonomous outreach. An operator must create a
 mode-`0600` `.env`, retain an independent backup HMAC key, complete the
 customization validator, and deliberately activate only the integrations it
 needs.
