@@ -278,7 +278,8 @@ docker volume ls --filter name=openclaw-lead-research-v3   # must return nothing
 ```
 
 Then remove the host-side runtime files, which no Compose command owns:
-`.env`, `deployment-lock.json`, `config/runtime/openclaw.json`,
+`.env`, `deployment-lock.json`, `config/customization-profile.json`,
+`config/connectors.json` (if present), `config/runtime/openclaw.json`,
 `config/runtime/secrets/`, and any operator payload under `inbox/` and
 `quarantine/`. Retain `BACKUP_HMAC_KEY` for as long as any recovery point
 written with it must stay restorable, and destroy it deliberately afterwards —

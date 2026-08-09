@@ -84,7 +84,7 @@ Use a dedicated Linux host inside one organizational trust boundary. Require:
   `bootstrap.sh`, `update.sh`, `backup.sh`, `restore.sh`, and
   `rotate_runtime_role.sh` shell out to it, and `check_customization.py`
   imports `zoneinfo`, which is 3.9+ (`migrate.sh` needs no python3; it uses
-  POSIX utilities — `awk`, `sed`, `grep`, `cmp`, `command`, and
+  POSIX utilities — `awk`, `sed`, `grep`, `cmp`, `command`, `mktemp`, and
   `sha256sum`/`shasum`). The backup and restore paths additionally call `tar`,
   `mktemp`, `tr`, `head`, `find`, `cp` and `chmod`, and `bootstrap.sh` — which
   §5.4 requires on the recovery host before `restore.sh` — also calls `cut`;
@@ -365,7 +365,7 @@ The restore drill in §5.4 is the one item no gate covers.
     frontier model, which is why an OpenAI-mode commissioning of this release
     records `0 critical` while an Ollama-mode one records `1 critical` against
     the same warn/info baseline (the two baselines are tabulated after the next
-    entry, because the selected channel changes the warning count). The audit
+    two entries, because the selected channel changes the warning count). The audit
     classifies any model at or below
     300B parameters as small and reports CRITICAL when one is granted
     `web_search`/`web_fetch`. Measured on an `ollama/llama3.2:1b` deployment it
@@ -965,11 +965,14 @@ record. Autonomous transcript review remains disabled.
   reconcile`, or any `rotate_runtime_role.sh` failure): the script has already
   stopped the gateway and CLI, and both database passwords in `.env` may now
   differ from what Postgres holds. Do not re-run the script blindly. Confirm
-  Postgres is up (`compose ps`), then check which credentials actually work by
-  connecting as each role from the Postgres container **over TCP**:
+  Postgres is up (`docker compose -f docker-compose.yml -p
+  openclaw-lead-research-v3 --env-file .env ps`), then check which credentials
+  actually work by connecting as each role from the Postgres container
+  **over TCP**:
 
   ```sh
-  compose exec -e PGPASSWORD="<the password from .env>" postgres \
+  docker compose -f docker-compose.yml -p openclaw-lead-research-v3 --env-file .env \
+    exec -e PGPASSWORD="<the password from .env>" postgres \
     psql -h 127.0.0.1 -U openclaw_owner -d openclaw -tAc 'select 1'
   ```
 
@@ -1166,8 +1169,9 @@ record. Autonomous transcript review remains disabled.
 `curl=7.88.1-10+deb12u15`) as a deliberate reproducibility contract. The
 bookworm `main` pool keeps only the current revision of each package, so once
 Debian ships a newer point release those exact pins are eventually removed from
-`deb.debian.org` and `compose build --pull openclaw-gateway` (bootstrap/update)
-fails with `has no installation candidate`. The image build wraps the `apt-get
+`deb.debian.org` and the image build that bootstrap/update run (`docker compose
+-f docker-compose.yml -p openclaw-lead-research-v3 --env-file .env build --pull
+openclaw-gateway`) fails with `has no installation candidate`. The image build wraps the `apt-get
 install` step to turn that otherwise-opaque failure into an actionable message.
 
 There is a second, less obvious form of this. A pinned package can still be in
@@ -1186,7 +1190,8 @@ keeps working, so it can go unnoticed. When it happens, pin the dependency
 alongside its sibling and move both to the same revision — as this release does
 for `libpoppler126` and `poppler-utils` — then re-run every release gate,
 including `run_g6_image.py`, whose provenance assertions must list both names.
-Verify a *fresh* build explicitly with `compose build --no-cache
+Verify a *fresh* build explicitly with `docker compose -f docker-compose.yml
+-p openclaw-lead-research-v3 --env-file .env build --no-cache
 openclaw-gateway`; a cached build proves nothing about the pool.
 To recover a byte-reproducible build, point apt at a `snapshot.debian.org`
 timestamp that still carries the pinned versions before building. Add **both**

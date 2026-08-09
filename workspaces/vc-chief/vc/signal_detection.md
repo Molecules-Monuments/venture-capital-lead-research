@@ -55,8 +55,12 @@ get its own signal type.
 ## Proposed actions
 
 These are the exact values of `result.proposed_action` in the same canonical
-schema, and the same vocabulary the packet's `persistence_request.operation`
-uses.
+schema. The packet's `persistence_request.operation` uses a narrower
+vocabulary — `none`, `capture_candidate`, or `update_candidate` — so only the
+two capture/update actions carry over. `ignore`, `ask_clarification`, and
+`escalate` are never valid operations; the schema keys the choice to
+`persistence_request.requested` instead (`false` forces `operation: "none"`,
+`true` requires a capture/update operation plus a non-empty reason).
 
 | Action | Meaning |
 |---|---|
