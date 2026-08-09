@@ -9,7 +9,11 @@ Both automatic paths that could otherwise run it ship disabled: cron
 as `[heartbeat] disabled`). The agent read surface also has no run/lead/approval/
 notification LIST commands — steps 2, 3, 4, and 5 and the weekly outbox item are
 therefore performed over operator-supplied exports attached to the heartbeat
-request. Steps 2, 4 and 5 export from Postgres. Step 3 is the one that is not a
+request. Steps 4 and 5 export from Postgres. Step 2's export is not a Postgres
+query: Task Flow status, revisions and sticky cancel intent live in OpenClaw's
+own state store (`state/openclaw.sqlite` on the state volume), so that export
+comes from the operator's `openclaw tasks` inspection — `docs/RUNBOOK.md` §5.3
+has the exact container form. Step 3 is likewise not a
 database query at all: Lobster continuation state lives in `$LOBSTER_STATE_DIR`
 on the state volume, outside Postgres and outside every agent workspace, and
 `vcrun` exposes only `run`, `dry-run`, `doctor` and `version` — so its export

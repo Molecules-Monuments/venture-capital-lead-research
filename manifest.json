@@ -96,8 +96,8 @@
     {
       "executable": false,
       "path": "SECURITY.md",
-      "sha256": "9860dbddfb28dfbb801fa754cd0612434b76b14329839e1d07f7593ef34107f2",
-      "size": 5333
+      "sha256": "e587d192bed3b30c700ea40a6297c64f194a0ddf42fd18407c950db849809657",
+      "size": 5376
     },
     {
       "executable": false,
@@ -198,20 +198,20 @@
     {
       "executable": false,
       "path": "docs/OPERATIONS.md",
-      "sha256": "919b01c30c03575568af94665171158d76d012ed4e766ed8b9f86c65e7a7467a",
-      "size": 23228
+      "sha256": "3f4f2108cb94d2e4bb0bc0fd325f8e7fcdf8c0c74906c1015ea5f1d4fe769af3",
+      "size": 23304
     },
     {
       "executable": false,
       "path": "docs/PRODUCTION_READINESS.md",
-      "sha256": "0169383098ecb9ba0d6eba9539180dbb948eed695bc0ce8a0e3181f5b860ee8f",
-      "size": 13689
+      "sha256": "822f66dc1306ef3bf2487ec3f30a19434d05881ca1c4f913383aac3b78b068cf",
+      "size": 13688
     },
     {
       "executable": false,
       "path": "docs/RUNBOOK.md",
-      "sha256": "3d00f1a7f8d6eef518b2207c7ae79508d55b36ccf1238f5304b217d5ef6cb19e",
-      "size": 74577
+      "sha256": "1d294bd295958feaf2adeb8be54d00c00e02b3378fe4059d938e2e88ecfb6090",
+      "size": 74924
     },
     {
       "executable": false,
@@ -228,8 +228,8 @@
     {
       "executable": false,
       "path": "docs/V3_RELEASE_EVIDENCE.md",
-      "sha256": "8b90d43d9071c80d05e84990d5ba1c3fc35a33fa8b1573e95889951281761423",
-      "size": 13171
+      "sha256": "a2e11fdbc53f72c89289f6c2cb7520114df6b4713886abc381f8343084aa7387",
+      "size": 13215
     },
     {
       "executable": false,
@@ -240,8 +240,8 @@
     {
       "executable": false,
       "path": "evals/V3_EVAL_RESULTS.md",
-      "sha256": "4339df0f788a7923d6be87742c3dd56167d98f0bb007faa2b58216e5574dbf7a",
-      "size": 10499
+      "sha256": "ba0a6f06c0b153d53cd8aca1590d270770ebb0266153fb996ce600e52eeff059",
+      "size": 10498
     },
     {
       "executable": false,
@@ -1380,8 +1380,8 @@
     {
       "executable": false,
       "path": "workspaces/vc-chief/HEARTBEAT.md",
-      "sha256": "25fb157238d50994ed08043008d27eba415ce1da179c596df082e8b721fd43e0",
-      "size": 3346
+      "sha256": "b5641c60ee0c30c4c0ae93364f64bbd28fc061c88ecc82b767e5a80fb48f462d",
+      "size": 3639
     },
     {
       "executable": false,
@@ -1746,8 +1746,8 @@
     {
       "executable": false,
       "path": "workspaces/vc-chief/vc/signal_detection.md",
-      "sha256": "12926fd45401f18b6111819e4ee4026a5c92fd946f85d7e15413252e1a06a853",
-      "size": 4163
+      "sha256": "0d4e30a7d932d4a172f03d4a5c23c2483c25e3f30c4dd840c9e5638a00ae46f9",
+      "size": 4520
     },
     {
       "executable": false,

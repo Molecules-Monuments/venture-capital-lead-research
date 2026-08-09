@@ -17,7 +17,8 @@ applies with `scripts/update.sh`.
 **Please do not open a public issue for a security problem.**
 
 Report privately through GitHub's **Report a vulnerability** button on the
-repository's *Security* tab (GitHub Private Vulnerability Reporting). That
+*Security* tab of the GitHub repository you obtained this package from
+(GitHub Private Vulnerability Reporting). That
 channel is preferred because it keeps the report, the fix, and the advisory in
 one place and does not disclose the issue before a patch exists.
 
