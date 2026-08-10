@@ -388,8 +388,10 @@ shown in the Telegram UI. Collect them **before** you select the channel: both
 values must already be in `.env` for `check_env.sh` to accept a Telegram
 profile, so the gateway is never connected to Telegram while they are still
 unknown, and its log cannot be the source. Send the bot one direct message and
-post one message in the group, then ask Telegram directly, on the deployment
-host only:
+post one message in the group that @-mentions the bot — with privacy mode at
+its default enabled, only messages addressed to the bot (mentions, `/commands`,
+replies to it) reach it, so a plain group message never appears in
+`getUpdates`. Then ask Telegram directly, on the deployment host only:
 
 ```sh
 curl -s "https://api.telegram.org/bot<token>/getUpdates"

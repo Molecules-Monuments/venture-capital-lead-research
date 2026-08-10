@@ -72,8 +72,8 @@
     {
       "executable": false,
       "path": "CUSTOMIZATION.md",
-      "sha256": "64fa8679e3a8a630f8b9b953d46478506d35ce57ee2bebd0da4716df198fa74e",
-      "size": 27025
+      "sha256": "edf15766e7c96c29504845100351f9310f36dc981e0e5cc8736aba3b650ee286",
+      "size": 27210
     },
     {
       "executable": false,
@@ -180,8 +180,8 @@
     {
       "executable": false,
       "path": "docs/CHANNELS.md",
-      "sha256": "9b35da15bf64080afa22988a55c03805d62048ec60231e4abbdb45aa60ae6c56",
-      "size": 24085
+      "sha256": "b9d0a099bc6b6f9c16a61151723507061fe3649b55d781edbb51abbd722442c3",
+      "size": 24294
     },
     {
       "executable": false,
@@ -204,8 +204,8 @@
     {
       "executable": false,
       "path": "docs/PRODUCTION_READINESS.md",
-      "sha256": "822f66dc1306ef3bf2487ec3f30a19434d05881ca1c4f913383aac3b78b068cf",
-      "size": 13688
+      "sha256": "c6cbc892bcc84a2b92aabbb3b7eaab499a8e6bd0e60650ccb7d31808bbdc2aff",
+      "size": 13705
     },
     {
       "executable": false,
@@ -228,8 +228,8 @@
     {
       "executable": false,
       "path": "docs/V3_RELEASE_EVIDENCE.md",
-      "sha256": "a2e11fdbc53f72c89289f6c2cb7520114df6b4713886abc381f8343084aa7387",
-      "size": 13215
+      "sha256": "5f50db1abecf064b198305a8a3f1fdfe88dcaf2217a808c2a217eeddc5116064",
+      "size": 13244
     },
     {
       "executable": false,
@@ -240,8 +240,8 @@
     {
       "executable": false,
       "path": "evals/V3_EVAL_RESULTS.md",
-      "sha256": "ba0a6f06c0b153d53cd8aca1590d270770ebb0266153fb996ce600e52eeff059",
-      "size": 10498
+      "sha256": "96969781dfdaecda34c599b3690e26a1b9ec646b6feb08f41d370a27344eaddc",
+      "size": 10515
     },
     {
       "executable": false,
@@ -300,8 +300,8 @@
     {
       "executable": false,
       "path": "migrations/008_workflow_version_binding.sql",
-      "sha256": "fe5e4865ac21813dfa58ebc778de733b14b3bd6d16e54544cd74ba6e4a8bd686",
-      "size": 4266
+      "sha256": "91ef139e227c09d33b4ceea8da147a40f0ac6c65e55c480cb1efadb6867e6c48",
+      "size": 4848
     },
     {
       "executable": false,
@@ -1488,8 +1488,8 @@
     {
       "executable": false,
       "path": "workspaces/vc-chief/vc/data_retention.md",
-      "sha256": "e721776425463161a8973399f367aada5c0d444619066091c60efd64ae075dc7",
-      "size": 4157
+      "sha256": "c7fd48173a3e9ef5cf6c49d156f73da3ed5bcb8cd0e7a3951d2dff23ff45978b",
+      "size": 4784
     },
     {
       "executable": false,
