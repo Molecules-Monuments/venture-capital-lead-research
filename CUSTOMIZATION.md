@@ -92,8 +92,10 @@ rendered change always reaches the gateway.
 
 `config/customization-profile.json` is on neither path. Nothing renders it and no
 container mounts or reads it: it is a host-side review record consumed only by
-`check_customization.py`, which every lifecycle script runs before it mutates
-anything. So editing the profile changes what the validators will accept, never
+`check_customization.py`, which every config-applying lifecycle script
+(`bootstrap.sh`, `update.sh`, `restore.sh`, `rotate_runtime_role.sh`) runs
+before it mutates anything. `backup.sh` alone runs without it, so an
+unvalidated profile never blocks taking a recovery point. So editing the profile changes what the validators will accept, never
 what the deployment does at runtime — `approvals.stable_approver_ids` is an
 attestation rather than a runtime allowlist (identity is bound to
 `VCOPS_OPERATOR_ID`), and `approvals.expiry_minutes` is a reviewed record that

@@ -1,16 +1,17 @@
 # Version 3.0 release evidence
 
 Date: 2026-07-23 (final-audit session; supersedes the earlier 2026-07-23 and 2026-07-22 evidence)
-Last full re-execution: **2026-08-09** — see "Count re-verification" below. Every *count* in this document is that run's measurement; the one latency figure the gates produce is treated separately under "Image digests — regenerate at deployment", because it is a property of the measuring host rather than of this tree.
+Last full re-execution: **2026-08-10** — see "Count re-verification" below. Every *count* in this document is that run's measurement; the one latency figure the gates produce is treated separately under "Image digests — regenerate at deployment", because it is a property of the measuring host rather than of this tree.
 Package version: `3.0.0`
 Status: **Deterministic package + deployment path VERIFIED; live-model behavioral gates BLOCKED (not run). See `PRODUCTION_READINESS.md` for the exact boundary.**
 
 Count re-verification: the suites grew across the remediation sessions that
 followed the 2026-07-23 evidence, so every count below is the count this tree
 actually produces rather than a carried-forward figure. **The full matrix was
-last re-executed on 2026-08-09**, against this tree and against the derived
-image rebuilt from it with `docker build --no-cache --pull` on **2026-08-09**,
-after that day's edits to two image-baked `workspaces/` files. The image is
+last re-executed on 2026-08-10**, against this tree and against the derived
+image rebuilt from it with `docker build --no-cache --pull` on **2026-08-10**,
+after that day's edits to one image-baked `workspaces/` file and one
+migration. The image is
 therefore derived from exactly this tree rather than reused. Earlier in the same
 session `bootstrap.sh` also built the image during the live channel exercise,
 and the G8 deployment gate's own bootstrap built and tore down another. The gates: `verify_offline.py`
@@ -85,7 +86,7 @@ by audit passes outside this package boundary; see
 `docs/PRODUCTION_READINESS.md`, "Exercised against a live model". No gate below
 invokes a model.
 
-## Passing evidence (executed 2026-07-23; last re-executed 2026-08-08)
+## Passing evidence (executed 2026-07-23; last re-executed 2026-08-10)
 
 | Surface | Result | Reproducible command |
 | --- | ---: | --- |
@@ -128,9 +129,9 @@ base, and tore the deployment down.
 The local image ID is host-specific: `bootstrap.sh` rebuilds
 `openclaw-lead-research:3.0.0` from this tree and `record_images.py` records
 the resulting digest in `deployment-lock.json` at install time. The G6 gate was
-re-run on 2026-08-09 against an image rebuilt from this tree with `docker build
+re-run on 2026-08-10 against an image rebuilt from this tree with `docker build
 --no-cache --pull` (8/8), and the retrieval-scale gate was re-run on 2026-08-06,
-2026-08-07, 2026-08-08 and 2026-08-09 (160/160 cases every time).
+2026-08-07, 2026-08-08, 2026-08-09 and 2026-08-10 (160/160 cases every time).
 
 **The retrieval p95 is the one figure in this document that is not a stable
 property of the tree**, so it is deliberately not quoted as one. It is a latency

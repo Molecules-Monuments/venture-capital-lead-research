@@ -11,10 +11,20 @@ ALTER TABLE workflow_requests
   ADD COLUMN IF NOT EXISTS workflow_version TEXT,
   ADD COLUMN IF NOT EXISTS policy_version TEXT;
 
+-- The 005 append-only trigger raises on every UPDATE, and this backfill's
+-- only targets are rows written before this migration — on a populated
+-- pre-008 database it would fail closed on its own guard. Disable the
+-- trigger for the backfill only; both statements run as the owner inside
+-- this single transaction under migrate.sh's advisory lock, so no other
+-- session can write to the table while the trigger is off.
+ALTER TABLE workflow_requests DISABLE TRIGGER workflow_requests_append_only;
+
 UPDATE workflow_requests
 SET workflow_version = COALESCE(workflow_version, 'legacy-unversioned'),
     policy_version = COALESCE(policy_version, 'legacy-unversioned')
 WHERE workflow_version IS NULL OR policy_version IS NULL;
+
+ALTER TABLE workflow_requests ENABLE TRIGGER workflow_requests_append_only;
 
 ALTER TABLE workflow_requests
   ALTER COLUMN workflow_version SET DEFAULT '3.0.0',

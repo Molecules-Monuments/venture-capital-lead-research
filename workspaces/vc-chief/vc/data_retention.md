@@ -53,16 +53,24 @@ tests pass (see the banner above):
   values into a second row. The **superseded original rows remain**: `facts` is
   append-only by trigger and no role may UPDATE or DELETE it, so the pre-erasure
   values stay in the table until an owner-run out-of-band procedure removes
-  them. The function touches `facts`, `leads`, and `audit_events` only. These
-  tables are **not** covered and are operator-run steps:
+  them. The function touches `facts`, `leads`, and `audit_events` only — and on
+  `leads` it changes `status` alone, so the archived row's own value columns
+  (`submitted_claims`, `lead_title`, `origin_note`, `referrer_name`,
+  `referrer_organization`) survive verbatim. The stores it does **not** cover
+  are operator-run steps, listed here:
+  `workflow_requests.request_payload` (the canonical intake payload — company
+  name and domain, lead title, document path, and channel identifiers —
+  append-only by trigger, so every original submission survives verbatim),
   `compiled_truth.fact_history` **and `compiled_truth.current_view`** (the
   snapshot keeps the erased values verbatim, keyed by fact type and
   definition), `memos` (including `content_uri` and the rendered memo body),
   `memo_citations`, `lead_artifacts`, `evidence_artifacts`,
-  `document_extractions`, `evaluations`, `fact_sources`, and the company
-  identity rows themselves (`companies`, `company_domains`). Treat
+  `document_extractions`, `evaluations`, `fact_sources`, `contradictions`
+  (`explanation`), `trajectory_events` (`calculation`), `orchestration_audit`
+  (`payload`), `notification_outbox` (`subject` and `payload`), and the company
+  identity rows themselves (`companies`, `company_domains`,
+  `company_aliases`). Treat
   `vcops data-erase-lead` as the audited entry point to an erasure procedure,
   not as a complete right-to-erasure executor. What it does not reach is listed
-  below, and covering that gap is outside the software; document and rehearse
-  the out-of-band steps before
-  it relies on this path.
+  above, and covering that gap is outside the software; document and rehearse
+  the out-of-band steps before a deployment relies on this path.
