@@ -53,23 +53,63 @@ tests pass (see the banner above):
   values into a second row. The **superseded original rows remain**: `facts` is
   append-only by trigger and no role may UPDATE or DELETE it, so the pre-erasure
   values stay in the table until an owner-run out-of-band procedure removes
-  them. The function touches `facts`, `leads`, and `audit_events` only — and on
-  `leads` it changes `status` alone, so the archived row's own value columns
-  (`submitted_claims`, `lead_title`, `origin_note`, `referrer_name`,
-  `referrer_organization`) survive verbatim. The stores it does **not** cover
-  are operator-run steps, listed here:
-  `workflow_requests.request_payload` (the canonical intake payload — company
-  name and domain, lead title, document path, and channel identifiers —
-  append-only by trigger, so every original submission survives verbatim),
-  `compiled_truth.fact_history` **and `compiled_truth.current_view`** (the
-  snapshot keeps the erased values verbatim, keyed by fact type and
-  definition), `memos` (including `content_uri` and the rendered memo body),
-  `memo_citations`, `lead_artifacts`, `evidence_artifacts`,
-  `document_extractions`, `evaluations`, `fact_sources`, `contradictions`
-  (`explanation`), `trajectory_events` (`calculation`), `orchestration_audit`
-  (`payload`), `notification_outbox` (`subject` and `payload`), and the company
-  identity rows themselves (`companies`, `company_domains`,
-  `company_aliases`). Treat
+  them. The erasure transaction writes only `facts` (the tombstones), `leads`
+  (`status`), `audit_events` (two rows: the approval consumption and the
+  erasure), and the consumed `approvals` row's bookkeeping columns — and on
+  `leads` it changes `status` alone, so the archived row's other columns
+  survive verbatim: `submitted_claims`, `lead_title`, `origin_note`,
+  `referrer_name`, `referrer_organization`, `submitted_by`, and the
+  channel-identity columns (`channel_account_id`, `channel_event_id`,
+  `channel_message_id`, `channel_sender_id`, `channel_permalink`). Every
+  other value-bearing store
+  is **not** covered and is an operator-run step. The complete list — enforced
+  against `docs/SCHEMA.sql` by `tests/v3/test_erasure_gap_enumeration.py`,
+  which fails whenever the regenerated schema reference gains a table nobody
+  has dispositioned:
+
+  - `workflow_requests` — `request_payload` is the canonical intake payload
+    (company name and domain, lead title, document path, channel
+    identifiers), append-only by trigger, so every original submission
+    survives verbatim;
+  - `compiled_truth.fact_history` **and `compiled_truth.current_view`** —
+    the snapshot keeps the erased values verbatim, keyed by fact type and
+    definition;
+  - `memos` (including `content_uri` and the rendered memo body) and
+    `memo_citations`;
+  - `lead_artifacts`, `evidence_artifacts`, `document_extractions` — the
+    stored documents and their extracted content;
+  - `sources` — a subject's own uploads register rows whose `title`,
+    `canonical_uri`, `publisher`, and `metadata` identify the document;
+  - `evaluations` and `evaluation_criteria` (per-criterion `rationale`
+    text);
+  - `fact_sources`;
+  - `contradictions` (`explanation`), `trajectory_events` (`calculation`),
+    `orchestration_audit` (`payload`), `notification_outbox` (`subject` and
+    `payload`);
+  - `workflow_runs` (`result`, error and cancellation text) and `proposals`
+    (`title`, `summary`, `content`) — both lead-keyed;
+  - `approvals` — the row itself is governance audit and is retained
+    deliberately, but `scope`, `action_preview`, and `decision_note` can
+    embed the governed action's subject data and are in scope for a sweep;
+  - `entity_resolution_runs` (`identity_query` holds the submitted identity
+    verbatim), `entity_resolution_decisions` (`reasons` and candidate
+    lists), and `entity_resolution_consumptions`;
+  - the company identity rows themselves — `companies`, `company_domains`,
+    `company_aliases`, `company_external_ids`; and
+  - the child linkage and locator rows that follow their listed parents:
+    `compiled_truth_facts`, `contradiction_facts`, `trajectory_points`,
+    `document_facts`, `notification_attempts`.
+
+  Channel-user identity and preference memory (`channel_principals`,
+  `user_preferences`, `preference_observations`, `preference_forget_markers`,
+  `user_preference_audit`, `trusted_context_uses`) are a separate
+  personal-data lane scoped to channel principals, not leads; their deletion
+  path is the preference forget workflow, not `data-erase-lead`. The
+  operational registries `schema_migrations` and `fact_promotion_policy` hold
+  no subject data; `signal_sources` rows describe operator-registered watched
+  sources rather than lead submissions, but a watch registered specifically
+  about the subject (its `source_name`, `canonical_uri`, or `metadata` naming
+  the company) belongs in the erasure sweep — check the watchlist. Treat
   `vcops data-erase-lead` as the audited entry point to an erasure procedure,
   not as a complete right-to-erasure executor. What it does not reach is listed
   above, and covering that gap is outside the software; document and rehearse

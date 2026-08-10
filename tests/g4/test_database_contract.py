@@ -1,12 +1,15 @@
 # SPDX-License-Identifier: 0BSD
 import json
 import os
+import re
 import shutil
 import subprocess
 import unittest
 import uuid
+from pathlib import Path
 
 
+PACKAGE_ROOT = Path(__file__).resolve().parents[2]
 DATABASE_URL = os.environ.get("DATABASE_URL", "")
 PSQL = shutil.which("psql")
 MIGRATION_CHECKSUMS = json.loads(os.environ.get("G4_MIGRATION_CHECKSUMS", "{}"))
@@ -351,6 +354,118 @@ class DatabaseContractTests(unittest.TestCase):
             ") duplicate_definitions"
         )
         self.assertEqual(duplicate_unique, "0", "equivalent duplicate unique indexes remain after migrations")
+
+
+class PopulatedUpgradePathTests(unittest.TestCase):
+    """The migration series must apply over a database that already holds rows.
+
+    Every other database check in this gate runs the series against an empty
+    database, so a migration that trips a guard installed by an earlier one —
+    the thirteenth audit pass found 008's backfill raising against 005's
+    append-only trigger — passes a fresh install and fails exactly the
+    populated databases its backfill exists for. This class applies the
+    pre-008 migrations to a scratch database, inserts a workflow_requests row,
+    applies the remainder of the series over it, and proves the backfill
+    landed with the append-only protection re-enabled afterwards. The
+    populated set is workflow_requests alone — a future migration mutating a
+    different guarded table needs that table populated here too, so extend
+    the inserted fixtures whenever an append-only table gains a backfill.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        if not DATABASE_URL:
+            raise AssertionError("DATABASE_URL is required; database tests may not skip")
+        if not PSQL:
+            raise AssertionError("psql is required; database tests may not skip")
+        cls.database = "g4_upgrade_" + uuid.uuid4().hex[:12]
+        cls.scratch_url = re.sub(r"dbname=\S+", f"dbname={cls.database}", DATABASE_URL)
+        if cls.scratch_url == DATABASE_URL:
+            raise AssertionError(
+                "DATABASE_URL must be keyword form (dbname=...); refusing to run "
+                "the upgrade-path series against the target database"
+            )
+        cls.admin(f"CREATE DATABASE {cls.database}")
+        try:
+            migrations = sorted((PACKAGE_ROOT / "migrations").glob("[0-9][0-9][0-9]_*.sql"))
+            if len(migrations) < 8:
+                raise AssertionError("migration series not found from the package root")
+            pre = [path for path in migrations if path.name[:3] < "008"]
+            post = [path for path in migrations if path.name[:3] >= "008"]
+            for migration in pre:
+                cls.apply(migration)
+            cls.scratch(
+                "INSERT INTO workflow_requests"
+                " (workflow_id, idempotency_key, request_hash, request_payload)"
+                f" VALUES ('document-lead-intake', '{cls.database}', '{'ab' * 32}', '{{}}')"
+            )
+            for migration in post:
+                cls.apply(migration)
+        except BaseException:
+            cls.admin(f"DROP DATABASE IF EXISTS {cls.database}")
+            raise
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.admin(f"DROP DATABASE IF EXISTS {cls.database}")
+
+    @classmethod
+    def admin(cls, sql):
+        proc = subprocess.run(
+            [str(PSQL), "-X", "-q", "-v", "ON_ERROR_STOP=1", DATABASE_URL, "-c", sql],
+            text=True,
+            capture_output=True,
+            timeout=60,
+        )
+        if proc.returncode:
+            raise AssertionError(f"admin SQL failed: {sql}\nstderr={proc.stderr}")
+
+    @classmethod
+    def apply(cls, migration):
+        proc = subprocess.run(
+            [str(PSQL), "-X", "-q", "-v", "ON_ERROR_STOP=1", cls.scratch_url, "-f", str(migration)],
+            text=True,
+            capture_output=True,
+            timeout=120,
+        )
+        if proc.returncode:
+            raise AssertionError(
+                f"{migration.name} failed over a populated database:\n{proc.stderr}"
+            )
+
+    @classmethod
+    def scratch(cls, sql, expect_ok=True):
+        proc = subprocess.run(
+            [str(PSQL), "-X", "-q", "-A", "-t", "-v", "ON_ERROR_STOP=1", cls.scratch_url, "-c", sql],
+            text=True,
+            capture_output=True,
+            timeout=30,
+        )
+        if expect_ok and proc.returncode:
+            raise AssertionError(f"SQL failed: {sql}\nstderr={proc.stderr}")
+        if not expect_ok and proc.returncode == 0:
+            raise AssertionError(f"SQL unexpectedly succeeded: {sql}\nstdout={proc.stdout}")
+        return proc.stdout.strip()
+
+    def test_backfill_versioned_the_pre_existing_row(self):
+        row = self.scratch(
+            "SELECT workflow_version || '|' || policy_version FROM workflow_requests"
+            f" WHERE idempotency_key = '{self.database}'"
+        )
+        self.assertEqual(row, "legacy-unversioned|legacy-unversioned")
+
+    def test_append_only_protection_is_enforcing_after_the_series(self):
+        enabled = self.scratch(
+            "SELECT tgenabled FROM pg_trigger"
+            " WHERE tgname = 'workflow_requests_append_only'"
+            " AND tgrelid = 'workflow_requests'::regclass"
+        )
+        self.assertEqual(enabled, "O", "the backfill left the append-only trigger disabled")
+        self.scratch(
+            "UPDATE workflow_requests SET workflow_version = 'mutated'"
+            f" WHERE idempotency_key = '{self.database}'",
+            expect_ok=False,
+        )
 
 
 if __name__ == "__main__":

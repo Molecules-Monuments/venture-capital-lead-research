@@ -19,7 +19,7 @@
     "config/runtime/secrets/vcops_approval_pepper",
     "deployment-lock.json"
   ],
-  "file_count": 319,
+  "file_count": 322,
   "files": [
     {
       "executable": false,
@@ -204,8 +204,8 @@
     {
       "executable": false,
       "path": "docs/PRODUCTION_READINESS.md",
-      "sha256": "c6cbc892bcc84a2b92aabbb3b7eaab499a8e6bd0e60650ccb7d31808bbdc2aff",
-      "size": 13705
+      "sha256": "d8270e0c42bc3d9df1441e4a9f0d1946e20b30f3253016177c871c73a963becd",
+      "size": 13849
     },
     {
       "executable": false,
@@ -228,7 +228,7 @@
     {
       "executable": false,
       "path": "docs/V3_RELEASE_EVIDENCE.md",
-      "sha256": "5f50db1abecf064b198305a8a3f1fdfe88dcaf2217a808c2a217eeddc5116064",
+      "sha256": "984d7a1b09af7300ff9a7b3c92dd34456693eff3f2c8baabb871c4ffaf46dace",
       "size": 13244
     },
     {
@@ -240,7 +240,7 @@
     {
       "executable": false,
       "path": "evals/V3_EVAL_RESULTS.md",
-      "sha256": "96969781dfdaecda34c599b3690e26a1b9ec646b6feb08f41d370a27344eaddc",
+      "sha256": "07622fb5dfd7d2f19ec8e92ccdd7596230091cd3c5d99b2afdc49008f79e2d68",
       "size": 10515
     },
     {
@@ -634,6 +634,12 @@
       "size": 6278
     },
     {
+      "executable": false,
+      "path": "scripts/set_evidence_execution_date.py",
+      "sha256": "677fb9aa7f89a7abb22805ef486dee0e9965b7cdcdcda10e20ad478c49397f97",
+      "size": 5744
+    },
+    {
       "executable": true,
       "path": "scripts/update.sh",
       "sha256": "e743915537407b3564549882c5e0b37d2d0d64a59b7ac6c9b2daa4b227efa10a",
@@ -732,8 +738,8 @@
     {
       "executable": false,
       "path": "tests/g4/test_database_contract.py",
-      "sha256": "44e06bb9ac30ea63be938d241e8cd2169610492abe6367ef3ec3447e7bd849af",
-      "size": 20503
+      "sha256": "cf9f0358bf1fea62cc117bbfa1ab3c5a2e898c8cfb1953623a3082adce135b8f",
+      "size": 25532
     },
     {
       "executable": false,
@@ -842,6 +848,18 @@
       "path": "tests/v3/test_connectors.py",
       "sha256": "b640da003d18270a9a4fd07491548e2089c44ef4892bb9b4c8ba52abdf1ea531",
       "size": 4108
+    },
+    {
+      "executable": false,
+      "path": "tests/v3/test_erasure_gap_enumeration.py",
+      "sha256": "0e3701f8a17487e24e92a9fc150a80bacfc605b64a1ebe80701add05ea119b7a",
+      "size": 6412
+    },
+    {
+      "executable": false,
+      "path": "tests/v3/test_evidence_doc_consistency.py",
+      "sha256": "f43900e56aa03fde56e8cc5c85799886989e9b6780c39b69f368ae94eab60bba",
+      "size": 10165
     },
     {
       "executable": false,
@@ -1488,8 +1506,8 @@
     {
       "executable": false,
       "path": "workspaces/vc-chief/vc/data_retention.md",
-      "sha256": "c7fd48173a3e9ef5cf6c49d156f73da3ed5bcb8cd0e7a3951d2dff23ff45978b",
-      "size": 4784
+      "sha256": "237e79f9d81f26442b23f66d971ecd09ed4c503192c397fc9797b38ec388341a",
+      "size": 7119
     },
     {
       "executable": false,
