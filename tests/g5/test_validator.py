@@ -167,6 +167,47 @@ steps:
             self.validate(step.format(key="VCOPS_LEAD_ID", value="'123'")),
         )
 
+    def test_step_references_are_rejected_in_run_text(self) -> None:
+        """Quoting contains `$VCOPS_*`; it cannot contain a direct step reference.
+
+        Lobster sets `env:` entries as real environment variables, so `sh` does
+        not re-parse a double-quoted expansion of one — which is why the
+        `arg_unquoted` rule is sufficient for `$VCOPS_*`/`$LOBSTER_ARG_*`. A
+        direct `$step.json.path` reference is different in kind: it is
+        substituted textually into the command string before the shell runs, so
+        a channel-controlled value containing a double quote escapes its own
+        quotes and injects. Both spellings carry the same value — the unquoted
+        step-env form is rejected as `arg_unquoted`, so the direct form must be
+        rejected too or the value simply moves to the uncovered surface.
+        """
+        step = (
+            "name: fixture\nsteps:\n"
+            "  - id: claim\n    run: /workspaces/vc-chief/vc/bin/agent/vcops preflight\n"
+            "    timeout_ms: 1000\n"
+            "  - id: use\n    run: {command}\n    timeout_ms: 1000\n"
+        )
+        for command in (
+            # Unquoted, quoted, and inside a larger string: textual substitution
+            # makes all three injectable, so none may pass.
+            "/workspaces/vc-chief/vc/bin/agent/vcops lead-show --lead-id $claim.json.lead.id",
+            "'/workspaces/vc-chief/vc/bin/agent/vcops lead-show --lead-id \"$claim.json.lead.id\"'",
+            "'/workspaces/vc-chief/vc/bin/agent/vcops lead-show --lead-id prefix-$claim.json.lead.id'",
+        ):
+            with self.subTest(command=command):
+                self.assertIn("step_ref_in_command", self.validate(step.format(command=command)))
+        # The sanctioned carrier — a quoted VCOPS_ step-env value — still passes.
+        self.assertNotIn(
+            "step_ref_in_command",
+            self.validate(
+                "name: fixture\nsteps:\n"
+                "  - id: claim\n    run: /workspaces/vc-chief/vc/bin/agent/vcops preflight\n"
+                "    timeout_ms: 1000\n"
+                "  - id: use\n    env:\n      VCOPS_LEAD_ID: '$claim.json.lead.id'\n"
+                "    run: '/workspaces/vc-chief/vc/bin/agent/vcops lead-show --lead-id \"$VCOPS_LEAD_ID\"'\n"
+                "    timeout_ms: 1000\n"
+            ),
+        )
+
     def test_approval_bypass_and_self_decision_are_rejected(self) -> None:
         bypass = self.validate("name: fixture\nsteps:\n  - id: approve\n    approval: false\n")
         self_decision = self.validate(

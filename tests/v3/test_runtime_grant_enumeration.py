@@ -169,6 +169,22 @@ class RuntimeGrantEnumerationTests(unittest.TestCase):
             "Add an explicit REVOKE/GRANT pair in the migration that creates "
             "the function.",
         )
+        # The GRANT half alone is not the invariant docs/DATA_MODEL.md states.
+        # A definer that is GRANTed to openclaw_runtime but never REVOKEd from
+        # PUBLIC is still reachable by every role, because the PUBLIC EXECUTE
+        # default described above is what the migration failed to withhold.
+        # Both halves or the pair is not a pair.
+        revoked = set(
+            re.findall(r"REVOKE ALL ON FUNCTION public\.(\w+)", SCHEMA)
+        )
+        unrevoked = sorted(set(definers) - revoked)
+        self.assertEqual(
+            unrevoked, [],
+            "these SECURITY DEFINER functions carry no explicit REVOKE ALL … "
+            "FROM PUBLIC, so PostgreSQL's built-in PUBLIC EXECUTE default "
+            f"still stands and any role can call them: {unrevoked}. Add the "
+            "REVOKE half in the migration that creates the function.",
+        )
 
     def test_no_table_grants_delete_or_truncate(self):
         """docs/DATA_MODEL.md states the runtime "grants no `DELETE`, `TRUNCATE`"."""

@@ -2,10 +2,10 @@
 # SPDX-License-Identifier: 0BSD
 """Run the frozen 100k-company/1m-fact entity-resolution scale gate.
 
-The benchmark creates a disposable PostgreSQL cluster, applies every migration
-twice, loads the declared reference cardinalities, and calls the real resolver
-helper through the runtime database role.  It never targets a configured
-database and removes the cluster on exit.
+The benchmark creates a disposable PostgreSQL cluster, applies the migration
+series once (the state a real deployment reaches), loads the declared reference
+cardinalities, and calls the real resolver helper through the runtime database
+role.  It never targets a configured database and removes the cluster on exit.
 """
 
 from __future__ import annotations

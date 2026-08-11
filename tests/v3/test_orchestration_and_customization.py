@@ -498,6 +498,14 @@ class Version3ContractTests(unittest.TestCase):
             # The script prints its own operator-facing count, which no other
             # check reads; a 21st flag must move it too.
             ("scripts/init_customization.py", ("twenty governed", "twenty review flags")),
+            # The three below are named in this test's own failure message as
+            # files that must move in the same change, but were not pinned —
+            # so a drifted count in any of them passed the offline gate. The
+            # fifteenth pass's planted-defect calibration exercised exactly
+            # that hole in README.md.
+            ("README.md", ("twenty reviewed-artifact", "twenty reviewed artifacts")),
+            ("docs/OPERATIONS.md", ("twenty artifact hashes",)),
+            ("CLAUDE.md", ("twenty hash-pinned reviewed artifacts",)),
         ):
             text = (ROOT / relative).read_text(encoding="utf-8")
             for phrase in phrases:

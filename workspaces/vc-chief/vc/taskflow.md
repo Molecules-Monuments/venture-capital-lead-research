@@ -179,9 +179,11 @@ steward's narrow exec allowlist is `vcops` + `vcrun` only and does not include
 Flow *read* surface either. `api.runtime.tasks.*` is the plugin-SDK runtime
 handed to a plugin's `register(api)`, not an agent tool. This deployment loads
 the image-owned `vc-trusted-context` extension — which registers hooks and no
-flow surface — alongside the provider and utility plugins the renderer always
-allows (`openai`, `web-readability`, plus the selected channel plugin when one
-is configured); none of them contributes an agent-callable Task Flow tool, and
+flow surface — alongside `web-readability`, the only other plugin the renderer
+allows unconditionally, plus whichever of the selected model-provider plugin
+(`openai` or `ollama`; a custom provider contributes none), the selected
+web-search and web-fetch provider plugins, and the selected channel plugin this
+deployment renders; none of them contributes an agent-callable Task Flow tool, and
 `vc-chief`'s tool allowlist carries no Task Flow reader. Its Task
 Flow awareness is therefore entirely second-hand: flow status, linked tasks,
 sticky cancel intent, and the current flow revision reach it only as an

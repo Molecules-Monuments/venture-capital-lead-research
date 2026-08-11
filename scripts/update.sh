@@ -19,6 +19,7 @@ BACKUP_DESTINATION="${1:-}"
 LOCK_OWNED=0
 LOCK_TOKEN=""
 MUTATION_STARTED=0
+LEDGER_SNAPSHOT=""
 
 compose() {
   docker compose -f "$COMPOSE_FILE" -p "$COMPOSE_PROJECT" \
@@ -31,6 +32,9 @@ cleanup() {
   if [ "$status" -ne 0 ] && [ "$MUTATION_STARTED" -eq 1 ]; then
     compose --profile tools stop openclaw-cli openclaw-gateway >/dev/null 2>&1 || true
     echo "Update or pre-update backup failed after lifecycle mutation began; consumers remain stopped. Repair the release, or restore the verified pre-update backup if its final directory was published, before restarting traffic." >&2
+  fi
+  if [ -n "$LEDGER_SNAPSHOT" ] && [ -f "$LEDGER_SNAPSHOT" ]; then
+    rm -f -- "$LEDGER_SNAPSHOT"
   fi
   if [ "$LOCK_OWNED" -eq 1 ]; then
     rm -f "$LOCK_DIR/owner"
@@ -108,6 +112,34 @@ case "$DESTINATION_PARENT/$DESTINATION_NAME" in
     echo "backup destination must not overlap the package inbox" >&2
     exit 1 ;;
 esac
+
+# The update-mode backup also refuses when the live migration ledger is ahead of
+# the lock (a first attempt that applied migrations but never recorded the new
+# lock), because stamping the old version onto a new-schema dump produces a
+# recovery point that only migrate.sh rejects — after the production database
+# has been dropped. That guard runs before backup.sh quiesces anything, so
+# mirror it here too: otherwise MUTATION_STARTED below arms the handler that
+# stops the gateway and CLI, and a guard designed to fail closed on a healthy
+# running deployment takes production down on its way to reporting.
+LEDGER_SNAPSHOT="$(mktemp "${TMPDIR:-/tmp}/openclaw-update-ledger.XXXXXX")"
+chmod 0600 "$LEDGER_SNAPSHOT"
+{
+  printf '%s\n' '\set ON_ERROR_STOP on'
+  printf '%s\n' "SELECT (to_regclass('public.schema_migrations') IS NOT NULL) AS ledger_exists \\gset"
+  printf '%s\n' '\if :ledger_exists'
+  printf '%s\n' 'SELECT version,name,checksum_sha256 FROM schema_migrations ORDER BY version;'
+  printf '%s\n' '\endif'
+} | compose exec -T postgres \
+  psql -X -w --quiet --username openclaw_owner --dbname openclaw \
+  --tuples-only --no-align --field-separator="$(printf '\t')" \
+  >"$LEDGER_SNAPSHOT"
+python3 scripts/record_images.py --validate-applied-migrations \
+  "$PACKAGE_DIR/deployment-lock.json" <"$LEDGER_SNAPSHOT" >/dev/null || {
+  rm -f "$LEDGER_SNAPSHOT"
+  echo "the live migration ledger is ahead of deployment-lock.json; see RUNBOOK 8" >&2
+  exit 1
+}
+rm -f "$LEDGER_SNAPSHOT"
 
 # Hold one lifecycle lock from the quiesced old-state recovery point through the
 # new image/schema health checks. A failed update never restarts a mixed system.

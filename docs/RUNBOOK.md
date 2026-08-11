@@ -84,11 +84,21 @@ Use a dedicated Linux host inside one organizational trust boundary. Require:
   `bootstrap.sh`, `update.sh`, `backup.sh`, `restore.sh`, and
   `rotate_runtime_role.sh` shell out to it, and `check_customization.py`
   imports `zoneinfo`, which is 3.9+ (`migrate.sh` needs no python3; it uses
-  POSIX utilities — `awk`, `sed`, `grep`, `cmp`, `command`, `mktemp`, and
-  `sha256sum`/`shasum`). The backup and restore paths additionally call `tar`,
-  `mktemp`, `tr`, `head`, `find`, `cp` and `chmod`, and `bootstrap.sh` — which
-  §5.4 requires on the recovery host before `restore.sh` — also calls `cut`;
-  all are present in a normal distribution base install, but check them
+  POSIX utilities — `awk`, `cmp`, `command`, `dirname`, `grep`, `mktemp`, `rm`,
+  `sed`, and `sha256sum`/`shasum`). Across every lifecycle script the external
+  utilities are `awk`, `basename`, `cat`, `chmod`, `cmp`, `cp`, `cut`, `date`,
+  `dirname`, `find`, `grep`, `head`, `mkdir`, `mktemp`, `rm`, `rmdir`, `sed`,
+  `sha256sum`/`shasum`, `tar`, `tr` and `wc`
+  (`tests/v3/test_doc_tree_consistency.py` fails the offline gate if a script
+  starts calling one of a fixed vocabulary of common POSIX utilities that this
+  list omits; a tool outside that vocabulary, or invoked through a wrapper, is
+  still yours to notice). `dirname` deserves particular attention:
+  it is the first external command every one of them runs, and it is the only
+  one whose absence does not fail closed — the
+  `PACKAGE_DIR="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"` prologue
+  resolves `PACKAGE_DIR` to `/` and the script proceeds against the wrong tree,
+  so the operator sees a downstream missing-file error rather than the real
+  cause. All are present in a normal distribution base install, but check them
   explicitly if you build a minimal recovery host for the §5.4 drill, because
   `restore.sh` reaches `find` only *after* it has begun replacing production
   state;
@@ -179,8 +189,9 @@ are all on the verifier's allowed-runtime list, and operator payload inside `./i
 tolerated because those are operator working directories rather than package
 content (`./inbox` is the optional operator-only manual drop point, not the
 channel attachment path; `./quarantine` is a runtime
-quarantine placeholder — the deployed stack quarantines rejected uploads into
-the `vc-quarantine` named volume, not into this directory). A
+quarantine placeholder — the deployed stack writes quarantine copies into the
+`vc-quarantine` named volume, not into this directory, and only when the
+extract lane runs — see §9). A
 *symlink* in either of those directories is still reported — the gateway would
 follow it out of the intended tree. This is a
 self-consistency check, not an external authenticity root: confirm separately
@@ -474,8 +485,11 @@ The restore drill in §5.4 is the one item no gate covers.
 
   From `openclaw doctor`:
 
-  - one `Model "${VC_PRIMARY_MODEL}" specified without provider. Falling back to
-    "openai/${VC_PRIMARY_MODEL}"` line per agent, and `openclaw models status`
+  - twenty-four `Model "${VC_PRIMARY_MODEL}" specified without provider.
+    Falling back to "openai/${VC_PRIMARY_MODEL}"` lines — six naming
+    `${VC_PRIMARY_MODEL}` and eighteen naming `${VC_FAST_MODEL}`, since most
+    agents are configured on the fast tier and doctor walks the agent list more
+    than once — and `openclaw models status`
     showing the harness default `openai/gpt-5.5` — a diagnostic artifact, not a
     misconfiguration. `doctor` reads the config text without the environment
     substitution the runtime performs, so it sees the literal `${VC_PRIMARY_MODEL}`.
@@ -505,7 +519,9 @@ The restore drill in §5.4 is the one item no gate covers.
     chat exec approvals); this deployment exposes no chat command surface at
     all. Verified on all five rendered profiles, the effective `commands` block
     is `native`, `nativeSkills`, `text`, `bash`, `config`, `mcp`, `plugins`,
-    `debug` and `restart` — every one of them `false` — so there is no
+    `debug` and `restart` — every one of them `false` — plus
+    `useAccessGroups: true`, which selects access-group scoping for command
+    authorization rather than enabling any command surface, so there is no
     owner-scoped command for an owner ID to protect. Operator actions run
     through the administrative control plane
     (`vcops-operator`, `vcrun-control`) under `VCOPS_OPERATOR_ID`, never through
@@ -704,11 +720,12 @@ entry-count, member-size and ratio bounds have no configuration escape.
   records its effective bound in `BACKUP_MANIFEST` and `restore.sh` fails
   closed pre-mutation, naming the variable and the required minimum, if the
   target's bound is smaller. Size the target's `${TMPDIR:-/tmp}` for private
-  restore staging at roughly the database dump + (2 × uncompressed state) +
-  uncompressed inbox + (2 × uncompressed quarantine): the extracted trees must
-  survive validation, and restore re-reads the state and quarantine tiers back
-  from the deployment after mutation begins (`OPERATIONS.md`, "Rollback and
-  restore"). Then run `./scripts/bootstrap.sh` so the
+  restore staging per the budget in `OPERATIONS.md`, "Rollback and restore",
+  which is the single source of truth for that arithmetic: the extracted trees
+  must survive validation, restore re-reads the state and quarantine tiers back
+  from the deployment after mutation begins, and the compressed copies it writes
+  there are never removed — so an `ENOSPC` strikes after the production database
+  has already been replaced. Then run `./scripts/bootstrap.sh` so the
   derived CLI image, healthy Postgres,
   initialized volumes, and local `deployment-lock.json` exist. Then restore the
   matching backup from a canonical path outside the package inbox with
@@ -918,9 +935,16 @@ For an accepted pending proposal:
    - **The count is frozen in the test suite as well as in the validator.**
      `tests/v3/test_orchestration_and_customization.py` pins both the resolver
      string and the skill total; `tests/v3/test_skill_agent_production.py` pins
-     the `(skills, agents, workflows)` triple. Several documents state it too:
+     the `(skills, agents, workflows)` triple; and `SkillCountPinTests` in
+     `tests/v3/test_doc_tree_consistency.py` binds every tracked `.md` that
+     states the count. The tracked documents that state it are `README.md`,
      `docs/PRODUCTION_READINESS.md`, `docs/V3_RELEASE_EVIDENCE.md`,
-     `evals/V3_EVAL_RESULTS.md`, `workspaces/vc-chief/vc/system_health.md`, and
+     `docs/RUNBOOK.md` (this section), `evals/V3_EVAL_RESULTS.md`,
+     `research/agents/02-lead-router.md`,
+     `workspaces/vc-chief/vc/RESOLVER.md`,
+     `workspaces/vc-chief/vc/system_health.md`,
+     `workspaces/vc-chief/vc/eval_fixtures.md`,
+     `workspaces/vc-chief/vc/governance_lint.md`, and
      `workspaces/shared-skills/resolver-check/SKILL.md`.
 4. Deliberately update the exact inventory in
    `scripts/validate_skill_system.py`; an unexplained count change is a release
@@ -950,19 +974,28 @@ For an accepted pending proposal:
 
    - the two `tests/v3` files above, which freeze the counts — these do fail
      loudly, but under `verify_offline.py`, not under this validator; and
-   - the five documents listed in step 3, whose stated counts **nothing**
-     checks. Grep for the outgoing number before you move on — with the shipped
-     inventory that is `26`:
+   - the documents that state the count in prose. `SkillCountPinTests` in
+     `tests/v3/test_doc_tree_consistency.py` now fails the offline gate if any
+     tracked `.md` outside `_internal/` states a skill count that disagrees with
+     `validate_skill_system.py`'s inventory, so this is no longer an unchecked
+     class — but the test tells you *that* a file drifted, not what the new
+     prose should say. Enumerate them yourself before you move on, over the
+     whole tree rather than a curated path list, because the list was short by
+     four files until the fifteenth pass. With the shipped inventory the
+     outgoing number is `26`:
 
      ```sh
-     grep -rn --include='*.md' '\b26\b' docs evals \
-       workspaces/vc-chief/vc/RESOLVER.md \
-       workspaces/vc-chief/vc/system_health.md \
-       workspaces/shared-skills/resolver-check/SKILL.md
+     git grep -n '\b26\b' -- '*.md'
      ```
 
-     `RESOLVER.md`'s inventory line is the one hit the validator does cover; the
-     rest are yours.
+     From a non-git export, use:
+
+     ```sh
+     grep -rn --include='*.md' '\b26\b' . --exclude-dir=_internal --exclude-dir=.git
+     ```
+
+     `RESOLVER.md`'s inventory line is the one hit `validate_skill_system.py`
+     itself covers; the rest are yours.
 
    **Regenerate the manifest before the full gate, not after.**
    `python3 -B scripts/build_release_manifest.py` first, then the complete
@@ -988,9 +1021,15 @@ record. Autonomous transcript review remains disabled.
 - **Credential exposure:** set the affected channel to `none`, stop consumers,
   rotate the credential, inspect audit/provider logs, and rerun its live matrix.
 - **Role reconciliation failed** (`openclaw_runtime role restrictions did not
-  reconcile`, or any `rotate_runtime_role.sh` failure): the script has already
-  stopped the gateway and CLI, and both database passwords in `.env` may now
-  differ from what Postgres holds. Do not re-run the script blindly. Confirm
+  reconcile`, or any `rotate_runtime_role.sh` failure *after* the consumer stop
+  it prints): the script has already stopped the gateway and CLI, and both
+  database passwords in `.env` may now differ from what Postgres holds. A
+  failure in the script's validation phase — either lock acquisition,
+  `check_env.sh`, `check_customization.py`, `render_channel_config.py`, or
+  `compose config --quiet` — exits before anything is stopped and before any
+  password changes; correct what it reported and re-run. The `compose … ps`
+  listing below is the authority on which case you are in. Do not re-run the
+  script blindly. Confirm
   Postgres is up (`docker compose -f docker-compose.yml -p
   openclaw-lead-research-v3 --env-file .env ps`), then check which credentials
   actually work by connecting as each role from the Postgres container
@@ -1027,9 +1066,40 @@ record. Autonomous transcript review remains disabled.
 - **Workflow stranded:** inspect the same Task Flow and Postgres run, honor
   current revisions, cancel sticky work if required, and reconcile the existing
   run rather than starting a replacement.
-- **Malicious document:** keep the original quarantined, do not open it with an
-  office application, record its hash/provenance, and preserve the governed
-  rejection evidence.
+- **Malicious document:** do not open it with an office application, and
+  preserve the rejection evidence. **Do not assume a quarantine copy exists —
+  read `details.quarantine.materialized` in the failed step's returned
+  `{code, message, details}` object.** That field is the authority, and it is
+  `false` more often than the volume's name suggests:
+  - The **preview** lane never quarantines. It is the read lane and performs no
+    mutation. Both shipped intake workflows (`document-ingest`,
+    `inbound-intake`) run `document-preview` first, and every inspection-stage
+    class — magic/MIME mismatch, macro or legacy Office format, encryption,
+    archive expansion or member limits, active content, page limits, oversize —
+    is raised there. Lobster stops at the first failing step, so in a normal
+    workflow rejection the document never reaches the extract lane at all.
+  - The **extract** lane attempts a copy for the failures raised inside its
+    error handler, which opens before `inspect_document` — so inspection-stage
+    rejections route through the same quarantine lane as post-snapshot parse
+    failures. This is reachable by an operator running
+    `bin/vcops-operator document-extract` by hand, and in the workflow lane when
+    the bytes change between the preview and extract steps.
+  - **The attempt can still copy nothing.** `quarantine_document` returns
+    `materialized: false` for an oversized document (it refuses to copy bytes
+    above the same `MAX_DOCUMENT_BYTES` that raised `document_too_large`) and
+    for any input it cannot safely read — symlink, outside the intake root,
+    non-regular, empty, missing. Failures raised before the handler opens
+    (workflow-claim and media-context validation) or after it closes
+    (`artifact_integrity_conflict`, `artifact_classification_conflict`,
+    `lineage_mismatch`, the replay `idempotency_payload_mismatch`) never reach
+    it and carry no `quarantine` key at all.
+
+  When `materialized` is `false` or absent, the surviving artifact is the
+  original itself — under the OpenClaw inbound-media root for a channel
+  attachment, or `./inbox` for an operator drop — and the returned object is
+  your only governed rejection evidence. Record the hash and provenance from
+  there. When it is `true`, `vc-quarantine` holds hostile bytes at the recorded
+  path; treat the volume accordingly on teardown.
 - **Integrity mismatch:** if the reported paths are edits you deliberately made
   — customized policy artifacts, a replaced rubric — re-pin **both** inventories
   and re-run the gate:
