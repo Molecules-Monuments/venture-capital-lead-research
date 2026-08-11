@@ -693,5 +693,74 @@ class HostUtilityEnumerationTests(unittest.TestCase):
             "minimal host is where this list is load-bearing.",
         )
 
+
+class DocumentedInvocationTests(unittest.TestCase):
+    """Every command a document tells the operator to run must be runnable.
+
+    Two defect classes converge here, and both have been observed. The
+    fifteenth pass's own fix wave put a `git grep` recipe into RUNBOOK §8.1
+    that dies with `Unimplemented pathspec magic` on the shipped git version —
+    written, never executed. Its planted-defect calibration separately seeded a
+    documented `--force` flag that `init_customization.py` does not accept, and
+    five reviewers had to be paid to find it.
+
+    A documented invocation is checkable without executing anything dangerous:
+    the script must exist, and every long flag must appear in its argument
+    parser. That is the whole world for package scripts, so it is exact.
+    """
+
+    # Absolute in-image paths (e.g. /app/skills/skill-creator/scripts/...) are
+    # deliberately not package scripts; RUNBOOK §8.1 says so where it uses one.
+    INVOCATION = re.compile(r"(?<![\w/])scripts/([A-Za-z0-9_]+\.py)((?:\s+-{1,2}[A-Za-z0-9][\w-]*(?:[= ][^\s`|>]+)?)*)")
+    LONG_FLAG = re.compile(r"(?<!\w)--[A-Za-z][\w-]*")
+
+    def documented_invocations(self):
+        """{script: {flags}} over every fenced sh block in tracked docs."""
+        found = {}
+        for path in tracked_markdown():
+            for block in re.findall(r"```sh\n(.*?)```", path.read_text(encoding="utf-8"), re.S):
+                # Join backslash line continuations so a wrapped invocation is
+                # read as one command, the way the operator's shell reads it.
+                flat = re.sub(r"\\\n\s*", " ", block)
+                for match in self.INVOCATION.finditer(flat):
+                    script, tail = match.group(1), match.group(2) or ""
+                    entry = found.setdefault(script, {"flags": set(), "docs": set()})
+                    entry["flags"].update(self.LONG_FLAG.findall(tail))
+                    entry["docs"].add(path.relative_to(ROOT).as_posix())
+        return found
+
+    def test_every_documented_script_exists(self):
+        found = self.documented_invocations()
+        self.assertGreaterEqual(
+            len(found), 5, "the documented-invocation scan has rotted: no sh block matched"
+        )
+        missing = {
+            script: sorted(entry["docs"])
+            for script, entry in found.items()
+            if not (ROOT / "scripts" / script).is_file()
+        }
+        self.assertEqual(
+            missing, {},
+            f"documents tell the operator to run scripts that do not ship: {missing}",
+        )
+
+    def test_every_documented_flag_exists_in_its_parser(self):
+        offenders = {}
+        for script, entry in self.documented_invocations().items():
+            source_path = ROOT / "scripts" / script
+            if not source_path.is_file():
+                continue  # reported by the sibling test
+            source = source_path.read_text(encoding="utf-8")
+            for flag in sorted(entry["flags"]):
+                if f'"{flag}"' not in source and f"'{flag}'" not in source:
+                    offenders.setdefault(script, []).append(
+                        f"{flag} (documented in {', '.join(sorted(entry['docs']))})"
+                    )
+        self.assertEqual(
+            offenders, {},
+            "documents pass flags these scripts do not accept, so the "
+            f"documented command fails for the operator: {offenders}",
+        )
+
 if __name__ == "__main__":
     unittest.main()

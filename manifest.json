@@ -210,8 +210,8 @@
     {
       "executable": false,
       "path": "docs/PRODUCTION_READINESS.md",
-      "sha256": "257cc680678d20f9d3f5098eb40c16752e453a2567300c91ae8de3e1e2aed952",
-      "size": 14614
+      "sha256": "4620c3568f83d12a3f54a3e8c497ead5294ffca7c42c14e5acad518d221a66f8",
+      "size": 14651
     },
     {
       "executable": false,
@@ -234,8 +234,8 @@
     {
       "executable": false,
       "path": "docs/V3_RELEASE_EVIDENCE.md",
-      "sha256": "1e446f25d5e7aeab6921f7bf84ea072adf3a3cb1d87adaded3c9c82b8e978dd1",
-      "size": 13356
+      "sha256": "8f2134705def2c04a84e689267bb429323ad414225f96b2a7ffca91df85459f3",
+      "size": 13357
     },
     {
       "executable": false,
@@ -246,7 +246,7 @@
     {
       "executable": false,
       "path": "evals/V3_EVAL_RESULTS.md",
-      "sha256": "6de091384c86af74f281089cbb2de146f35e93e34d95dd49ad18c94eaa1c0b9d",
+      "sha256": "c653cb262606a8ffec10f04bf40a7617810f50fe1556d9af944bbf7c1165999b",
       "size": 10789
     },
     {
@@ -858,8 +858,8 @@
     {
       "executable": false,
       "path": "tests/v3/test_doc_tree_consistency.py",
-      "sha256": "5ba03f4dd1f49409300ab5e722fa46775080c024a7abc8d36f9ded8ddbee6983",
-      "size": 34638
+      "sha256": "f6ab92f88f1b1d321824a95c33a4b0b912abff23f3caa1d47daf72635bbe3c50",
+      "size": 38066
     },
     {
       "executable": false,
