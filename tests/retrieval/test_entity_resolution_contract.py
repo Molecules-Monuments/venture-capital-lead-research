@@ -127,8 +127,23 @@ class EntityResolutionContractTests(unittest.TestCase):
         )
 
     def test_fixed_workflows_claim_then_resolve_create(self) -> None:
+        """All four lead-creating workflows, not just the two obvious ones.
+
+        RESOLVER.md states that "all four lead-creating workflows
+        (`inbound-intake`, `inbound-text-intake`, `outbound-scout`,
+        `document-lead-intake`) must consume the resolver decision", and
+        tests/v3/test_doc_tree_consistency.py pins that consumer inventory at
+        four. This anti-bypass assertion covered only two of them, so the
+        `memory-lookup`/`company-upsert` bypass it exists to catch was
+        unguarded on the other two.
+        """
         workflows = PACKAGE / "workspaces/vc-chief/vc/workflows"
-        for filename in ("inbound-intake.lobster", "outbound-scout.lobster"):
+        for filename in (
+            "inbound-intake.lobster",
+            "outbound-scout.lobster",
+            "inbound-text-intake.lobster",
+            "document-lead-intake.lobster",
+        ):
             with self.subTest(workflow=filename):
                 body = (workflows / filename).read_text(encoding="utf-8")
                 claim = body.index("- id: workflow_request_claim")

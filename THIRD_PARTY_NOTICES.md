@@ -103,12 +103,14 @@ lockfile, neither npm lockfile, nor `dpkg`; their required notices (Node.js MIT
 plus the bundled OpenSSL, ICU, V8, c-ares, llhttp and zlib notices) ship only as
 `/usr/local/LICENSE` inside the built image, and a redistributor must preserve
 that file. The Debian layer beneath it is **not** permissive-only: it
-contains substantial GPL/LGPL material — `poppler-utils` (used for PDF
-extraction) is GPL-2/GPL-3, and the majority of the shipped Debian packages
-declare a GPL, LGPL, or MPL licence. Redistributing the built image therefore
-carries copyleft source-offer obligations — from this Debian material and from
-the LGPL Python distributions named above — that the permissive licenses above
-do not cover.
+contains substantial GPL/LGPL material — `poppler-utils` is GPL-2/GPL-3, and
+the majority of the shipped Debian packages declare a GPL, LGPL, or MPL
+licence. Redistributing the built image therefore carries copyleft source-offer
+obligations — from this Debian material, from the LGPL Python distributions
+named above, and from weak-copyleft npm material in the runtime layers — that
+the permissive licenses above do not cover. Treat these as the classes that
+require attention, not as a closed inventory: establish the actual obligation
+set from the built image rather than from this list.
 
 Lockfiles identify versions and integrity hashes; they are not a substitute
 for preserving required copyright notices or license texts in a distributed

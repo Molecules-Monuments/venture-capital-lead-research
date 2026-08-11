@@ -157,7 +157,8 @@ Hard authoring rules:
 - Do not splice untrusted values with `${arg}` into `run`, `command`, `pipeline`, or `cwd`. That form is a raw string replacement (`upstream_lobster/src/workflows/file.ts:2014-2018`).
 - Read values through a quoted environment reference, for example `"$LOBSTER_ARG_LEAD_ID"`, and validate them again in the called helper. The upstream regression test includes quotes, `$`, backticks, and command substitution characters (`upstream_lobster/test/workflow_args_env.test.ts:9-47`).
 - Reject argument names that normalize to the same environment key, such as `lead-id` and `lead_id`. Upstream normalization does not reject collisions; the later value would overwrite the earlier environment variable.
-- Prefer `LOBSTER_ARGS_JSON` over many shell words when the helper can accept JSON on stdin. Never use `eval`.
+- Pass identifiers as quoted `"$LOBSTER_ARG_<NAME>"` / `"$VCOPS_<NAME>"` arguments and structured payloads as a whole-value `stdin:` step reference whose path is on the validator's reviewed-path allowlist. Do not reach for `LOBSTER_ARGS_JSON`: it is unusable in a Version 3.0 workflow — `scripts/validate_workflows.py` rejects `$LOBSTER_ARGS_JSON` in `run:` as `raw_env` (the bounded-reference substitution matches only `$LOBSTER_ARG_*`/`$VCOPS_*`) and rejects the pipe or here-string that would feed it to a helper as `shell_operator`, and no shipped helper reads stdin as arguments in any case.
+- Never use `eval`.
 - Treat workflow definitions as executable code. They must be immutable in the runtime image or mounted read-only, code-reviewed, checksummed in the release manifest, and never generated from a message, uploaded document, or model output.
 
 ### Step result references
@@ -167,16 +168,28 @@ fields such as `$step-id.json.company.id`, with identifiers containing letters,
 numbers, `_`, and `-`, and nested path elements accepting letters, numbers, and
 `_` (`upstream_lobster/src/workflows/file.ts:1965-2055`).
 
-**Version 3.0 narrows that grammar, and the narrowing is enforced.** Only
-`$step-id.approved` and a *fully qualified* nested path such as
-`$step-id.json.company.id` are permitted, and the exact path must additionally
-appear in `SAFE_STEP_PATHS` in `scripts/validate_workflows.py`. The bare forms
-`$step-id.json` and `$step-id.stdout` are release failures: they raise
-`step_ref_legacy` and `step_ref_unbounded`, which fail `validate_workflows.py`
-and therefore the `fixed-workflows` step of `scripts/verify_offline.py`. The
+**Version 3.0 narrows that grammar, and the narrowing is enforced.** Step
+references are permitted only on the `stdin:`, `condition:` and `env:` value
+surfaces — **never in `run:` text**. A step reference of any form inside a
+command raises `step_ref_in_command`, even a fully qualified allowlisted path:
+Lobster substitutes it textually before `/bin/sh -lc` parses the command, so a
+value carrying a double quote escapes its own quotes and injects. Quoting
+cannot contain it, which is why the `arg_unquoted` rule does not cover this
+surface — `$VCOPS_*`/`$LOBSTER_ARG_*` are real environment variables the shell
+does not re-parse, so quoting is sufficient for *those*. Carry a step value
+into a command by binding it to a `VCOPS_`-namespaced `env:` entry and
+referencing that, quoted.
+
+On the surfaces that do accept references, only `$step-id.approved` and a
+*fully qualified* nested path such as `$step-id.json.company.id` are permitted,
+and the exact path must additionally appear in `SAFE_STEP_PATHS` in
+`scripts/validate_workflows.py`. The bare forms `$step-id.json` and
+`$step-id.stdout` are release failures: they raise `step_ref_legacy` and
+`step_ref_unbounded`. All three codes fail `validate_workflows.py` and
+therefore the `fixed-workflows` step of `scripts/verify_offline.py`. The
 independent Lobster-semantics executor in `tests/g4/test_workflow_execution.py`
-encodes the same narrow rule, and none of the eighteen shipped workflows uses a
-bare form.
+encodes the same narrow rule; none of the eighteen shipped workflows uses a
+bare form, and none puts a step reference in `run:` text.
 
 Operational rules:
 

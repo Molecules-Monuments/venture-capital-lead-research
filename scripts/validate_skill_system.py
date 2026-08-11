@@ -473,8 +473,15 @@ def validate_resolver_routing(config: dict[str, Any], workflows: dict[str, Any],
             add(findings, "resolver_origin_coverage", workflow_root,
                 f"no fixed workflow creates a lead with origin_group={required}; a resolver route to it is a dead end")
 
-    # 4. Every specialist RESOLVER routes work to must exist and hold the skill
-    #    it is routed through (a route to a skill the agent cannot use is dead).
+    # 4. Every specialist RESOLVER routes work *through* must hold that skill
+    #    (a route to a skill the agent cannot use is dead). The pairs are
+    #    enumerated rather than parsed out of RESOLVER.md: three of its rows are
+    #    hand-off rows whose agent cell names a downstream persister that
+    #    correctly does NOT hold the routed skill ("`inbound-intake-analyst`,
+    #    then `data-steward`"), so a naive derivation raises false findings
+    #    against a correct config. Keep this list total over the routed-through
+    #    rows: the fifteenth pass found it covering seven of thirteen, which let
+    #    a specialist silently lose a skill RESOLVER still routes to it.
     agent_skills = {
         agent.get("id"): set(agent.get("skills", []))
         for agent in (config.get("agents", {}).get("list", []) if config else [])
@@ -483,10 +490,16 @@ def validate_resolver_routing(config: dict[str, Any], workflows: dict[str, Any],
     for skill, agent in (
         ("evidence-research", "founder-researcher"),
         ("evidence-research", "market-mapper"),
+        ("evidence-research", "traction-analyst"),
         ("evidence-scoring", "qualification-analyst"),
         ("memo-writing", "memo-writer"),
         ("outbound-sourcing", "outbound-scout"),
         ("lead-routing", "lead-router"),
+        ("lead-memory-lookup", "data-steward"),
+        ("lead-signal-detection", "lead-signal-detector"),
+        ("knowledge-modeling", "data-steward"),
+        ("data-persistence", "data-steward"),
+        ("inbound-intake", "inbound-intake-analyst"),
         ("document-extraction", "document-intake-analyst"),
     ):
         if skill not in agent_skills.get(agent, set()):

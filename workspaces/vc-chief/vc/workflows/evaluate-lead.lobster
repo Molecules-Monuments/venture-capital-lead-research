@@ -73,10 +73,12 @@ steps:
   # is worse still, because the empty value disappears inside otherwise valid
   # JSON rather than arriving as an empty argument the helper can reject. That
   # is why the form is normally forbidden for identifiers. It is safe here and
-  # only here: every field comes from `workflow_running`, a transition step
-  # that cannot succeed without returning them, so the run never reaches this
-  # gate with any of them missing. Each referenced path is also on the
-  # validator's reviewed-path allowlist.
+  # only here: the two run-identity fields come from `workflow_running`, a
+  # transition step that cannot succeed without returning them, and
+  # `evaluation` comes from `prequalify`, whose helper (`cmd_evaluation_preview`)
+  # returns that key unconditionally — so the run never reaches this gate with
+  # any of them missing. Each referenced path is also on the validator's
+  # reviewed-path allowlist.
   - id: persist_approval
     approval:
       prompt: Persist this evaluation and its new compiled-truth snapshot?

@@ -137,6 +137,21 @@ def shipped_shell_scripts() -> list[Path]:
     return sorted(found)
 
 
+def shell_bearing_non_shebang_files() -> list[Path]:
+    """Shipped files that run shell without carrying a shebang of their own.
+
+    `shipped_shell_scripts()` enumerates by shebang, which is right for the
+    printf/echo scanner (it parses shell) but leaves two shipped files that
+    execute dash outside every guard: docker-compose.yml's `openclaw-state-init`
+    service declares `entrypoint: ["/bin/sh", "-eu", "-c"]` over an inline
+    command block and carries two CMD-SHELL healthchecks, and every
+    Dockerfile.openclaw `RUN` line runs under the base image's `/bin/sh`, which
+    is dash. Neither can be fed to the shell parser, but both are covered by
+    the count backstop below, which parses nothing.
+    """
+    return [PACKAGE / "docker-compose.yml", PACKAGE / "Dockerfile.openclaw"]
+
+
 class RecoveryLifecycleContractTests(unittest.TestCase):
     def test_lifecycle_scripts_are_executable_and_parse_as_posix_shell(self) -> None:
         for name in (
@@ -248,10 +263,24 @@ class RecoveryLifecycleContractTests(unittest.TestCase):
             "scripts/migrate.sh": 32,
             "scripts/restore.sh": 7,
             "scripts/rotate_runtime_role.sh": 1,
-            "scripts/update.sh": 1,
+            # 1 pre-existing, plus the six-line ledger-snapshot block the
+            # fifteenth pass mirrored from backup.sh so the schema-ahead guard
+            # runs before MUTATION_STARTED arms the consumer-stopping handler.
+            # Each is byte-identical to its reviewed backup.sh original and was
+            # re-checked under Debian dash: the psql metacommands arrive as
+            # `\set`, `\gset`, `\if`, `\endif`, and the separator as one tab.
+            "scripts/update.sh": 7,
+            # Not shebang-bearing, so invisible to the printf/echo scanner, but
+            # both run dash in the deployment: compose's state-init entrypoint
+            # and every Dockerfile RUN line. docker-compose.yml measures 0 and
+            # therefore contributes no key — the instant a backslash appears
+            # there, `measured` gains a key `expected` lacks and this fails.
+            # Dockerfile.openclaw's two are the RECOVERY comment's
+            # snapshot.debian.org printf formats, where \n must expand.
+            "Dockerfile.openclaw": 2,
         }
         measured = {}
-        for path in shipped_shell_scripts():
+        for path in shipped_shell_scripts() + shell_bearing_non_shebang_files():
             count = 0
             for line in path.read_text(encoding="utf-8").splitlines():
                 stripped = line.rstrip()
@@ -998,6 +1027,24 @@ class RecoveryLifecycleContractTests(unittest.TestCase):
             guard_line, "python3 scripts/record_images.py ",
             "the schema-ahead guard is indented, which means it was nested "
             f"back into a conditional: {guard_line!r}",
+        )
+
+        # update.sh must mirror it before it arms its own post-mutation
+        # handler. backup.sh runs the guard pre-quiesce precisely so it fires
+        # on a healthy running deployment, but update.sh sets MUTATION_STARTED
+        # before invoking the pre-update backup, and that flag is what makes
+        # the cleanup trap stop the gateway and CLI. Without the mirror, a
+        # guard whose whole purpose is to stop the operator while everything is
+        # still recoverable instead takes production down on its way to
+        # reporting.
+        update = body("update.sh")
+        update_guard = update.index("--validate-applied-migrations")
+        update_flag = update.index("MUTATION_STARTED=1")
+        self.assertLess(
+            update_guard, update_flag,
+            "update.sh arms MUTATION_STARTED before mirroring backup.sh's "
+            "schema-ahead ledger guard, so that guard now fails with consumers "
+            "stopped instead of on a healthy running deployment",
         )
 
         spec = importlib.util.spec_from_file_location(

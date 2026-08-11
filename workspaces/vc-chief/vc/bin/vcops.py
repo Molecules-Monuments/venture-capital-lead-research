@@ -3652,9 +3652,13 @@ def cmd_evidence_record(args: argparse.Namespace) -> dict[str, Any]:
         # claim_hash spans the company even though the dedup lookup below is
         # lead-scoped, so serialize on the company — not the lead — to close
         # the SELECT-then-INSERT window between concurrent evidence writes
-        # (including corroboration attaching to a company-wide claim). A
-        # distinct lock key-space avoids collision with the per-lead advisory
-        # locks the other writers take.
+        # (including corroboration attaching to a company-wide claim). The
+        # string-derived 64-bit key shares PostgreSQL's single-argument
+        # advisory key space with the per-lead locks — there are only two
+        # spaces, one bigint and one (int4, int4), and a seed changes the hash
+        # value, not the namespace. Collision is avoided because a
+        # hashtextextended output cannot plausibly equal a small sequential
+        # lead_id, not because this call occupies a space of its own.
         cur.execute("SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))", (f"evidence-company:{company_id}",))
         if source_spec is not None:
             source = _resolve_web_evidence_source(cur, source_spec)

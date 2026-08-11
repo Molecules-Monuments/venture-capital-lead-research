@@ -586,8 +586,9 @@ to the effective runtime configuration.
 A provider switch is **not** an `.env` change alone. `check_customization.py`
 binds eight reviewed profile values to the deployed environment —
 `models.provider`, `models.primary`, `models.fast`, `search.provider`, and
-`search.fetch_provider`, plus `organization.timezone` (to `TZ`) and
-`channels.selected` (to `PRIMARY_CHANNEL`) — and every lifecycle path
+`search.fetch_provider`, plus `organization.timezone` (to `TZ`),
+`channels.selected` (to `PRIMARY_CHANNEL`), and `approvals.allowed_channel_ids`
+(to the selected channel's destination-ID variable) — and every lifecycle path
 (`bootstrap.sh`, `update.sh`, `restore.sh`, `rotate_runtime_role.sh`) runs it.
 Editing `.env`
 without the matching `config/customization-profile.json` edit fails closed on

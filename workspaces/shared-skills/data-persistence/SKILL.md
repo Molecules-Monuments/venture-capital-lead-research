@@ -42,11 +42,15 @@ handler stores it for the chief's terminal record).
 `vcrun run evidence-record` takes `evidence_json`: ONE claim as one JSON
 object. Unknown fields are refused. Fields:
 
-- Required: `claim` (the statement, ≤2000 chars), `fact_type` (the metric or
-  decision question the claim answers, e.g. `arr_run_rate`,
+- Required scalars: `claim` (the statement, ≤2000 chars), `fact_type` (the
+  metric or decision question the claim answers, e.g. `arr_run_rate`,
   `founder_prior_exit`, ≤200), `produced_by` (the producing specialist role
-  id, e.g. `founder-researcher`).
-- `confidence`: 0..1 number, or `low`/`medium`/`high` (accepted and mapped to
+  id, e.g. `founder-researcher`). `confidence` below and the `source`/`document`
+  choice are equally required; they carry their own bullets because each needs
+  more explanation.
+- `confidence` (**required** — omitting it is refused as `invalid_confidence`
+  at the `evidence_persist` step, after the run row exists, which consumes the
+  idempotency key): 0..1 number, or `low`/`medium`/`high` (accepted and mapped to
   0.3/0.6/0.9). `evaluate-lead` compiles its truth snapshot from facts at
   **0.7 or above**, so a fact recorded as `medium` (0.6) is stored and
   retrievable but does not by itself let a lead reach an evaluation. Record

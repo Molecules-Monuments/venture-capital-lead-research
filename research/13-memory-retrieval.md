@@ -173,9 +173,10 @@ acceptance.
 > - `scripts/verify_offline.py` registers `tests/retrieval` as a gate step, so
 >   retrieval is no longer outside the offline gate.
 > - `tests/retrieval/test_entity_resolution_contract.py` inspects
->   `vcops.cmd_memory_lookup` directly, and asserts that both creation
->   workflows order `workflow_request_claim` → `company_resolve_create` →
->   `create_lead` with no `memory-lookup` call — the exact bypass this section
+>   `vcops.cmd_memory_lookup` directly, and asserts that all four
+>   lead-creating workflows order `workflow_request_claim` →
+>   `company_resolve_create` → `create_lead` with no `memory-lookup` call —
+>   the exact bypass this section
 >   identified as undetectable by a static gate is now the assertion.
 > - The *scale* limbs of the thresholds proposed below were executed as gate D
 >   on the declared 100k-company/1m-fact reference dataset via

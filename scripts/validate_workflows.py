@@ -218,6 +218,22 @@ def _validate_command(
         findings.append(Finding("unsafe_authority", "unsafe authority flags are forbidden", step_id))
 
     for referenced_step, path in STEP_REF_RE.findall(command):
+        # A direct step reference in run text is substituted TEXTUALLY, before
+        # the shell sees it, so quoting cannot contain it the way it contains
+        # $LOBSTER_ARG_*/$VCOPS_* (which Lobster sets as real environment
+        # variables that `sh` does not re-parse). A value carrying a double
+        # quote escapes its own quotes and injects. The arg_unquoted rule above
+        # therefore does not cover this surface at all: carry step values
+        # through a quoted VCOPS_ step-env entry instead. No shipped workflow
+        # puts a step reference in run text, so this is a closed surface.
+        findings.append(
+            Finding(
+                "step_ref_in_command",
+                "step reference must be carried through a quoted VCOPS_ step-env "
+                f"value, not spliced into run text: {referenced_step}.{path}",
+                step_id,
+            )
+        )
         if not path.startswith("json.") and path != "approved":
             findings.append(Finding("step_ref_legacy", f"legacy step reference: {referenced_step}.{path}", step_id))
         elif referenced_step not in prior_ids:

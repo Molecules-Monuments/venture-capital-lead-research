@@ -119,6 +119,55 @@ class EvidenceDateConsistencyTests(unittest.TestCase):
             )
 
 
+    def test_run_history_lists_end_at_the_tool_managed_matrix_date(self):
+        """A hand-maintained date list beside a tool-managed one drifts.
+
+        `scripts/set_evidence_execution_date.py` rewrites every match of its
+        patterns to one date, so a *history* enumeration deliberately sits
+        outside it — otherwise the tool would collapse the history. The
+        fourteenth pass then moved the tool-managed rebuild date to 2026-08-11
+        in the same sentence that lists the retrieval-scale run history, and
+        left that list ending at 2026-08-10: the sentence read as if the scale
+        gate had not run on the day the matrix did.
+
+        The list cannot be generated, but its terminal entry is checkable: a
+        run history of the matrix's own gates must reach the day the matrix
+        last ran.
+        """
+        matrix = {date for _, date in evidence_dates.collect(evidence_dates.MATRIX_DATE_PATTERNS)}
+        self.assertEqual(len(matrix), 1, "matrix date is not singular; the sibling test covers this")
+        current = matrix.pop()
+        # Anchor to the retrieval-scale clause and tolerate any wrapping: the
+        # same sentence carries a G6 "gate was re-run on <single date>" clause,
+        # and hardcoded single spaces made both which-clause-matches and
+        # whether-it-matches-at-all depend on where the line happened to wrap.
+        history = re.compile(
+            r"retrieval-scale\s+gate\s+was\s+re-run\s+on\s+"
+            r"((?:\d{4}-\d{2}-\d{2}[,\s]+(?:and\s+)?)*\d{4}-\d{2}-\d{2})"
+        )
+        found = []
+        for relative, text in EVIDENCE_TEXT.items():
+            for match in history.finditer(text):
+                dates = re.findall(r"\d{4}-\d{2}-\d{2}", match.group(1))
+                found.append((relative, dates))
+        self.assertTrue(
+            found,
+            "no 'gate was re-run on <date list>' history was found; the "
+            "pattern no longer fits the evidence documents",
+        )
+        for relative, dates in found:
+            self.assertEqual(
+                dates[-1], current,
+                f"{relative}: the run-history list ends at {dates[-1]} while the "
+                f"tool-managed matrix re-execution date is {current}. Append the "
+                "current date by hand — this list is deliberately outside "
+                "set_evidence_execution_date.py, which would collapse the history.",
+            )
+            self.assertEqual(
+                dates, sorted(dates),
+                f"{relative}: the run-history list is not in ascending order: {dates}",
+            )
+
     def test_rebuild_provenance_clause_is_identical_across_the_documents(self):
         """PRODUCTION_READINESS claims its two siblings "carry the same note".
 
