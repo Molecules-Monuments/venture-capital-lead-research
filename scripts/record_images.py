@@ -400,6 +400,53 @@ def lock_package_version(path: Path) -> str:
     return payload["release_contract"]["package_version"]
 
 
+def validate_applied_migrations(path: Path, ledger: str) -> None:
+    """Refuse a lock that predates the schema the deployment actually carries.
+
+    An update applies migrations inside its nested rotation and records the
+    new lock only after several further fallible steps. A failure in that
+    window leaves the database at the new schema while deployment-lock.json
+    still describes the old contract — and the documented "repair the release"
+    retry then takes another pre-update recovery point, stamping the *old*
+    package version onto a dump of the *new* schema. Restoring that recovery
+    point is only rejected by migrate.sh, long after the production database
+    has been dropped. Compare the live ledger to the lock before the stamp so
+    the operator is stopped while everything is still recoverable.
+
+    One-directional by design: a lock entry with no ledger row is normal (the
+    role reconciler is a shell script, and a not-yet-applied migration is the
+    ordinary pre-update state). Only a ledger row the lock cannot account for
+    proves the schema has moved past it.
+    """
+    contract = validate_lock(path, structure_only=True)["release_contract"]
+    recorded = {item["path"]: item["sha256"] for item in contract["migrations"]}
+    for line in ledger.splitlines():
+        if not line.strip():
+            continue
+        fields = line.split("\t")
+        if len(fields) != 3:
+            raise LockError(f"malformed schema_migrations ledger row: {line!r}")
+        version, name, checksum = (field.strip() for field in fields)
+        expected = recorded.get(f"migrations/{name}.sql")
+        if expected is None:
+            raise LockError(
+                f"the deployment's schema is ahead of {path}: applied migration "
+                f"{version} ({name}) is not in the recorded release contract. "
+                "Migrations were applied without a new lock being recorded — by "
+                "an update or bootstrap that failed after migrate.sh, or by a "
+                "direct scripts/rotate_runtime_role.sh run. Complete or roll "
+                "back that operation, or re-record the lock with "
+                "scripts/record_images.py, before taking a recovery point: the "
+                "version stamped on it would not describe the schema inside it."
+            )
+        if expected != checksum:
+            raise LockError(
+                f"applied migration {version} ({name}) has checksum {checksum}, "
+                f"but {path} records {expected} — the deployment's schema does "
+                "not match the recorded release contract"
+            )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     modes = parser.add_mutually_exclusive_group()
@@ -409,8 +456,28 @@ def main() -> int:
     modes.add_argument("--validate-live-structure", type=Path)
     modes.add_argument("--validate-baked-sources", type=Path)
     modes.add_argument("--lock-package-version", type=Path)
+    modes.add_argument(
+        "--validate-applied-migrations",
+        type=Path,
+        help="compare the schema_migrations ledger on stdin (version/name/checksum TSV) "
+        "against the lock's recorded migration inventory",
+    )
     args = parser.parse_args()
     try:
+        if args.validate_applied_migrations:
+            validate_applied_migrations(
+                args.validate_applied_migrations, sys.stdin.read()
+            )
+            print(
+                json.dumps(
+                    {
+                        "result": "PASS",
+                        "deployment_lock": str(args.validate_applied_migrations),
+                    },
+                    sort_keys=True,
+                )
+            )
+            return 0
         if args.lock_package_version:
             print(lock_package_version(args.lock_package_version))
             return 0

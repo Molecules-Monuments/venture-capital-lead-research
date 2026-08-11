@@ -14,9 +14,15 @@ ALTER TABLE workflow_requests
 -- The 005 append-only trigger raises on every UPDATE, and this backfill's
 -- only targets are rows written before this migration — on a populated
 -- pre-008 database it would fail closed on its own guard. Disable the
--- trigger for the backfill only; both statements run as the owner inside
--- this single transaction under migrate.sh's advisory lock, so no other
--- session can write to the table while the trigger is off.
+-- trigger for the backfill only. This is safe because (a) the ALTER TABLE
+-- statements in this transaction hold their table locks (ACCESS EXCLUSIVE
+-- from ADD COLUMN, SHARE ROW EXCLUSIVE from DISABLE TRIGGER) until COMMIT,
+-- so no other session can write to the table while the trigger is off, and
+-- (b) openclaw_runtime holds only SELECT, INSERT here (005), so nothing but
+-- a migrator could UPDATE it anyway. migrate.sh's advisory lock only
+-- serializes concurrent migrators; a future backfill copying this pattern
+-- onto a table whose runtime role holds UPDATE/DELETE must rely on the
+-- table lock held to commit, not on that advisory lock.
 ALTER TABLE workflow_requests DISABLE TRIGGER workflow_requests_append_only;
 
 UPDATE workflow_requests

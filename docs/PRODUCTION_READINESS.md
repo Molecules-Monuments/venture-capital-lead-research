@@ -44,12 +44,11 @@ release inventory.
 The component-by-component basis is retained in the project's internal audit
 archive (excluded from the published package).
 
-## Release proof (executed 2026-07-23; last re-executed 2026-08-10)
+## Release proof (executed 2026-07-23; last re-executed 2026-08-11)
 
-Every figure in the table below is the measurement of a **2026-08-10**
+Every figure in the table below is the measurement of a **2026-08-11**
 re-execution against this tree, and against the derived image rebuilt from it
-with `docker build --no-cache --pull` on 2026-08-10, after that day's edits to
-one image-baked `workspaces/` file and one migration — so the image is derived from exactly this
+with `docker build --no-cache --pull` on 2026-08-11, after that day's edits to the image-baked `workspaces/` files, `Dockerfile.openclaw` itself, one migration, and the host-side recovery-lifecycle and workflow-validation scripts — so the image is derived from exactly this
 tree, not a figure carried forward from the 2026-07-23 session. That re-execution was necessary rather than ceremonial: the
 migrations, `vcops.py`, the eighteen `.lobster` workflows and
 `Dockerfile.openclaw` — the file that defines the very image G6 and G8 build —
@@ -59,7 +58,7 @@ their provenance had gone stale. `docs/V3_RELEASE_EVIDENCE.md` and
 
 | Proof | Result |
 | --- | --- |
-| Complete aggregate offline suites | 243 tests passed; 0 failed; 0 skipped; 25/25 offline checks pass (count re-verified 2026-08-10; the three runtime-provider/context regression tests that accompanied the context-window and Ollama-timeout floors moved it from 231 to 234, and the heartbeat-disabled render assertion added on 2026-08-08 moved it to 235, and the eight audit-invariant tests — evidence-document consistency and the erasure-gap enumeration — added on 2026-08-10 moved it to 243) |
+| Complete aggregate offline suites | 262 tests passed; 0 failed; 0 skipped; 25/25 offline checks pass (count re-verified 2026-08-11; the three runtime-provider/context regression tests that accompanied the context-window and Ollama-timeout floors moved it from 231 to 234, and the heartbeat-disabled render assertion added on 2026-08-08 moved it to 235, and the eight audit-invariant tests — evidence-document consistency and the erasure-gap enumeration — added on 2026-08-10 moved it to 243, and the fourteenth pass's nineteen mechanized-binding tests — documentation/tree consistency, runtime-grant enumeration, the customization count and coverage pins, the evidence-document growth-bridge and provenance guards, the workflow step-env allowlist, the dash-safe shell-escape guard, and the recovery state-bound and schema-ahead contracts — moved it to 262) |
 | Disposable PostgreSQL G4 | 90/90 across seven suites (semantics 6, document security 15, database contract 10, helper CLI 22, workflow execution 10, research intelligence 19, source surveillance 8); migrations 001–018 applied and registered twice |
 | Real deployment gate (G8) | PASS — `./scripts/bootstrap.sh` completes on the pinned images; the negative credential proof is rejected over TCP with no host trust rules remaining; fixed workflows run through real `vcrun`/Lobster inside the deployed gateway; an unchanged retry of a succeeded workflow returns an idempotent replay without re-executing, and the same key with changed arguments fails closed as `idempotency_payload_mismatch` leaving no new rows; an autonomous run leaves a non-empty knowledge base; teardown removes all state |
 | Exact-image gate (G6) | PASS — 8/8 against the image rebuilt from this tree |

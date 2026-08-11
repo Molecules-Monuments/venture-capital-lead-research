@@ -20,8 +20,9 @@ passed the relevant evals.
    `docs/RUNBOOK.md` §5.6 is its enforcement point, not this validator.
 3. Apply the corresponding edits in the files below. The JSON profile records
    the decision; it does not silently rewrite policy.
-4. Re-pin both inventories, because the files you just edited are hash-pinned
-   in two places:
+4. Re-pin both inventories: the twenty reviewed artifacts among the files
+   below are hash-pinned in two places, and every other packaged file you
+   edit is pinned in `manifest.json` alone:
 
    ```sh
    python3 -B scripts/init_customization.py --update-hashes
@@ -115,7 +116,7 @@ token there). Editing it fails the offline gate. See the
 |---|---|---|
 | Organization, operator intent, timezone | `workspaces/vc-chief/USER.md`, `.env` (`TZ`), customization profile | State the product objective, fund strategy, reporting style, stable deployment owner, and authority limits. Re-run orchestration and channel tests, then `./scripts/bootstrap.sh` if already deployed (`USER.md` is image-baked). |
 | Thesis, stage, sector, geography, check/ownership targets | `workspaces/vc-chief/vc/thesis.md`, `exclusion_criteria.md`, `prequalification.md`, profile | Replace the sample text with your firm's own mandate, exclusions and prequalification bar. The routing and scoring cases under `tests/g3` and the eval JSONL files are hash-pinned examples; after editing any governed artifact, re-pin with `python3 -B scripts/init_customization.py --update-hashes` and, on an already-bootstrapped deployment, re-run `./scripts/bootstrap.sh` — these files are image-baked, so until the image is rebuilt the chief keeps applying the sample thesis. |
-| Scoring criteria, weights, missingness, thresholds | `workspaces/vc-chief/vc/scoring-rubric.md` and its machine JSON, `tests/g3`, scoring evals | The shipped weights, bands and gates are examples; the software does not assess their predictive quality. Evidence quality and coverage are separate inputs, and unknown is never scored as negative. Update helper/workflow policy versions together. **The recommendation band boundaries are re-encoded in a database CHECK, so changing them means changing the database too, and how you do that depends on whether you have bootstrapped yet.** Before your first `bootstrap.sh`, edit the CHECK in `migrations/007_scoring_readiness_gate.sql` directly — no migration ledger exists yet, so nothing is bound to its checksum. (`manifest.json` does record it, so re-pin the manifest afterwards as step 4 requires, or `verify_release.py --pristine` reports your own edit as an integrity mismatch.) **After bootstrap, never edit 007** (or any applied migration): `migrate.sh` compares each file against the recorded checksum and fails closed on every later `bootstrap`, `update` and `rotate_runtime_role` run. Add a new numbered forward migration instead that drops and recreates the CHECK with your bands, then regenerate `docs/SCHEMA.sql` and the manifest. Until the rubric and the CHECK agree, `evaluate-lead` fails at persistence and the G4 gate fails. `workspaces/vc-chief/vc/governance_lint.md` also refers to the band edges, so review it against your bands. The rubric is image-baked, so re-run `./scripts/bootstrap.sh` on a deployed system. |
+| Scoring criteria, weights, missingness, thresholds | `workspaces/vc-chief/vc/scoring-rubric.md` and its machine JSON, `tests/g3`, scoring evals | The shipped weights, bands and gates are examples; the software does not assess their predictive quality. Evidence quality and coverage are separate inputs, and unknown is never scored as negative. The policy version is frozen at `3.0` for this release: customize weights, bands and gates only, never the version (see "Generated and coupled files"). **The recommendation band boundaries are re-encoded in a database CHECK, so changing them means changing the database too, and how you do that depends on whether you have bootstrapped yet.** Before your first `bootstrap.sh`, edit the CHECK in `migrations/007_scoring_readiness_gate.sql` directly — no migration ledger exists yet, so nothing is bound to its checksum. (`manifest.json` does record it, so re-pin the manifest afterwards as step 4 requires, or `verify_release.py --pristine` reports your own edit as an integrity mismatch.) **After bootstrap, never edit 007** (or any applied migration): `migrate.sh` compares each file against the recorded checksum and fails closed on every later `bootstrap`, `update` and `rotate_runtime_role` run. Add a new numbered forward migration instead that drops and recreates the CHECK with your bands, then regenerate `docs/SCHEMA.sql` and the manifest. Until the rubric and the CHECK agree, `evaluate-lead` fails at persistence and the G4 gate fails. `workspaces/vc-chief/vc/governance_lint.md` also refers to the band edges, so review it against your bands. The rubric is image-baked, so re-run `./scripts/bootstrap.sh` on a deployed system. |
 | Sources and outbound discovery | `primary_sources.md`, `active_sourcing.md`, `passive_sourcing.md`, `inbound_sources.md`, `third_party_connectors.md`, `workspaces/outbound-scout/USER.md` | Record stable URL/provider, purpose, allowed data, cost/rate/terms, expected signal, owner, and stop rule. Which sources you admit, and on what terms, is your decision; check the provider's terms of use with your counsel if in doubt. |
 | Research depth, cost, and models | `research_depth.md` **and the mirroring numbers in `workspaces/shared-skills/research-depth-control/SKILL.md` (retune both together)**, `.env` (`VC_MODEL_PROVIDER`, `VC_PRIMARY_MODEL`, `VC_FAST_MODEL`, common model limits), profile | Select OpenAI, native Ollama, or one reviewed HTTPS custom provider. Benchmark tool calling, JSON, context, prompt injection, quality, privacy, latency, and cost on frozen suites. For Ollama, validate the private endpoint, pulled models, host capacity, and restart behavior. Equal model IDs are allowed only when deliberately reviewed. The shipped tier split (PRIMARY: `vc-chief`, `market-mapper`, `memo-writer`; FAST: the other nine, including the scoring gate and the sole DB writer) is a cost-first sample, not a benchmarked optimum. `.env` defines the two model IDs; which agent uses which is the `"model"` field on each agent in `config/openclaw.json` (a hash-pinned reviewed artifact — re-pin both inventories after editing it). |
 | Search and fetch provider | `.env` (`VC_WEB_SEARCH_PROVIDER`, `VC_WEB_FETCH_PROVIDER` and selected key), `primary_sources.md`, `third_party_connectors.md`, profile | Keep the generic agent tool contract. Choose `auto` only with direct OpenAI, or explicitly select a native provider: `duckduckgo` (keyless; the only search provider bundled in the base image), `firecrawl`/`tavily` (keyed; present because `runtime-packages/package.json` pins their plugin packages — keep those pins), or `brave`/`perplexity`/`exa`/`searxng`/`parallel-free` (not pinned — pin the plugin package + rebuild, or render fails closed). Selecting `firecrawl` for search also makes it the fallback the fetch lane uses when local extraction returns nothing, unless you pin a fetch provider; see the search table in `README.md`. Review coverage, ranking, processor terms, retention, rate/cost, egress, failure behavior, and source quality. A provider switch requires research regressions and exact-image/config validation. |
@@ -285,13 +286,34 @@ routine customization.
 
 Do not edit a policy in isolation. At minimum keep these coupled:
 
-- rubric Markdown, rubric JSON (`scoring-rubric.v3.json`'s `"version"`), the
-  helper `POLICY_VERSION`, the two `--policy-version` literals in
-  `workspaces/vc-chief/vc/workflows/evaluate-lead.lobster`, and the scoring
-  fixtures. No offline gate catches drift here: a mismatch first appears in
-  production as `rubric_version_mismatch` when a lead is evaluated;
-- resolver policy, migration schema, typed CLI, both intake workflows, schemas,
-  and retrieval fixtures;
+- rubric Markdown, rubric JSON **content**, and the scoring fixtures. The
+  policy version itself is **frozen at `3.0` for this release — do not bump
+  it**: customizing weights, bands, and gates neither requires nor permits a
+  version change. The value is re-asserted in the helper's `_load_rubric`
+  guard (`workspaces/vc-chief/vc/bin/vcops.py`, any other value fails closed as
+  `rubric_invalid`, exit 3, on every scoring call), in four `--policy-version`
+  argparse defaults in the same file, in the two `--policy-version` literals in
+  `workspaces/vc-chief/vc/workflows/evaluate-lead.lobster`, in the helper
+  `POLICY_VERSION`, and in applied migration
+  `008_workflow_version_binding.sql`, which cannot be edited after bootstrap
+  without a new forward migration. Every one of those pins now fails closed
+  before release. G4 executes the workflows end-to-end against this tree:
+  `evaluate-lead.lobster` catches a drifted rubric JSON `"version"` as
+  `rubric_invalid` and a drifted `--policy-version` on its `evaluation_save`
+  step as `rubric_version_mismatch`, while a drifted helper `POLICY_VERSION`
+  is caught in the **document** lane instead — `inbound-intake` and
+  `document-ingest` write `document_extractions` with a bound
+  `workflow_request_id`, whose `document_extractions_workflow_versions`
+  trigger (migration 008) is the only place that literal is enforced;
+  `evaluate-lead` never writes that table, and `document-lead-intake` only
+  reads an existing extraction. The offline suite covers the rest: a `tests/v3` pin binds the rubric
+  JSON version, the helper guard and its four argparse defaults, both
+  `evaluate-lead.lobster` literals, the migration literal, and the prose
+  `Policy version:` line in `scoring-rubric.md` to one another, so no member
+  of the set can drift alone;
+- resolver policy, migration schema, typed CLI, all four lead-creating
+  workflows (`inbound-intake`, `inbound-text-intake`, `document-lead-intake`,
+  `outbound-scout`), schemas, and retrieval fixtures;
 - agent contract, shared skill, canonical output schema, resolver route, config
   skill/tool allowlist, and semantic fixtures;
 - pending Workshop skill, owner, router/config entry, affected `AGENTS.md` and
@@ -306,6 +328,10 @@ Do not edit a policy in isolation. At minimum keep these coupled:
   change.
 
 Customization is complete only when the coupled artifacts agree and the new
-fixtures pass. The validator rejects missing/mismatched reviewed-artifact
-hashes, so a policy edit after review fails closed. A `reviewed` JSON flag
-without that evidence is a false claim.
+fixtures pass. The validator rejects missing/mismatched hashes for the twenty
+reviewed artifacts, so an edit to any of them after review fails closed at
+the next bootstrap, update, restore or rotate run. The remaining customizable policy files
+are pinned only in `manifest.json`, which no lifecycle script re-checks —
+`verify_release.py --pristine` and the offline manifest-currency gate are
+their only backstop, so re-run those after any post-review policy edit. A
+`reviewed` JSON flag without that evidence is a false claim.

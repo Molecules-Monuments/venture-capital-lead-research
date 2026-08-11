@@ -75,15 +75,15 @@ done
 snapshot_ledger() {
   output="$1"
   {
-    echo '\set ON_ERROR_STOP on'
-    echo 'BEGIN;'
-    echo 'SELECT pg_advisory_xact_lock(2026071801::bigint) \g /dev/null'
-    echo '\set ledger_exists false'
-    echo "SELECT (to_regclass('public.schema_migrations') IS NOT NULL) AS ledger_exists \\gset"
-    echo '\if :ledger_exists'
-    echo 'SELECT version,name,checksum_sha256 FROM schema_migrations ORDER BY version;'
-    echo '\endif'
-    echo 'COMMIT;'
+    printf '%s\n' '\set ON_ERROR_STOP on'
+    printf '%s\n' 'BEGIN;'
+    printf '%s\n' 'SELECT pg_advisory_xact_lock(2026071801::bigint) \g /dev/null'
+    printf '%s\n' '\set ledger_exists false'
+    printf '%s\n' "SELECT (to_regclass('public.schema_migrations') IS NOT NULL) AS ledger_exists \\gset"
+    printf '%s\n' '\if :ledger_exists'
+    printf '%s\n' 'SELECT version,name,checksum_sha256 FROM schema_migrations ORDER BY version;'
+    printf '%s\n' '\endif'
+    printf '%s\n' 'COMMIT;'
   } | compose exec -T postgres \
     psql -X -w --quiet --username openclaw_owner --dbname openclaw \
     --tuples-only --no-align --field-separator="$tab" >"$output"
@@ -121,28 +121,28 @@ for migration_path in migrations/[0-9][0-9][0-9]_*.sql; do
   # the preceding commit and cannot race a second application. Remove only the
   # validated outer wrapper, then apply and register in the same transaction.
   {
-    echo 'BEGIN;'
-    echo 'SELECT pg_advisory_xact_lock(2026071801::bigint);'
-    echo '\set ledger_exists false'
-    echo '\set migration_applied false'
-    echo "SELECT (to_regclass('public.schema_migrations') IS NOT NULL) AS ledger_exists \\gset"
-    echo '\if :ledger_exists'
-    echo "SELECT EXISTS (SELECT 1 FROM schema_migrations WHERE version = :'version') AS migration_applied \\gset"
-    echo "SELECT (NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version = :'version') OR EXISTS (SELECT 1 FROM schema_migrations WHERE version = :'version' AND name = :'name' AND checksum_sha256 = :'checksum')) AS migration_valid \\gset"
-    echo '\if :migration_valid'
-    echo '\else'
-    echo "\\warn 'migration checksum/name mismatch for ' :'name'"
-    echo "DO \$migration_guard\$ BEGIN RAISE EXCEPTION 'migration checksum/name mismatch'; END \$migration_guard\$;"
-    echo '\endif'
-    echo '\endif'
-    echo '\if :migration_applied'
-    echo '\else'
+    printf '%s\n' 'BEGIN;'
+    printf '%s\n' 'SELECT pg_advisory_xact_lock(2026071801::bigint);'
+    printf '%s\n' '\set ledger_exists false'
+    printf '%s\n' '\set migration_applied false'
+    printf '%s\n' "SELECT (to_regclass('public.schema_migrations') IS NOT NULL) AS ledger_exists \\gset"
+    printf '%s\n' '\if :ledger_exists'
+    printf '%s\n' "SELECT EXISTS (SELECT 1 FROM schema_migrations WHERE version = :'version') AS migration_applied \\gset"
+    printf '%s\n' "SELECT (NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version = :'version') OR EXISTS (SELECT 1 FROM schema_migrations WHERE version = :'version' AND name = :'name' AND checksum_sha256 = :'checksum')) AS migration_valid \\gset"
+    printf '%s\n' '\if :migration_valid'
+    printf '%s\n' '\else'
+    printf '%s\n' "\\warn 'migration checksum/name mismatch for ' :'name'"
+    printf '%s\n' "DO \$migration_guard\$ BEGIN RAISE EXCEPTION 'migration checksum/name mismatch'; END \$migration_guard\$;"
+    printf '%s\n' '\endif'
+    printf '%s\n' '\endif'
+    printf '%s\n' '\if :migration_applied'
+    printf '%s\n' '\else'
     sed -e '/^[[:space:]]*BEGIN;[[:space:]]*$/d' \
         -e '/^[[:space:]]*COMMIT;[[:space:]]*$/d' "$migration_path"
-    echo
-    echo "SELECT register_schema_migration(:'version', :'name', :'checksum');"
-    echo '\endif'
-    echo 'COMMIT;'
+    printf '\n'
+    printf '%s\n' "SELECT register_schema_migration(:'version', :'name', :'checksum');"
+    printf '%s\n' '\endif'
+    printf '%s\n' 'COMMIT;'
   } | compose exec -T postgres \
     psql -X -w --username openclaw_owner --dbname openclaw \
     --set=ON_ERROR_STOP=1 --set=version="$version" \

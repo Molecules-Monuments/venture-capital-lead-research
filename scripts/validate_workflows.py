@@ -68,6 +68,19 @@ SHELL_BUILTINS = {"env", "export", "printenv", "set", "source", "."}
 # closed authoring subset instead of against the keys we happen to inspect.
 ALLOWED_STEP_KEYS = {"id", "run", "stdin", "env", "condition", "timeout_ms", "approval"}
 ALLOWED_WORKFLOW_KEYS = {"name", "args", "steps"}
+# Approving the `run:` text does not approve the executable that runs it. The
+# pinned runtime resolves the inline shell from the step environment
+# (`resolveInlineShellCommand` in lobster's shell.js reads `LOBSTER_SHELL` and,
+# when set, executes THAT binary with the run text demoted to an `-lc`
+# argument), so an unconstrained env key silently replaces the immutable path
+# this validator just checked. Constrain the KEY names to the closed `VCOPS_`
+# namespace that all eighteen shipped workflows use, making LOBSTER_SHELL,
+# PATH, IFS, LD_PRELOAD and every other execution-influencing key a release
+# failure. This is the "caller-controlled ... environment key" rejection
+# docs/TASKFLOW_LOBSTER_COMPATIBILITY.md requires of a static release
+# validator, without which the G5 "steps invoke only the exact immutable
+# vcops path" claim is about the command text rather than the invocation.
+STEP_ENV_KEY_RE = re.compile(r"VCOPS_[A-Z0-9_]+")
 
 
 class DuplicateKeyError(ValueError):
@@ -354,6 +367,14 @@ def validate_workflow(
                 findings.append(Finding("reference_shape", "env must map string keys to string values", rendered_id))
             else:
                 for key, value in step["env"].items():
+                    if not STEP_ENV_KEY_RE.fullmatch(key):
+                        findings.append(
+                            Finding(
+                                "env_key",
+                                f"step environment key outside the reviewed VCOPS_ namespace: {key}",
+                                rendered_id,
+                            )
+                        )
                     findings.extend(
                         _validate_data_references(
                             value, field=f"env.{key}", step_id=rendered_id or f"step-{index + 1}",

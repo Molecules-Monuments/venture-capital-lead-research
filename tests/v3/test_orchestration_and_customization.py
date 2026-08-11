@@ -456,6 +456,125 @@ class Version3ContractTests(unittest.TestCase):
             self.assertNotIn(f'"{flag}": True', source)
             self.assertNotIn(f'"{flag}": true', source)
 
+    def test_customization_counts_match_the_documented_twenty(self) -> None:
+        """The 'exactly twenty' numerals are load-bearing prose in six files.
+
+        A 21st review flag or reviewed artifact added consistently across the
+        pinned copies passes every gate while CUSTOMIZATION.md's 'exactly
+        twenty', the 'twenty-first' framing, and the README/RUNBOOK/OPERATIONS
+        mentions all silently go wrong. Pin the measured sizes; moving them
+        means consciously updating every documented mention in the same
+        change.
+        """
+        source = ast.parse(
+            (ROOT / "scripts/check_customization.py").read_text(encoding="utf-8")
+        )
+        flags = None
+        for node in source.body:
+            if (
+                isinstance(node, ast.Assign)
+                and any(
+                    isinstance(t, ast.Name) and t.id == "REVIEW_FLAGS"
+                    for t in node.targets
+                )
+                and isinstance(node.value, (ast.Set, ast.List, ast.Tuple))
+            ):
+                flags = node.value.elts
+        if flags is None:
+            self.fail("REVIEW_FLAGS not found in check_customization.py")
+        artifacts = self.reviewed_artifact_set(
+            ROOT / "scripts/check_customization.py", "REQUIRED_REVIEWED_ARTIFACTS"
+        )
+        self.assertEqual(
+            (len(flags), len(artifacts)), (20, 20),
+            "the review-flag or reviewed-artifact inventory moved; update every "
+            "documented 'twenty'/'twenty-first' mention (CUSTOMIZATION.md, "
+            "README.md, docs/RUNBOOK.md, docs/OPERATIONS.md, CLAUDE.md, "
+            "scripts/init_customization.py) and this pin in the same change",
+        )
+        for relative, phrases in (
+            ("CUSTOMIZATION.md", ("gates exactly twenty", "twenty-first")),
+            ("docs/RUNBOOK.md", ("twenty review flags", "twenty-first")),
+            # The script prints its own operator-facing count, which no other
+            # check reads; a 21st flag must move it too.
+            ("scripts/init_customization.py", ("twenty governed", "twenty review flags")),
+        ):
+            text = (ROOT / relative).read_text(encoding="utf-8")
+            for phrase in phrases:
+                self.assertIn(
+                    phrase, text,
+                    f"{relative} no longer states '{phrase}'; the documented "
+                    "count wording moved without this pin moving",
+                )
+
+    def test_customization_doc_paths_are_pinned_and_split_documented(self) -> None:
+        """CUSTOMIZATION.md's coverage story must match the pin partition.
+
+        The document tells operators which edits fail closed at the next
+        lifecycle run (the twenty profile-pinned artifacts) and which are
+        pinned in manifest.json alone. Every full `workspaces/...` path the
+        document names must exist and be manifest-declared, and the subset
+        carried by the reviewed-artifact profile is pinned here so a file
+        migrating between the two coverage classes fails until the document's
+        story is updated. Scope note: the extractor sees full paths only, not
+        the bare backticked filenames the MUST_CUSTOMIZE table also uses.
+        """
+        text = (ROOT / "CUSTOMIZATION.md").read_text(encoding="utf-8")
+        named = set(
+            re.findall(r"`((?:workspaces|tests/g3)/[^`\s]+\.[a-z0-9]+)`", text)
+        )
+        self.assertGreaterEqual(
+            len(named), 8, "the CUSTOMIZATION.md path inventory has rotted"
+        )
+        manifest = {
+            entry["path"]
+            for entry in json.loads(
+                (ROOT / "manifest.json").read_text(encoding="utf-8")
+            )["files"]
+        }
+        required = self.reviewed_artifact_set(
+            ROOT / "scripts/check_customization.py", "REQUIRED_REVIEWED_ARTIFACTS"
+        )
+        for relative in sorted(named):
+            with self.subTest(path=relative):
+                self.assertTrue(
+                    (ROOT / relative).is_file(),
+                    f"CUSTOMIZATION.md names {relative}, which does not exist",
+                )
+                self.assertIn(
+                    relative, manifest,
+                    f"CUSTOMIZATION.md names {relative}, which is not "
+                    "manifest-declared",
+                )
+        self.assertEqual(
+            sorted(named & required),
+            [
+                "workspaces/outbound-scout/USER.md",
+                "workspaces/vc-chief/USER.md",
+                "workspaces/vc-chief/vc/thesis.md",
+            ],
+            "the overlap between CUSTOMIZATION.md's `workspaces/` full-path mentions "
+            "and the "
+            "reviewed-artifact set moved; update the document's fails-closed "
+            "coverage story and this pin together",
+        )
+        self.assertEqual(
+            sorted(named - required),
+            [
+                "workspaces/shared-skills/memo-writing/SKILL.md",
+                "workspaces/shared-skills/research-depth-control/SKILL.md",
+                "workspaces/vc-chief/vc/RESOLVER.md",
+                "workspaces/vc-chief/vc/bin/vcops.py",
+                "workspaces/vc-chief/vc/governance_lint.md",
+                "workspaces/vc-chief/vc/scoring-rubric.md",
+                "workspaces/vc-chief/vc/workflows/evaluate-lead.lobster",
+            ],
+            "the manifest-only side of CUSTOMIZATION.md's `workspaces/` full-path "
+            "mentions "
+            "moved; a file joining or leaving the twenty must move the "
+            "document's story and this pin together",
+        )
+
     @staticmethod
     def reviewed_artifact_set(path: Path, name: str) -> set[str]:
         module = ast.parse(path.read_text(encoding="utf-8"))

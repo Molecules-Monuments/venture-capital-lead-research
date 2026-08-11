@@ -249,9 +249,9 @@ Provider-side setup, following the pinned guide:
 5. Invite the bot to the destination channel.
 
 Obtaining the IDs: right-click the channel → **Copy link**; the trailing `C…`
-segment of that URL is `SLACK_ALLOWED_CHANNEL_ID`. User IDs (`U…`/`W…`) come
-from a member's profile or an API response. Display names are never
-authorization.
+segment of that URL is `SLACK_ALLOWED_CHANNEL_ID`. User IDs (`U…`/`W…`) for
+`SLACK_ALLOWED_USER_IDS` come from a member's profile or an API response.
+Display names are never authorization.
 
 Inbound document use requires the Slack app's file-read capability (including
 `files:read`) and the corresponding reviewed file/message events; a minimal

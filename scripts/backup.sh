@@ -31,6 +31,7 @@ COMPATIBLE_BACKUP="${OPENCLAW_BACKUP_COMPATIBLE_LOCK:-0}"
 LOCK_OWNED=0
 LOCK_TOKEN=""
 STAGING=""
+LEDGER_SNAPSHOT=""
 BACKUP_PACKAGE_VERSION=""
 GATEWAY_WAS_RUNNING=0
 QUIESCED=0
@@ -110,6 +111,9 @@ cleanup() {
   if [ -n "$STAGING" ] && [ -d "$STAGING" ]; then
     rm -rf -- "$STAGING"
   fi
+  if [ -n "$LEDGER_SNAPSHOT" ] && [ -f "$LEDGER_SNAPSHOT" ]; then
+    rm -f -- "$LEDGER_SNAPSHOT"
+  fi
   if [ "$LOCK_OWNED" -eq 1 ]; then
     rm -f "$LOCK_DIR/owner"
     rmdir "$LOCK_DIR" >/dev/null 2>&1 || true
@@ -184,6 +188,28 @@ if [ ! -f "$PACKAGE_DIR/deployment-lock.json" ] || [ -L "$PACKAGE_DIR/deployment
   echo "a regular, non-symlink deployment-lock.json is required before backup" >&2
   exit 1
 fi
+# Every recovery point is stamped with a package version, and that stamp is
+# only meaningful if the database still matches the lock it comes from. A
+# retried update reaches here with migrations already applied by the failed
+# attempt; without this check the recovery point would label a new-schema dump
+# with the old version, and restoring it would only fail at migrate.sh — after
+# the production database was already dropped. The same drift makes a direct
+# backup's VERSION stamp wrong, so compare the live ledger to the lock in both
+# modes, before either branch chooses a stamp.
+LEDGER_SNAPSHOT="$(mktemp "${TMPDIR:-/tmp}/openclaw-backup-ledger.XXXXXX")"
+chmod 0600 "$LEDGER_SNAPSHOT"
+{
+  printf '%s\n' '\set ON_ERROR_STOP on'
+  printf '%s\n' "SELECT (to_regclass('public.schema_migrations') IS NOT NULL) AS ledger_exists \\gset"
+  printf '%s\n' '\if :ledger_exists'
+  printf '%s\n' 'SELECT version,name,checksum_sha256 FROM schema_migrations ORDER BY version;'
+  printf '%s\n' '\endif'
+} | compose exec -T postgres \
+  psql -X -w --quiet --username openclaw_owner --dbname openclaw \
+  --tuples-only --no-align --field-separator="$(printf '\t')" \
+  >"$LEDGER_SNAPSHOT"
+python3 scripts/record_images.py --validate-applied-migrations \
+  "$PACKAGE_DIR/deployment-lock.json" <"$LEDGER_SNAPSHOT" >/dev/null
 if [ "$COMPATIBLE_BACKUP" -eq 1 ]; then
   python3 scripts/record_images.py --validate-live-structure \
     "$PACKAGE_DIR/deployment-lock.json"
@@ -285,6 +311,7 @@ cp "$PACKAGE_DIR/deployment-lock.json" "$STAGING/deployment-lock.json"
   echo "generated_config_included=false"
   echo "exec_approvals_included=false"
   echo "local_artifact_inventory=LOCAL_ARTIFACTS.tsv"
+  echo "state_archive_max_bytes=$STATE_ARCHIVE_MAX_BYTES"
 } >"$STAGING/BACKUP_MANIFEST"
 
 (

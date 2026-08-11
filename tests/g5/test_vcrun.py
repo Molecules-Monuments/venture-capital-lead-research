@@ -304,9 +304,10 @@ class FixedRunnerTests(unittest.TestCase):
         self.assertEqual(reconciliation, payload["postgres_reconciliation"])
 
         # A cleanup that itself fails must not replace the original failure:
-        # the Lobster envelope naming the step that broke is the diagnostic
-        # one, and reporting only the downstream reconciliation error is what
-        # made a failed retry look like a broken deployment.
+        # the Lobster envelope carrying the broken step's error output (step
+        # ids are named only for timeouts) is the diagnostic one, and
+        # reporting only the downstream reconciliation error is what made a
+        # failed retry look like a broken deployment.
         original: dict[str, Any] = {
             "ok": False,
             "error": {"code": "lobster_step_failure"},

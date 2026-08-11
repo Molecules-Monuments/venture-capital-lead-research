@@ -54,9 +54,23 @@ EVIDENCE_TEXT = {
     for relative in evidence_dates.EVIDENCE_DOCS
 }
 
-NUMBER_WORDS = {
-    5: "five", 6: "six", 7: "seven", 8: "eight", 9: "nine", 10: "ten",
-}
+UNITS = [
+    "zero", "one", "two", "three", "four", "five", "six", "seven", "eight",
+    "nine", "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen",
+    "sixteen", "seventeen", "eighteen", "nineteen",
+]
+TENS = {2: "twenty", 3: "thirty", 4: "forty", 5: "fifty", 6: "sixty",
+        7: "seventy", 8: "eighty", 9: "ninety"}
+
+
+def number_word(value: int) -> str:
+    """English word for 0-99, hyphenated ('thirty-three') like the docs."""
+    if 0 <= value < 20:
+        return UNITS[value]
+    if value < 100:
+        tens, unit = divmod(value, 10)
+        return f"{TENS[tens]}-{UNITS[unit]}" if unit else TENS[tens]
+    raise AssertionError(f"no English number-word mapping for {value}")
 
 
 def discovered_count(directory: str, pattern: str) -> int:
@@ -105,6 +119,44 @@ class EvidenceDateConsistencyTests(unittest.TestCase):
             )
 
 
+    def test_rebuild_provenance_clause_is_identical_across_the_documents(self):
+        """PRODUCTION_READINESS claims its two siblings "carry the same note".
+
+        The fourteenth pass updated the clause in one document and left the
+        other two describing a different set of edited files, which falsified
+        that cross-claim. The dates in this sentence are tool-managed; the
+        file list beside them was not bound to anything, so bind it here.
+        """
+        # The three documents terminate the sentence differently (an em-dash
+        # continuation in two, a full stop in the third), so stop at either.
+        clause = re.compile(
+            r"after that day's edits to\s+(.+?)(?:\s+—|\.\s)", re.S
+        )
+        found = []
+        for relative, text in EVIDENCE_TEXT.items():
+            for match in clause.finditer(text):
+                found.append((relative, " ".join(match.group(1).split())))
+        self.assertEqual(
+            {relative for relative, _ in found},
+            {
+                "docs/V3_RELEASE_EVIDENCE.md",
+                "docs/PRODUCTION_READINESS.md",
+                "evals/V3_EVAL_RESULTS.md",
+            },
+            "PRODUCTION_READINESS asserts all three documents carry this note, "
+            f"but the clause was found only in {sorted({r for r, _ in found})}. "
+            "A count check would pass while one document dropped it and "
+            "another carried it twice.",
+        )
+        variants = {phrase for _, phrase in found}
+        self.assertEqual(
+            len(variants), 1,
+            f"the rebuild-provenance clause differs across documents: {found}. "
+            "All three describe one rebuild, so the file list must be "
+            "identical in each.",
+        )
+
+
 class EvidenceCountConsistencyTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -151,7 +203,9 @@ class EvidenceCountConsistencyTests(unittest.TestCase):
                     f"{relative} states {stated} offline checks; the gate inventory "
                     f"counts {self.offline_checks}",
                 )
-        for relative, groups in all_claims(r"G5 (\d+)/(\d+); G7 (\d+)/(\d+)"):
+        g5_g7 = all_claims(r"G5 (\d+)/(\d+); G7 (\d+)/(\d+)")
+        self.assertGreaterEqual(len(g5_g7), 1, "the G5/G7 phrasing has rotted")
+        for relative, groups in g5_g7:
             for stated, suite in zip(groups, ("g5", "g5", "g7", "g7")):
                 self.assertEqual(
                     int(stated), self.suite_counts[suite],
@@ -159,12 +213,31 @@ class EvidenceCountConsistencyTests(unittest.TestCase):
                     f"{self.suite_counts['g5']}/{self.suite_counts['g7']}",
                 )
 
+    def test_growth_bridge_arithmetic_matches_discovery(self):
+        # The narrative sentence bridging the pre-rewrite baseline to the
+        # current aggregate has gone stale twice (once as "fourteen", once as
+        # "twenty-five"), because no pattern above matches it. The baseline is
+        # a historical measurement at a named commit that discovery cannot
+        # re-derive, so it is taken as stated and only the delta arithmetic is
+        # enforced.
+        claims = all_claims(
+            r"measures (\d+) offline tests[\s\S]{0,200}?added ([a-z-]+) in total"
+        )
+        self.assertGreaterEqual(len(claims), 1, "the growth-bridge phrasing has rotted")
+        for relative, (baseline, delta_word) in claims:
+            expected = number_word(self.offline_tests - int(baseline))
+            self.assertEqual(
+                delta_word, expected,
+                f"{relative} bridges {baseline} tests to the current aggregate "
+                f"with '{delta_word}'; discovery makes that delta {expected}",
+            )
+
     def test_per_suite_evidence_table_matches_discovery(self):
         rows = all_claims(
             r"\| (\d+)/(\d+) \| `(?:[A-Z_]+=\S+ )?python3 -B -m unittest discover"
             r" -s (tests/[a-z0-9]+) -p '([^']+)'"
         )
-        directories = {directory for _, (_, _, directory, _) in rows}
+        pairs = {(directory, pattern) for _, (_, _, directory, pattern) in rows}
         self.assertGreaterEqual(len(rows), 7, "the per-suite evidence table has rotted")
         for relative, (passed, total, directory, pattern) in rows:
             measured = discovered_count(directory, pattern)
@@ -174,28 +247,40 @@ class EvidenceCountConsistencyTests(unittest.TestCase):
                     f"{relative} table row states {passed}/{total} for {directory} "
                     f"{pattern}; discovery counts {measured}",
                 )
-        for name, directory, _pattern in verify_offline.SUITES:
-            if directory not in directories:
-                self.fail(f"suite {name} ({directory}) has no row in the evidence table")
+        # Key on (directory, pattern), not directory alone: the two
+        # env-prefixed G4 rows share tests/g4, and one of them rotting away
+        # must fail here even while the other keeps the directory covered.
+        for name, directory, pattern in verify_offline.SUITES:
+            if (directory, pattern) not in pairs:
+                self.fail(
+                    f"suite {name} ({directory} {pattern}) has no row in the "
+                    "evidence table"
+                )
 
     def test_g4_claims_match_discovery(self):
         g4_files = sorted((ROOT / "tests/g4").glob("test_*.py"))
         g4_total = discovered_count("tests/g4", "test_*.py")
-        for relative, groups in (
+        claims = (
             all_claims(r"G4 \((\d+)/(\d+)\)")
             + all_claims(r"(\d+)/(\d+)\*\* across \w+ suites")
             + all_claims(r"\*\*(\d+)/(\d+)\*\* \| `python3 -B scripts/run_g4\.py`")
             + all_claims(r"G4 (\d+)/(\d+) across")
             + all_claims(r"Disposable PostgreSQL G4 \| (\d+)/(\d+) across")
-        ):
+        )
+        self.assertGreaterEqual(len(claims), 7, "the G4 count phrasings have rotted")
+        for relative, groups in claims:
             for stated in groups:
                 self.assertEqual(
                     int(stated), g4_total,
                     f"{relative} states G4 {groups[0]}/{groups[1]}; discovery over "
                     f"tests/g4 counts {g4_total}",
                 )
-        word = NUMBER_WORDS[len(g4_files)]
-        for relative, (stated_word,) in all_claims(r"/\d+\*{0,2} across (\w+) suites"):
+        across = all_claims(r"/\d+\*{0,2} across (\w+) suites")
+        self.assertGreaterEqual(
+            len(across), 5, "the G4 across-suites phrasings have rotted"
+        )
+        word = number_word(len(g4_files))
+        for relative, (stated_word,) in across:
             self.assertEqual(
                 stated_word, word,
                 f"{relative} says 'across {stated_word} suites'; tests/g4 holds "

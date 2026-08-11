@@ -83,7 +83,7 @@ RUN npm ci --prefix /opt/openclaw-runtime \
 #     printf 'deb [check-valid-until=no] https://snapshot.debian.org/archive/debian-security/%s/ bookworm-security main\n' "$SNAPSHOT"
 #   } > /etc/apt/sources.list.d/snapshot.list
 # and rebuild; or bump the pins here and re-run every release gate. The wrapper
-# below turns the otherwise-opaque "has no installation candidate" apt error into
+# below turns the otherwise-opaque "E: Version '<version>' for '<package>' was not found" apt error into
 # that actionable message instead of a bare non-zero exit.
 # libpoppler126 is pinned alongside poppler-utils deliberately. poppler-utils
 # declares `Depends: libpoppler126 (= <same version>)`, and the library is a

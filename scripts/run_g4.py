@@ -139,7 +139,15 @@ def require_pinned_postgres(initdb: str) -> None:
 
 
 @contextmanager
-def disposable_postgres() -> Iterator[str]:
+def disposable_postgres(*, passes: int = 1) -> Iterator[str]:
+    """Yield a scratch database with the migration series applied `passes` times.
+
+    The default is one pass — the state a real deployment reaches. Only the
+    G4 idempotency check wants two, and it asks for it explicitly: the
+    generated schema reference is rendered from this same helper, and while
+    it silently applied twice its header described a state no deployment
+    occupies.
+    """
     discovered = {name: shutil.which(name) for name in ("initdb", "pg_ctl", "psql")}
     missing = [name for name, path in discovered.items() if not path]
     if missing:
@@ -197,7 +205,7 @@ def disposable_postgres() -> Iterator[str]:
             migrations = sorted(MIGRATIONS.glob("[0-9][0-9][0-9]_*.sql"))
             if not migrations:
                 raise GateError("no numbered migrations found")
-            for pass_number in (1, 2):
+            for pass_number in range(1, passes + 1):
                 for migration in migrations:
                     apply_migration(
                         tools["psql"], database_url, migration, pass_number,
@@ -244,7 +252,7 @@ def main() -> int:
 
     checks: list[dict[str, object]] = []
     try:
-        with disposable_postgres() as owner_url:
+        with disposable_postgres(passes=2) as owner_url:
             runtime_url = re.sub(r"\buser=\S+", "user=openclaw_runtime", owner_url)
             migration_files = sorted(MIGRATIONS.glob("[0-9][0-9][0-9]_*.sql"))
             checksums = {

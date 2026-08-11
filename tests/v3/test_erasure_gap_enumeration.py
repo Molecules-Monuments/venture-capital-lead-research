@@ -75,8 +75,13 @@ SUBJECT_BEARING = {
 }
 
 # Channel-user personal data: a separate lane scoped to channel principals,
-# not leads. Its deletion path is the preference forget workflow, and the
-# retention document must say so by name.
+# not leads. Its subject-request path is the preference forget workflow —
+# which deletes nothing: it writes append-only marker/audit rows and NULLs
+# only the current user_preferences value, while all six tables survive until
+# an owner-run out-of-band step (four by append-only trigger; channel_principals
+# and user_preferences by holding no DELETE grant for the runtime role, though
+# the owner can still remove their rows). The retention document must name the
+# lane, the workflow, and that caveat — all three are asserted below.
 USER_LANE = {
     "channel_principals",
     "user_preferences",
@@ -128,8 +133,10 @@ class ErasureGapEnumerationTests(unittest.TestCase):
     def test_every_subject_bearing_table_is_named_in_the_retention_doc(self):
         # Only the enforcement section counts, and only a deliberate backticked
         # naming: a table name used as ordinary prose elsewhere in the document
-        # must not satisfy the completeness claim.
-        enforcement = RETENTION.split("## Enforcement", 1)[1]
+        # must not satisfy the completeness claim. Bound the slice at the next
+        # same-level heading so a section appended after Enforcement cannot
+        # satisfy the naming requirement (level-3 subsections stay in scope).
+        enforcement = RETENTION.split("## Enforcement", 1)[1].split("\n## ", 1)[0]
         missing = sorted(
             name
             for name in TOUCHED | SUBJECT_BEARING | USER_LANE
@@ -140,6 +147,19 @@ class ErasureGapEnumerationTests(unittest.TestCase):
             "data_retention.md's enforcement section no longer names these "
             f"stores: {missing}. The erasure-gap list is a completeness claim; "
             "extend it rather than weakening this test.",
+        )
+        # Table names alone do not carry the user lane's correction: the
+        # document must keep naming the workflow and keep saying it deletes
+        # nothing, or the wording can regress with this gate green.
+        self.assertIn(
+            "`preference-forget`", enforcement,
+            "the enforcement section no longer names the user lane's workflow",
+        )
+        self.assertRegex(
+            enforcement, r"deletes nothing",
+            "the enforcement section no longer states that the user-lane "
+            "workflow deletes nothing — the correction it records can regress "
+            "silently without this assertion",
         )
 
 

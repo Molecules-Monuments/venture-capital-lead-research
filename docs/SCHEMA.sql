@@ -5315,20 +5315,6 @@ GRANT USAGE ON SCHEMA public TO openclaw_runtime;
 
 
 --
--- Name: FUNCTION gtrgm_in(cstring); Type: ACL; Schema: public; Owner: -
---
-
-REVOKE ALL ON FUNCTION public.gtrgm_in(cstring) FROM PUBLIC;
-
-
---
--- Name: FUNCTION gtrgm_out(public.gtrgm); Type: ACL; Schema: public; Owner: -
---
-
-REVOKE ALL ON FUNCTION public.gtrgm_out(public.gtrgm) FROM PUBLIC;
-
-
---
 -- Name: TABLE notification_outbox; Type: ACL; Schema: public; Owner: -
 --
 
@@ -5406,97 +5392,6 @@ GRANT ALL ON FUNCTION public.finish_notification_attempt(p_outbox_id bigint, p_c
 
 
 --
--- Name: FUNCTION gin_extract_query_trgm(text, internal, smallint, internal, internal, internal, internal); Type: ACL; Schema: public; Owner: -
---
-
-REVOKE ALL ON FUNCTION public.gin_extract_query_trgm(text, internal, smallint, internal, internal, internal, internal) FROM PUBLIC;
-
-
---
--- Name: FUNCTION gin_extract_value_trgm(text, internal); Type: ACL; Schema: public; Owner: -
---
-
-REVOKE ALL ON FUNCTION public.gin_extract_value_trgm(text, internal) FROM PUBLIC;
-
-
---
--- Name: FUNCTION gin_trgm_consistent(internal, smallint, text, integer, internal, internal, internal, internal); Type: ACL; Schema: public; Owner: -
---
-
-REVOKE ALL ON FUNCTION public.gin_trgm_consistent(internal, smallint, text, integer, internal, internal, internal, internal) FROM PUBLIC;
-
-
---
--- Name: FUNCTION gin_trgm_triconsistent(internal, smallint, text, integer, internal, internal, internal); Type: ACL; Schema: public; Owner: -
---
-
-REVOKE ALL ON FUNCTION public.gin_trgm_triconsistent(internal, smallint, text, integer, internal, internal, internal) FROM PUBLIC;
-
-
---
--- Name: FUNCTION gtrgm_compress(internal); Type: ACL; Schema: public; Owner: -
---
-
-REVOKE ALL ON FUNCTION public.gtrgm_compress(internal) FROM PUBLIC;
-
-
---
--- Name: FUNCTION gtrgm_consistent(internal, text, smallint, oid, internal); Type: ACL; Schema: public; Owner: -
---
-
-REVOKE ALL ON FUNCTION public.gtrgm_consistent(internal, text, smallint, oid, internal) FROM PUBLIC;
-
-
---
--- Name: FUNCTION gtrgm_decompress(internal); Type: ACL; Schema: public; Owner: -
---
-
-REVOKE ALL ON FUNCTION public.gtrgm_decompress(internal) FROM PUBLIC;
-
-
---
--- Name: FUNCTION gtrgm_distance(internal, text, smallint, oid, internal); Type: ACL; Schema: public; Owner: -
---
-
-REVOKE ALL ON FUNCTION public.gtrgm_distance(internal, text, smallint, oid, internal) FROM PUBLIC;
-
-
---
--- Name: FUNCTION gtrgm_options(internal); Type: ACL; Schema: public; Owner: -
---
-
-REVOKE ALL ON FUNCTION public.gtrgm_options(internal) FROM PUBLIC;
-
-
---
--- Name: FUNCTION gtrgm_penalty(internal, internal, internal); Type: ACL; Schema: public; Owner: -
---
-
-REVOKE ALL ON FUNCTION public.gtrgm_penalty(internal, internal, internal) FROM PUBLIC;
-
-
---
--- Name: FUNCTION gtrgm_picksplit(internal, internal); Type: ACL; Schema: public; Owner: -
---
-
-REVOKE ALL ON FUNCTION public.gtrgm_picksplit(internal, internal) FROM PUBLIC;
-
-
---
--- Name: FUNCTION gtrgm_same(public.gtrgm, public.gtrgm, internal); Type: ACL; Schema: public; Owner: -
---
-
-REVOKE ALL ON FUNCTION public.gtrgm_same(public.gtrgm, public.gtrgm, internal) FROM PUBLIC;
-
-
---
--- Name: FUNCTION gtrgm_union(internal, internal); Type: ACL; Schema: public; Owner: -
---
-
-REVOKE ALL ON FUNCTION public.gtrgm_union(internal, internal) FROM PUBLIC;
-
-
---
 -- Name: FUNCTION guard_approval_transition(); Type: ACL; Schema: public; Owner: -
 --
 
@@ -5508,41 +5403,6 @@ REVOKE ALL ON FUNCTION public.guard_approval_transition() FROM PUBLIC;
 --
 
 REVOKE ALL ON FUNCTION public.guard_compiled_truth_fact() FROM PUBLIC;
-
-
---
--- Name: FUNCTION guard_compiled_truth_lineage(); Type: ACL; Schema: public; Owner: -
---
-
-REVOKE ALL ON FUNCTION public.guard_compiled_truth_lineage() FROM PUBLIC;
-
-
---
--- Name: FUNCTION guard_document_workflow_request(); Type: ACL; Schema: public; Owner: -
---
-
-REVOKE ALL ON FUNCTION public.guard_document_workflow_request() FROM PUBLIC;
-
-
---
--- Name: FUNCTION guard_document_workflow_versions(); Type: ACL; Schema: public; Owner: -
---
-
-REVOKE ALL ON FUNCTION public.guard_document_workflow_versions() FROM PUBLIC;
-
-
---
--- Name: FUNCTION guard_evaluation_lineage(); Type: ACL; Schema: public; Owner: -
---
-
-REVOKE ALL ON FUNCTION public.guard_evaluation_lineage() FROM PUBLIC;
-
-
---
--- Name: FUNCTION guard_fact_lineage(); Type: ACL; Schema: public; Owner: -
---
-
-REVOKE ALL ON FUNCTION public.guard_fact_lineage() FROM PUBLIC;
 
 
 --
@@ -5560,48 +5420,6 @@ REVOKE ALL ON FUNCTION public.guard_initial_workflow_run() FROM PUBLIC;
 
 
 --
--- Name: FUNCTION guard_memo_citation_lineage(); Type: ACL; Schema: public; Owner: -
---
-
-REVOKE ALL ON FUNCTION public.guard_memo_citation_lineage() FROM PUBLIC;
-
-
---
--- Name: FUNCTION guard_memo_lineage(); Type: ACL; Schema: public; Owner: -
---
-
-REVOKE ALL ON FUNCTION public.guard_memo_lineage() FROM PUBLIC;
-
-
---
--- Name: FUNCTION guard_orchestration_audit_lineage(); Type: ACL; Schema: public; Owner: -
---
-
-REVOKE ALL ON FUNCTION public.guard_orchestration_audit_lineage() FROM PUBLIC;
-
-
---
--- Name: FUNCTION guard_proposal_decision(); Type: ACL; Schema: public; Owner: -
---
-
-REVOKE ALL ON FUNCTION public.guard_proposal_decision() FROM PUBLIC;
-
-
---
--- Name: FUNCTION guard_workflow_lineage(); Type: ACL; Schema: public; Owner: -
---
-
-REVOKE ALL ON FUNCTION public.guard_workflow_lineage() FROM PUBLIC;
-
-
---
--- Name: FUNCTION guard_workflow_run_identity(); Type: ACL; Schema: public; Owner: -
---
-
-REVOKE ALL ON FUNCTION public.guard_workflow_run_identity() FROM PUBLIC;
-
-
---
 -- Name: FUNCTION guard_workflow_run_transition(); Type: ACL; Schema: public; Owner: -
 --
 
@@ -5613,13 +5431,6 @@ REVOKE ALL ON FUNCTION public.guard_workflow_run_transition() FROM PUBLIC;
 --
 
 REVOKE ALL ON FUNCTION public.prevent_audit_mutation() FROM PUBLIC;
-
-
---
--- Name: FUNCTION prevent_domain_history_mutation(); Type: ACL; Schema: public; Owner: -
---
-
-REVOKE ALL ON FUNCTION public.prevent_domain_history_mutation() FROM PUBLIC;
 
 
 --
@@ -5691,31 +5502,10 @@ GRANT ALL ON FUNCTION public.retry_workflow_run(p_run_id text, p_expected_record
 
 
 --
--- Name: FUNCTION set_limit(real); Type: ACL; Schema: public; Owner: -
---
-
-REVOKE ALL ON FUNCTION public.set_limit(real) FROM PUBLIC;
-
-
---
 -- Name: FUNCTION set_updated_at(); Type: ACL; Schema: public; Owner: -
 --
 
 REVOKE ALL ON FUNCTION public.set_updated_at() FROM PUBLIC;
-
-
---
--- Name: FUNCTION show_limit(); Type: ACL; Schema: public; Owner: -
---
-
-REVOKE ALL ON FUNCTION public.show_limit() FROM PUBLIC;
-
-
---
--- Name: FUNCTION show_trgm(text); Type: ACL; Schema: public; Owner: -
---
-
-REVOKE ALL ON FUNCTION public.show_trgm(text) FROM PUBLIC;
 
 
 --
@@ -5735,53 +5525,11 @@ GRANT ALL ON FUNCTION public.similarity(text, text) TO openclaw_runtime;
 
 
 --
--- Name: FUNCTION similarity_dist(text, text); Type: ACL; Schema: public; Owner: -
---
-
-REVOKE ALL ON FUNCTION public.similarity_dist(text, text) FROM PUBLIC;
-
-
---
 -- Name: FUNCTION similarity_op(text, text); Type: ACL; Schema: public; Owner: -
 --
 
 REVOKE ALL ON FUNCTION public.similarity_op(text, text) FROM PUBLIC;
 GRANT ALL ON FUNCTION public.similarity_op(text, text) TO openclaw_runtime;
-
-
---
--- Name: FUNCTION strict_word_similarity(text, text); Type: ACL; Schema: public; Owner: -
---
-
-REVOKE ALL ON FUNCTION public.strict_word_similarity(text, text) FROM PUBLIC;
-
-
---
--- Name: FUNCTION strict_word_similarity_commutator_op(text, text); Type: ACL; Schema: public; Owner: -
---
-
-REVOKE ALL ON FUNCTION public.strict_word_similarity_commutator_op(text, text) FROM PUBLIC;
-
-
---
--- Name: FUNCTION strict_word_similarity_dist_commutator_op(text, text); Type: ACL; Schema: public; Owner: -
---
-
-REVOKE ALL ON FUNCTION public.strict_word_similarity_dist_commutator_op(text, text) FROM PUBLIC;
-
-
---
--- Name: FUNCTION strict_word_similarity_dist_op(text, text); Type: ACL; Schema: public; Owner: -
---
-
-REVOKE ALL ON FUNCTION public.strict_word_similarity_dist_op(text, text) FROM PUBLIC;
-
-
---
--- Name: FUNCTION strict_word_similarity_op(text, text); Type: ACL; Schema: public; Owner: -
---
-
-REVOKE ALL ON FUNCTION public.strict_word_similarity_op(text, text) FROM PUBLIC;
 
 
 --
@@ -5797,41 +5545,6 @@ REVOKE ALL ON FUNCTION public.touch_versioned_row() FROM PUBLIC;
 
 REVOKE ALL ON FUNCTION public.transition_workflow_run(p_run_id text, p_expected_record_version bigint, p_new_status text, p_flow_revision bigint, p_actor_id text, p_result jsonb, p_error_class text, p_error_message text) FROM PUBLIC;
 GRANT ALL ON FUNCTION public.transition_workflow_run(p_run_id text, p_expected_record_version bigint, p_new_status text, p_flow_revision bigint, p_actor_id text, p_result jsonb, p_error_class text, p_error_message text) TO openclaw_runtime;
-
-
---
--- Name: FUNCTION word_similarity(text, text); Type: ACL; Schema: public; Owner: -
---
-
-REVOKE ALL ON FUNCTION public.word_similarity(text, text) FROM PUBLIC;
-
-
---
--- Name: FUNCTION word_similarity_commutator_op(text, text); Type: ACL; Schema: public; Owner: -
---
-
-REVOKE ALL ON FUNCTION public.word_similarity_commutator_op(text, text) FROM PUBLIC;
-
-
---
--- Name: FUNCTION word_similarity_dist_commutator_op(text, text); Type: ACL; Schema: public; Owner: -
---
-
-REVOKE ALL ON FUNCTION public.word_similarity_dist_commutator_op(text, text) FROM PUBLIC;
-
-
---
--- Name: FUNCTION word_similarity_dist_op(text, text); Type: ACL; Schema: public; Owner: -
---
-
-REVOKE ALL ON FUNCTION public.word_similarity_dist_op(text, text) FROM PUBLIC;
-
-
---
--- Name: FUNCTION word_similarity_op(text, text); Type: ACL; Schema: public; Owner: -
---
-
-REVOKE ALL ON FUNCTION public.word_similarity_op(text, text) FROM PUBLIC;
 
 
 --

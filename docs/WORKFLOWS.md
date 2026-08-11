@@ -477,9 +477,13 @@ edge out: a run that completed is never re-executed, and a run an operator
 cancelled is never resurrected by reusing its key.
 
 When a step fails and the cleanup itself cannot complete, both are reported: the
-Lobster envelope naming the failing step stays in the result and
+Lobster envelope carrying the failing step's error output stays in the result and
 `postgres_reconciliation` records whether the run was left reconciled. Read the
-step error first — the reconciliation error is downstream of it.
+step error first — the reconciliation error is downstream of it. The envelope
+identifies a failed step by its error content — the helper's exit code plus its
+stderr/stdout JSON (`{code, message, details}`) — and names the step id only
+for step timeouts (`Step '<id>' timed out after <n>ms`); a command failure is
+attributed by matching that error content to the step, not by step id.
 
 ## Task Flow relation
 
