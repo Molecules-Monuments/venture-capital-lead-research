@@ -14,7 +14,7 @@ after that day's edits to the image-baked `workspaces/` files, `Dockerfile.openc
 therefore derived from exactly this tree rather than reused. Earlier in the same
 session `bootstrap.sh` also built the image during the live channel exercise,
 and the G8 deployment gate's own bootstrap built and tore down another. The gates: `verify_offline.py`
-(**272 tests, 25/25** base checks), and each opt-in gate individually —
+(**274 tests, 25/25** base checks), and each opt-in gate individually —
 `run_g4.py` (**90/90** across seven suites, migrations 001–018 applied
 twice on PostgreSQL 17.10), `run_g6_image.py` (**8/8**, against an image rebuilt from this tree with
 `docker build --no-cache --pull` and again against the one `bootstrap.sh`
@@ -29,7 +29,7 @@ frozen 250 ms p95 threshold — see the note on that figure below),
 still installs from the live Debian pool. For reference, `c72d8b9` — the last
 commit before the channel-setup rewrite — measures 210 offline tests across
 these same suites, so everything from that rewrite through the pre-publication
-audit remediation added sixty-two in total; the per-suite figures in the table
+audit remediation added sixty-four in total; the per-suite figures in the table
 below are authoritative and sum to the aggregate.
 
 ## 2026-07-23 final-audit evidence
@@ -52,7 +52,7 @@ Every gate below was executed after those changes:
 
 | Surface | Result | Command |
 | --- | ---: | --- |
-| Offline verification (all suites, ruff, ty, shell syntax, fixed workflows, skill system, manifest currency, pristine) | **PASS — 272 tests, 25/25 checks** | `python3 -B scripts/verify_offline.py` |
+| Offline verification (all suites, ruff, ty, shell syntax, fixed workflows, skill system, manifest currency, pristine) | **PASS — 274 tests, 25/25 checks** | `python3 -B scripts/verify_offline.py` |
 | Disposable Postgres hard gate | **PASS — 90/90** across seven suites, migrations 001–018 applied twice | `python3 -B scripts/run_g4.py` |
 | Exact-image gate against the image rebuilt from this tree | **PASS — 8/8** (provenance, workshop guard, all five channel schemas, unknown-field fail-closed) | `python3 -B scripts/run_g6_image.py --image openclaw-lead-research:3.0.0` |
 | Real deployment gate (bootstrap → negative-auth proof → live fixed workflows → replay/tamper semantics → teardown) | **PASS** | `python3 -B scripts/run_g8_deployment.py` |
@@ -90,7 +90,7 @@ invokes a model.
 | Surface | Result | Reproducible command |
 | --- | ---: | --- |
 | Agent schemas/contracts | 42/42 | `python3 -B -m unittest discover -s tests/contracts -p 'test*.py' -v` |
-| Version 3 providers/context/orchestration/customization/skill system | 87/87 | `python3 -B -m unittest discover -s tests/v3 -p 'test*.py' -v` |
+| Version 3 providers/context/orchestration/customization/skill system | 89/89 | `python3 -B -m unittest discover -s tests/v3 -p 'test*.py' -v` |
 | Exact skill/agent/router/workflow inventory | 26 skills, 12 agents, **18 workflows**, 0 findings | `python3 -B scripts/validate_skill_system.py` |
 | Retrieval policy contracts | 7/7 | `python3 -B -m unittest discover -s tests/retrieval -p 'test*.py' -v` |
 | Infrastructure contracts | 29/29 | `python3 -B -m unittest discover -s tests/infrastructure -p 'test*.py' -v` |
@@ -102,7 +102,7 @@ invokes a model.
 | Data/helper/Postgres hard gate | **90/90** | `python3 -B scripts/run_g4.py` |
 | Real deployment gate | PASS | `python3 -B scripts/run_g8_deployment.py` (or `verify_offline.py --with-deployment`) |
 
-The aggregate deterministic offline suites pass 272 tests with no failures or
+The aggregate deterministic offline suites pass 274 tests with no failures or
 skips (25/25 offline checks). The per-suite rows above sum to that total. The G4 runner created a disposable PostgreSQL 17
 cluster, applied and registered migrations **001–018** twice, and — in addition
 to the prior trusted-context/preference/idempotency/approval/document coverage —

@@ -52,7 +52,7 @@ with `docker build --no-cache --pull` on 2026-08-11, after that day's edits to t
 from exactly this tree. Every count below is that run's measurement, not a
 carried-forward one.
 
-- 272 offline unittest cases pass, 0 fail, 0 skip; 25/25 offline checks pass.
+- 274 offline unittest cases pass, 0 fail, 0 skip; 25/25 offline checks pass.
 - Disposable PostgreSQL G4 passes **90/90** across seven suites with migrations
   001–018 applied and registered twice, including step-interpreter execution
   of all eighteen real `.lobster` workflows across the three executing G4 suites
