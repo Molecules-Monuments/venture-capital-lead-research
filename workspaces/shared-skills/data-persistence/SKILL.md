@@ -98,4 +98,4 @@ Return machine-readable validation and affected IDs/versions. On conflict, const
 
 ## Output
 
-Return `ok`, `operation`, `idempotency_key`, `transaction_id`, `affected_ids`, `versions`, `approval_consumed`, and `error`. No external SaaS write or channel send.
+Return exactly one object valid against [`../../schemas/data-steward-output.schema.json`](../../schemas/data-steward-output.schema.json). The schema is the sole authority for field names, enums, required values, and nullability; do not maintain a parallel output definition here. It rejects unknown fields, so the persistence facts belong in the `result` object it already defines — `operation`, `availability`, `mode`, `pre_state`, `post_state`, `record_ids`, `revision`, `idempotency_key`, `rows_affected`, `preview`, `approval_required`, and `verification`. No external SaaS write or channel send.

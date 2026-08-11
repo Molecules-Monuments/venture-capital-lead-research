@@ -131,6 +131,42 @@ steps:
         self.assertIn("shell_builtin", leak)
         self.assertIn("unsafe_authority", unsafe)
 
+    def test_execution_influencing_step_env_keys_are_rejected(self) -> None:
+        """Approving the `run:` text does not approve the executable that runs it.
+
+        The pinned runtime resolves the inline shell from the step environment,
+        so `LOBSTER_SHELL` demotes the validated command to an argument of an
+        arbitrary binary — measured on openclaw-lead-research:3.0.0, a step
+        with `LOBSTER_SHELL: /bin/echo` ran echo and never invoked
+        `vcops-workflow`, while the run still reported `ok: true`. The
+        validator must therefore constrain env KEY names, not just values, or
+        the G5 "steps invoke only the exact immutable vcops path" claim is
+        about the command text rather than the invocation.
+        """
+        step = (
+            "name: fixture\nsteps:\n  - id: bad\n    env:\n      {key}: {value}\n"
+            "    run: /workspaces/vc-chief/vc/bin/vcops-workflow preflight\n"
+            "    timeout_ms: 1000\n"
+        )
+        for key, value in (
+            ("LOBSTER_SHELL", "/bin/echo"),
+            ("PATH", "/tmp/evil:/usr/bin"),
+            ("IFS", "x"),
+            ("LD_PRELOAD", "/tmp/evil.so"),
+            ("ComSpec", "cmd.exe"),
+            # A key that satisfies an anchored PREFIX match but not a full
+            # one, so relaxing the rule to re.match — which every other probe
+            # here survives — fails this test instead of passing silently.
+            ("VCOPS_X-LOBSTER_SHELL", "/bin/echo"),
+        ):
+            with self.subTest(env_key=key):
+                self.assertIn("env_key", self.validate(step.format(key=key, value=value)))
+        # The reviewed namespace every shipped workflow uses still passes.
+        self.assertNotIn(
+            "env_key",
+            self.validate(step.format(key="VCOPS_LEAD_ID", value="'123'")),
+        )
+
     def test_approval_bypass_and_self_decision_are_rejected(self) -> None:
         bypass = self.validate("name: fixture\nsteps:\n  - id: approve\n    approval: false\n")
         self_decision = self.validate(

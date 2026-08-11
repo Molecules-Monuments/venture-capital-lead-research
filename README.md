@@ -584,7 +584,7 @@ to the effective runtime configuration.
 ### Switching a model or search provider
 
 A provider switch is **not** an `.env` change alone. `check_customization.py`
-binds seven reviewed profile values to the deployed environment —
+binds eight reviewed profile values to the deployed environment —
 `models.provider`, `models.primary`, `models.fast`, `search.provider`, and
 `search.fetch_provider`, plus `organization.timezone` (to `TZ`) and
 `channels.selected` (to `PRIMARY_CHANNEL`) — and every lifecycle path
@@ -1091,8 +1091,10 @@ attachment policy, and memo style. The shipped routing and scoring cases are
 examples; how you validate a replacement rubric is your decision. Set
 `status=reviewed` last. Owner and reviewer must be different stable identities.
 
-The policy artifacts you edit are hash-pinned in two inventories, so re-pin
-both afterwards or the pre-deployment gate fails on your own edits:
+The twenty reviewed artifacts among the files you edit are hash-pinned in two
+inventories; every other packaged file you edit is pinned in `manifest.json`
+alone. Re-pin both afterwards or the pre-deployment gate fails on your own
+edits:
 
 ```sh
 python3 -B scripts/init_customization.py --update-hashes
@@ -1199,9 +1201,15 @@ within this system's lead-research scope.
 
 ### A first lead, end to end
 
-The chat invocations below produce a report and persist nothing. To create a
-lead the rest of the system can act on, run the fixed workflows. From the
-package root:
+A chat turn never writes to the database itself. Anything durable is written by
+a fixed workflow the chief asks the data steward to run through `vcrun` — for
+example `document-ingest`/`document-lead-intake` for an attached deck,
+`inbound-text-intake` for a text-only founder or referrer submission,
+`outbound-scout` for a candidate worth retaining, and
+`preference-observe`/`preference-forget` for a supported direct-message
+preference. (`inbound-intake` is the operator lane instead: it requires a
+document already dropped under `/inbox`.) To create a lead yourself, invoke the
+fixed workflows directly. From the package root:
 
 ```sh
 compose() { docker compose -f docker-compose.yml -p openclaw-lead-research-v3 --env-file .env "$@"; }
@@ -1472,6 +1480,7 @@ python3 -B scripts/verify_release.py --pristine
 │   ├── rotate_runtime_role.sh        # Credential/role reconcile and consumer recreate
 │   ├── record_images.py              # Deployment-lock image ID/digest binding
 │   ├── schedule_jobs.sh              # Opt-in native cron seeding (source scan)
+│   ├── set_evidence_execution_date.py # Sets/checks the pinned evidence re-execution and rebuild dates
 │   ├── verify_release.py             # Embedded-manifest and pristine verification
 │   └── build_release_manifest.py     # Generated release inventory
 ├── workspaces/

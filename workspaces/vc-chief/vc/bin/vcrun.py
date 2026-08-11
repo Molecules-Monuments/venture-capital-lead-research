@@ -714,11 +714,12 @@ def _attach_failure_reconciliation(
     """Record the cleanup outcome on the failure payload without replacing it.
 
     A reconciliation that itself fails used to be raised as a VCRunError, which
-    discarded `payload` — including the Lobster envelope naming the step that
-    actually failed — and left the operator with only the second, downstream
-    message. The original failure is the diagnostic one, so both are reported:
-    the run still exits non-zero, and `postgres_reconciliation` says whether the
-    database was left reconciled.
+    discarded `payload` — including the Lobster envelope carrying the failing
+    step's error output (the step id itself is named only for timeouts; a
+    command failure is identified by its helper error content) — and left the
+    operator with only the second, downstream message. The original failure is
+    the diagnostic one, so both are reported: the run still exits non-zero, and
+    `postgres_reconciliation` says whether the database was left reconciled.
     """
     try:
         reconciliation = failure_hook(reason)

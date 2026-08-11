@@ -32,7 +32,9 @@ tests pass (see the banner above):
 - **Harness data** (conversation sessions, transcripts, logs) is governed by
   native OpenClaw config in `config/openclaw.json`, which has real executors:
   `session.maintenance` (`mode: enforce`, `pruneAfter`, `maxEntries` — enforced
-  on session-store load and by `openclaw sessions cleanup`) and
+  on session-store writes and by `openclaw sessions cleanup`; reads and Gateway
+  startup never prune, so a quiescent deployment needs the on-demand cleanup
+  command for `pruneAfter` to take effect) and
   `logging.maxFileBytes` (log rotation). Tune these keys to the periods above.
   (The generated-media `media.ttlHours` sweep is intentionally not enabled: it
   prunes empty directories including the workflow inbound-media root. Inbound
@@ -103,14 +105,32 @@ tests pass (see the banner above):
   Channel-user identity and preference memory (`channel_principals`,
   `user_preferences`, `preference_observations`, `preference_forget_markers`,
   `user_preference_audit`, `trusted_context_uses`) are a separate
-  personal-data lane scoped to channel principals, not leads; their deletion
-  path is the preference forget workflow, not `data-erase-lead`. The
+  personal-data lane scoped to channel principals, not leads; its
+  subject-request path is the `preference-forget` workflow, not
+  `data-erase-lead` — and like the erasure operation it deletes nothing.
+  `preference-forget` writes an append-only forget marker and audit row and
+  NULLs only the current `user_preferences` value (status `forgotten`); as
+  part of consuming its capability it also UPSERTs the subject's
+  `channel_principals` identity row and appends a `trusted_context_uses` row.
+  Four of the six (`trusted_context_uses`, `preference_observations`,
+  `preference_forget_markers`, `user_preference_audit`) are append-only by
+  trigger, which refuses UPDATE and DELETE for every role — including
+  `openclaw_owner` — until the owner disables the trigger.
+  `channel_principals` and `user_preferences` have no such trigger: the runtime
+  role holds only SELECT/INSERT/UPDATE on them and no shipped code path issues
+  a DELETE, but `openclaw_owner` owns the tables and can remove rows directly.
+  Either way the historical preference values (`preference_observations`),
+  channel identity (`channel_principals`), and capability-use rows survive
+  verbatim until an owner-run out-of-band step — document and rehearse that
+  user-lane step alongside the lead-lane gaps listed above. The
   operational registries `schema_migrations` and `fact_promotion_policy` hold
   no subject data; `signal_sources` rows describe operator-registered watched
   sources rather than lead submissions, but a watch registered specifically
   about the subject (its `source_name`, `canonical_uri`, or `metadata` naming
   the company) belongs in the erasure sweep — check the watchlist. Treat
   `vcops data-erase-lead` as the audited entry point to an erasure procedure,
-  not as a complete right-to-erasure executor. What it does not reach is listed
-  above, and covering that gap is outside the software; document and rehearse
-  the out-of-band steps before a deployment relies on this path.
+  not as a complete right-to-erasure executor — and treat `preference-forget`
+  the same way for the channel-user lane. What each one does not reach is
+  listed above, and covering those gaps is outside the software; document and
+  rehearse the out-of-band steps for both lanes before a deployment relies on
+  either path.

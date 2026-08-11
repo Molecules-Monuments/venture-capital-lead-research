@@ -6,6 +6,7 @@ import importlib.util
 import io
 import json
 import os
+import re
 import shutil
 import stat
 import subprocess
@@ -46,6 +47,96 @@ def body(name: str) -> str:
     return (SCRIPTS / name).read_text(encoding="utf-8")
 
 
+SHELL_COMMAND_PREFIXES = frozenset({
+    "then", "else", "elif", "do", "eval", "command", "exec", "time", "!",
+})
+
+
+def echo_arguments(line: str) -> list[str]:
+    """Every `echo` command's argument text on one shell line.
+
+    Written as a quote-aware scan rather than a regex: two regex versions of
+    this guard each missed a spelling (leading indentation, and a `;` inside
+    a quoted argument terminating the match early). Walk the line tracking
+    quote state, start collecting after an `echo` token wherever a command
+    may begin, and stop at an unquoted command terminator.
+    """
+    found: list[str] = []
+    index = 0
+    at_command_start = True
+    quote = ""
+    while index < len(line):
+        character = line[index]
+        if quote:
+            if character == quote:
+                quote = ""
+            index += 1
+            continue
+        if character in "'\"":
+            quote = character
+            at_command_start = False
+            index += 1
+            continue
+        if character == "#":
+            break
+        if character in ";&|(){}`":
+            at_command_start = True
+            index += 1
+            continue
+        if character.isspace():
+            index += 1
+            continue
+        word = re.match(r"[A-Za-z_!][A-Za-z_0-9-]*", line[index:])
+        if at_command_start and word and word.group(0) in SHELL_COMMAND_PREFIXES:
+            # `then echo …`, `do echo …`, `eval echo …`: a reserved word or
+            # modifier still leaves the next token in command position.
+            index += len(word.group(0))
+            continue
+        if at_command_start and line.startswith("echo", index):
+            after = index + 4
+            if after >= len(line) or line[after].isspace():
+                collected = []
+                cursor = after
+                inner = ""
+                while cursor < len(line):
+                    current = line[cursor]
+                    if inner:
+                        if current == inner:
+                            inner = ""
+                    elif current in "'\"":
+                        inner = current
+                    elif current in ";&|)}":
+                        break
+                    collected.append(current)
+                    cursor += 1
+                found.append("".join(collected))
+                index = cursor
+                continue
+        at_command_start = False
+        index += 1
+    return found
+
+
+def shipped_shell_scripts() -> list[Path]:
+    """Every declared release file whose shebang selects a POSIX shell.
+
+    Enumerated from manifest.json rather than a `*.sh` glob: the agent and
+    workflow launchers under workspaces/vc-chief/vc/bin/ carry no suffix and
+    run under the same dash inside the derived image.
+    """
+    manifest = json.loads((PACKAGE / "manifest.json").read_text(encoding="utf-8"))
+    found = []
+    for entry in manifest["files"]:
+        path = PACKAGE / entry["path"]
+        try:
+            first = path.read_text(encoding="utf-8", errors="ignore").splitlines()[0]
+        except (OSError, IndexError):
+            continue
+        if re.match(r"^#!\s*/(usr/)?bin/(env\s+)?(sh|bash|dash)\b", first):
+            found.append(path)
+    return sorted(found)
+
+
 class RecoveryLifecycleContractTests(unittest.TestCase):
     def test_lifecycle_scripts_are_executable_and_parse_as_posix_shell(self) -> None:
         for name in (
@@ -60,6 +151,122 @@ class RecoveryLifecycleContractTests(unittest.TestCase):
             with self.subTest(script=name):
                 self.assertTrue(os.access(path, os.X_OK), f"{name} is not executable")
                 subprocess.run(["sh", "-n", str(path)], check=True, timeout=10)
+
+    def test_no_shipped_shell_emits_a_backslash_literal_through_an_escape(self) -> None:
+        """A backslash literal must never ride in an escape-interpreting slot.
+
+        dash — the documented Linux host's /bin/sh — expands backslash escapes
+        in echo arguments AND in a printf FORMAT string, whatever the quoting:
+        `echo '\\endif'`, `echo "a;\\endif"`, `printf '\\endif\\n'` and
+        `printf "\\endif\\n"` all emit ESC + "ndif", so psql never closes the
+        \\if block and exits 3. Only printf's `%s` argument slot is literal.
+        The gate host's /bin/sh is bash, where the two halves differ: bash's
+        echo emits the literal, so the echo half of this class is invisible
+        here, while bash's printf mangles the FORMAT string exactly as dash
+        does. That asymmetry is why this guard is static — `sh -n` only
+        parses, and no gate executes these paths under the deployed shell.
+
+        Two earlier versions of this guard each covered only the spelling that
+        had actually shipped, and a reviewer bypassed both. So do not match
+        spellings: flag every echo argument containing a backslash anywhere,
+        in any quoting, at any position on the line, and every printf whose
+        FORMAT operand is not a reviewed literal — including an unquoted or
+        variable format, which is equally unreviewable.
+        """
+        # Measured against the shipped tree; each is escape-free or uses only
+        # \n / \t, which dash expands to exactly what the scripts intend.
+        safe_formats = frozenset({
+            r"%s", r"%s\n", r"\n", r"\t", r"%s\n%s\n",
+            r"%s\t%s\t%s", r"%s\t%s\t%s\n",
+            r"127.0.0.1:5432:openclaw:openclaw_owner:%s\n",
+            r"127.0.0.1:5432:openclaw:openclaw_runtime:%s\n",
+        })
+        # printf's FORMAT operand in any of its three spellings.
+        printf_pattern = re.compile(
+            r"\bprintf\s+(?:--\s+)?(?:'([^']*)'|\"([^\"]*)\"|(\S+))"
+        )
+        offenders = []
+        # The world is every shipped script with a shell shebang, not a *.sh
+        # glob: five launchers under workspaces/vc-chief/vc/bin/ carry no
+        # suffix and run under the same dash inside the derived image.
+        shell_scripts = shipped_shell_scripts()
+        self.assertGreaterEqual(
+            len(shell_scripts), 14, "the shipped-shell enumeration has rotted"
+        )
+        for path in shell_scripts:
+            for number, line in enumerate(
+                path.read_text(encoding="utf-8").splitlines(), start=1
+            ):
+                where = f"{path.relative_to(PACKAGE)}:{number}"
+                for arguments in echo_arguments(line):
+                    if "\\" in arguments:
+                        offenders.append(
+                            f"{where}: echo argument contains a backslash: {line.strip()}"
+                        )
+                for single, double, bare in printf_pattern.findall(line):
+                    fmt = single or double or bare
+                    if not single or "$" in fmt or "`" in fmt:
+                        # Only a single-quoted literal can be reviewed: a
+                        # double-quoted or bare format may interpolate, and a
+                        # variable can carry escapes this file never shows.
+                        offenders.append(
+                            f"{where}: printf FORMAT is not a single-quoted "
+                            f"literal ({fmt!r}), so its escapes cannot be reviewed"
+                        )
+                    elif "\\" in fmt and fmt not in safe_formats:
+                        offenders.append(f"{where}: unreviewed printf format {fmt!r}")
+        self.assertEqual(
+            offenders, [],
+            "dash expands backslash escapes in echo arguments and in printf "
+            f"FORMAT strings, mangling these on the deployed host: {offenders}. "
+            "Put the literal in a %s argument instead.",
+        )
+
+    def test_backslash_bearing_shell_lines_are_a_pinned_inventory(self) -> None:
+        """The evasion-proof backstop for the dash-escape class.
+
+        Four successive versions of the semantic guard above were each
+        bypassed by a spelling nobody had tried — a printf FORMAT in double
+        quotes, an `echo` after `then`, a format held in a variable. Any
+        detector that tries to understand shell will keep losing that race.
+
+        This check does not parse shell at all. Every dash-escape defect must
+        put a backslash *somewhere* in a shipped script — including the
+        assignment line of a variable format — so pinning the count of
+        backslash-bearing lines per file makes any new one fail regardless of
+        how it is spelled. Line continuations are excluded: they are
+        ubiquitous, carry no escape, and would swamp the signal.
+
+        When a legitimate change moves a count, read the new line first and
+        confirm the backslash is either a reviewed printf format or sits in a
+        `%s` argument, then update the number here in the same commit.
+        """
+        expected = {
+            "migrations/000_roles.sh": 10,
+            "scripts/backup.sh": 13,
+            "scripts/bootstrap.sh": 1,
+            "scripts/migrate.sh": 32,
+            "scripts/restore.sh": 7,
+            "scripts/rotate_runtime_role.sh": 1,
+            "scripts/update.sh": 1,
+        }
+        measured = {}
+        for path in shipped_shell_scripts():
+            count = 0
+            for line in path.read_text(encoding="utf-8").splitlines():
+                stripped = line.rstrip()
+                body_text = stripped[:-1] if stripped.endswith("\\") else stripped
+                if "\\" in body_text:
+                    count += 1
+            if count:
+                measured[path.relative_to(PACKAGE).as_posix()] = count
+        self.assertEqual(
+            measured, expected,
+            "the inventory of backslash-bearing lines in shipped shell moved. "
+            "Every dash-escape defect leaves a backslash somewhere, so review "
+            "each changed line before updating this pin: the backslash must be "
+            "a reviewed printf format or sit inside a %s argument.",
+        )
 
     def test_all_touched_scripts_pin_compose_file_and_project(self) -> None:
         for name in (
@@ -93,7 +300,7 @@ class RecoveryLifecycleContractTests(unittest.TestCase):
         self.assertIn("\\if :migration_applied", script)
         self.assertIn("RAISE EXCEPTION 'migration checksum/name mismatch'", script)
         self.assertIn("SELECT register_schema_migration(:'version', :'name', :'checksum');", script)
-        pipeline = script.index("  {\n    echo 'BEGIN;'")
+        pipeline = script.index("  {\n    printf '%s\\n' 'BEGIN;'")
         advisory_lock = script.index("pg_advisory_xact_lock", pipeline)
         under_lock_check = script.index("to_regclass", advisory_lock)
         registration = script.index("SELECT register_schema_migration", pipeline)
@@ -108,7 +315,7 @@ class RecoveryLifecycleContractTests(unittest.TestCase):
         self.assertIn("database migration ledger does not exactly match this release", script)
         inventory = script.index("Construct the complete reviewed ledger")
         preflight_snapshot = script.index('snapshot_ledger "$ACTUAL_LEDGER"', inventory)
-        apply = script.index("  {\n    echo 'BEGIN;'", preflight_snapshot)
+        apply = script.index("  {\n    printf '%s\\n' 'BEGIN;'", preflight_snapshot)
         final_snapshot = script.index('snapshot_ledger "$ACTUAL_LEDGER"', apply)
         self.assertLess(inventory, preflight_snapshot)
         self.assertLess(preflight_snapshot, apply)
@@ -368,6 +575,37 @@ class RecoveryLifecycleContractTests(unittest.TestCase):
         self.assertIn('--validate-lock "$VALIDATION_DIR/deployment-lock.json"', script)
         self.assertIn("BACKUP_AUTHENTICATION", script)
         self.assertIn("format_version=3", script)
+
+    def test_restore_compares_recorded_state_bound_before_archive_validation(self) -> None:
+        # A recovery point written under a raised OPENCLAW_STATE_ARCHIVE_MAX_BYTES
+        # must fail on a smaller-bound target with a message naming the
+        # variable, before archive validation aborts with a byte-limit message
+        # that names neither — and long before mutation. Backups record the
+        # bound; manifests predating the field fall through unchanged.
+        backup = body("backup.sh")
+        restore = body("restore.sh")
+        self.assertIn(
+            'echo "state_archive_max_bytes=$STATE_ARCHIVE_MAX_BYTES"', backup
+        )
+        recorded_read = restore.index("sed -n 's/^state_archive_max_bytes=//p'")
+        named_remedy = restore.index(
+            "set OPENCLAW_STATE_ARCHIVE_MAX_BYTES in .env to at least"
+        )
+        malformed = restore.index("malformed state_archive_max_bytes")
+        authenticity = restore.index("scripts/authenticate_backup.py verify")
+        first_archive_validation = restore.index(
+            'validate_archive "$VALIDATION_DIR/openclaw-state.tar.gz" state'
+        )
+        mutation = restore.index("MUTATION_STARTED=1")
+        self.assertLess(authenticity, recorded_read)
+        self.assertLess(recorded_read, first_archive_validation)
+        self.assertLess(named_remedy, first_archive_validation)
+        # Conservative by construction: bound <= host implies total <= host, so
+        # the pre-check can reject an archive that would in fact have validated.
+        # That is the intended trade — it never false-accepts, and the remedy
+        # (raise the target's bound) is always reachable.
+        self.assertLess(malformed, first_archive_validation)
+        self.assertLess(first_archive_validation, mutation)
 
     def test_backup_authentication_rejects_manifest_and_mac_tampering(self) -> None:
         key = bytes.fromhex("ab" * 32)
@@ -721,6 +959,105 @@ class RecoveryLifecycleContractTests(unittest.TestCase):
                 module.LockError, "does not match this exact package/upstream/migration contract"
             ):
                 module.validate_lock(lock)
+
+    def test_compatible_backup_refuses_a_schema_ahead_of_its_lock(self) -> None:
+        """A retried update must not stamp the old version onto the new schema.
+
+        update.sh applies migrations inside its nested rotation and records the
+        new lock only after several further fallible steps. A failure in that
+        window leaves the database migrated while deployment-lock.json still
+        describes the old contract; the documented "repair the release" retry
+        then re-enters compatible-lock backup, which stamps the recovery point
+        from that stale lock. Restoring the result is rejected only by
+        migrate.sh — after the production database has already been dropped.
+        backup.sh must therefore compare the live ledger to the lock before it
+        stamps anything. The comparison runs in both modes, not just this one:
+        a direct backup taken in the same drifted state would stamp the
+        package VERSION onto the same mismatched dump.
+        """
+        script = body("backup.sh")
+        ledger = script.index("SELECT version,name,checksum_sha256 FROM schema_migrations")
+        guard = script.index("--validate-applied-migrations")
+        stamp = script.index("--lock-package-version")
+        quiesce = script.index("compose --profile tools stop openclaw-cli openclaw-gateway")
+        self.assertLess(ledger, guard)
+        self.assertLess(guard, stamp)
+        self.assertLess(guard, quiesce)
+        # The guard must be unconditional. Nested inside the compatible-lock
+        # branch it would leave a direct backup stamping the package VERSION
+        # onto a schema-ahead dump — the same defect in the other mode — so
+        # pin that it precedes the branch and is not indented into it.
+        branch = script.index('if [ "$COMPATIBLE_BACKUP" -eq 1 ]; then')
+        self.assertLess(
+            guard, branch,
+            "the schema-ahead guard moved inside the compatible-lock branch; a "
+            "direct backup.sh would no longer be checked",
+        )
+        guard_line = script[script.rindex("\n", 0, guard) + 1:guard]
+        self.assertEqual(
+            guard_line, "python3 scripts/record_images.py ",
+            "the schema-ahead guard is indented, which means it was nested "
+            f"back into a conditional: {guard_line!r}",
+        )
+
+        spec = importlib.util.spec_from_file_location(
+            "g7_record_images_ledger", SCRIPTS / "record_images.py"
+        )
+        assert spec is not None and spec.loader is not None
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        contract = module.release_contract()
+        images = []
+        for index, (role, reference) in enumerate(
+            contract["expected_images"].items(), start=1
+        ):
+            required = module._role_required_repo_digest(role, reference)
+            images.append(
+                {
+                    "role": role,
+                    "reference": reference.split("@", 1)[0],
+                    "id": "sha256:" + (str(index) * 64),
+                    "repo_digests": [required] if required else [],
+                }
+            )
+        payload = {
+            "lock_version": 1,
+            "baked_sources_sha256": module.baked_sources_digest(),
+            "created_at": "2026-08-10T00:00:00+00:00",
+            "release_contract": contract,
+            "images": images,
+        }
+        applied = "\n".join(
+            f"{entry['path'][len('migrations/'):len('migrations/') + 3]}\t"
+            f"{Path(entry['path']).stem}\t{entry['sha256']}"
+            for entry in contract["migrations"]
+            if entry["path"].endswith(".sql")
+        )
+        with tempfile.TemporaryDirectory(prefix="g7-ledger-lock-") as temporary:
+            lock = Path(temporary) / "deployment-lock.json"
+            lock.write_text(json.dumps(payload), encoding="utf-8")
+            # The ordinary pre-update state: every applied migration is in the
+            # recorded contract. A lock entry with no ledger row (000_roles.sh,
+            # or a migration this release adds) is normal and must not fail.
+            module.validate_applied_migrations(lock, applied)
+            module.validate_applied_migrations(
+                lock, "\n".join(applied.splitlines()[:-1])
+            )
+            # The failed-update retry: the database carries a migration the
+            # lock has never heard of.
+            with self.assertRaisesRegex(module.LockError, "schema is ahead of"):
+                module.validate_applied_migrations(
+                    lock, applied + f"\n999\t999_from_a_newer_release\t{'a' * 64}"
+                )
+            # An applied migration whose file content no longer matches the
+            # recorded digest is the same class of drift.
+            drifted = applied.splitlines()
+            head, name, _ = drifted[-1].split("\t")
+            drifted[-1] = f"{head}\t{name}\t{'b' * 64}"
+            with self.assertRaisesRegex(module.LockError, "does not match the recorded"):
+                module.validate_applied_migrations(lock, "\n".join(drifted))
+            with self.assertRaisesRegex(module.LockError, "malformed schema_migrations"):
+                module.validate_applied_migrations(lock, "001\tonly-two-fields")
 
     def test_compatible_update_backup_uses_preserved_lock_version(self) -> None:
         spec = importlib.util.spec_from_file_location(

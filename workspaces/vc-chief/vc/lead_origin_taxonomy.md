@@ -55,4 +55,4 @@ changes score weights.
 - `origin_note`
 - `intake_channel`
 - `source_url` or `source_label`
-- `referrer_name` and `referrer_org`, if applicable
+- `referrer_name` and `referrer_organization`, if applicable

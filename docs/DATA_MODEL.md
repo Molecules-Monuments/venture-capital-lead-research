@@ -26,7 +26,7 @@ Workspace memory is operational convenience only. It may point to Postgres IDs b
 
 ## Installation and migration integrity
 
-`openclaw_owner` owns schema objects. `openclaw_runtime` is created by `000_roles.sh`; its grants begin in `002_runtime_grants.sql` and are extended by the later migrations that add tables, sequences, or functions it must reach (`004`, `005`, `006`, `009`, `010`, `012`, `013`, `014`, `015`, `016`, `017`, `018`). Two of those also *narrow* the surface: `004` revokes `UPDATE` on `facts`, `fact_sources`, `document_facts`, `compiled_truth_facts` and `evaluation_criteria`, and `017` completes the same append-only privilege contract by revoking `UPDATE` on `contradiction_facts` and `trajectory_points`. The runtime therefore holds `SELECT`/`INSERT` but no `UPDATE` on all seven of those history tables, so the grant catalogue agrees with the triggers that already refused those writes. It receives no grant outside that reviewed migration series.
+`openclaw_owner` owns schema objects. `openclaw_runtime` is created by `000_roles.sh`; its grants begin in `002_runtime_grants.sql` and are extended by the later migrations that add tables, sequences, or functions it must reach (`004`, `005`, `006`, `009`, `010`, `012`, `013`, `014`, `015`, `016`, `017`, `018`). Two of those also *narrow* the surface: `004` revokes `UPDATE` on `facts`, `fact_sources`, `document_facts`, `compiled_truth_facts` and `evaluation_criteria`, and `017` completes the same append-only privilege contract by revoking `UPDATE` on `contradiction_facts` and `trajectory_points`. The runtime therefore holds `SELECT`/`INSERT` but no `UPDATE` on all seven of those history tables, so the grant catalogue agrees with the triggers that already refused those writes. It receives no grant outside that reviewed migration series. One caveat on how that is achieved: migration 002's `ALTER DEFAULT PRIVILEGES … REVOKE ALL ON FUNCTIONS FROM PUBLIC` does not actually withhold `EXECUTE` from functions created later — PostgreSQL grants that to `PUBLIC` as a built-in default rather than a `pg_default_acl` entry, so there is nothing for the statement to revoke. Nothing is exposed by it today (every later function is either a trigger function or `SECURITY INVOKER`), and `tests/v3/test_runtime_grant_enumeration.py` fails the offline gate if a `SECURITY DEFINER` function is ever added without its own explicit `REVOKE`/`GRANT` pair. Write those grants in the migration that creates the function; do not rely on the default-privileges line.
 
 Migration files are immutable after release. The installer computes each file's lowercase SHA-256 outside Postgres, applies it in a transaction, and then calls:
 
@@ -109,9 +109,13 @@ one claim row instead of duplicating it. Promotion from `submitted_claim` to
 `verified_fact` happens only in `promote_submitted_claim`, a SECURITY DEFINER
 function that evaluates the corroboration predicate in SQL against the
 reviewed `fact_promotion_policy` row (minimum count of independent-provenance
-sources, single-source kinds gated by the reviewed official-domain allowlist,
-and trust levels excluded from corroboration — untrusted uploads never
-corroborate). Source independence for web/URI sources is keyed by **verified
+sources, single-source kinds, and trust levels excluded from corroboration —
+untrusted uploads never corroborate). The reviewed official-domain allowlist
+is enforced upstream of that predicate, at evidence-record time: the helper
+degrades a model-labelled `regulatory_filing` source whose host is not
+allowlisted to `public_web` before it is recorded, so the kind that may
+promote alone can only reach the SQL predicate through the reviewed allowlist
+(`CUSTOMIZATION.md`, "`REVIEW_AND_CONFIRM` files and limits"). Source independence for web/URI sources is keyed by **verified
 content identity** (`sources.content_sha256`, the hash of the fetched page
 bytes the steward records), not by host: a bare model-supplied URL with no
 content hash contributes no independent key, and two URLs that returned
@@ -340,7 +344,7 @@ Audit details must exclude raw approval tokens, secrets, private document bodies
 - removes public table, sequence, function, database-create, and temporary-table privileges;
 - grants only database connect and schema usage;
 - grants explicit ordinary domain-table `SELECT`, `INSERT`, and `UPDATE`;
-- grants workflow, approval, and outbox tables `SELECT`/`INSERT` but no raw `UPDATE`, and notification attempts `SELECT` only; their lifecycle changes use fixed-search-path, owner-owned `SECURITY DEFINER` functions;
+- grants workflow, approval, and outbox tables `SELECT`/`INSERT` but no raw `UPDATE`, and `notification_attempts` `SELECT` only; those tables' lifecycle changes use fixed-search-path, owner-owned `SECURITY DEFINER` functions. The runtime also holds `SELECT` only on the two operator-owned registries, `fact_promotion_policy` (the reviewed promotion policy row) and `schema_migrations` (the migration ledger, written by the migrator as owner);
 - grants audit `SELECT` and `INSERT` only;
 - grants sequence use required by identity columns;
 - grants only the reviewed workflow, approval, and notification lifecycle functions;

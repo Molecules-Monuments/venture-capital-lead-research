@@ -278,7 +278,7 @@ it only stops you re-deriving what the package already demonstrates.
 | 5.1 rendered-config mode, ownership, digest and read-only mounting | `tests/infrastructure` plus the in-container initializer assertions exercised by `run_g8_deployment.py` | — |
 | 5.1 `/healthz` and `/readyz` behaviour; private-path reachability | — | Yours: depends on your host and proxy |
 | 5.2 migration names, checksums, and no-op replay | `verify_offline.py --with-g4-database` (applies and registers every migration twice) | Inspect `schema_migrations` once on your database |
-| 5.2 `openclaw_runtime` cannot create schema objects or temporary objects, and holds only the reviewed table/function grants | `tests/g4/test_database_contract.py` asserts that exact privilege set, and that DDL as the runtime role fails | — |
+| 5.2 `openclaw_runtime` cannot create schema objects or temporary objects, and holds only the reviewed table/function grants | `tests/g4/test_database_contract.py` asserts, against a live database, that the role cannot create schema or temporary objects, that DDL as the runtime role fails, and a spot-check of eight table privileges across six tables and eight function grants. The *whole* 42-table grant matrix is enumerated offline instead, by `tests/v3/test_runtime_grant_enumeration.py` against `docs/SCHEMA.sql`: every table carries exactly one reviewed grant, none grants `DELETE`/`TRUNCATE`, the append-only tables grant no `UPDATE`, and the read-only trio stays read-only | — |
 | 5.2 `openclaw_runtime` is `NOINHERIT`, non-superuser, non-replication, non-`BYPASSRLS`, cannot create databases or roles, connection-limited, and holds no role membership in either direction | `scripts/rotate_runtime_role.sh` asserts exactly that predicate against `pg_roles`/`pg_auth_members` and fails closed; `bootstrap.sh` and `update.sh` both run it, so `run_g8_deployment.py` exercises it. **No offline gate covers it** — G4 builds its own throwaway role rather than applying `migrations/000_roles.sh` | Read the reconciler's output on *your* deployment (it runs on every bootstrap/update/rotate) |
 | 5.2 typed lifecycle, idempotent replay, optimistic conflict, approval consume/replay denial, notification claim/retry, cross-lead document provenance | the same G4 gate | — |
 | 5.3 all eighteen workflows parse, reject shell injection, environment leaks and unsafe authority | `validate_workflows.py` and `tests/g5` | — |
@@ -561,11 +561,23 @@ The restore drill in §5.4 is the one item no gate covers.
     "Memory and personalization" in `README.md`. The counts vary with host
     platform, so record yours rather than matching a number from here.
 
-  In the gateway log at every start and every config reload:
+  In the gateway log at every start:
 
   - `failed to promote config last-known-good backup: Error: EROFS: read-only
     file system, open '/home/node/.openclaw-config/openclaw.json.last-good'` —
-    expected, and logged at error level by the harness. The runtime config is
+    expected, and logged at warn level by the harness (`log.warn`, subsystem
+    `gateway`), so read the gateway log at warn, not error. The level is not
+    adjustable here: `OPENCLAW_LOG_LEVEL` is not part of the reviewed
+    environment contract, `check_env.py` rejects it in `.env` as an unknown
+    key, and the Compose gateway service does not forward it. Two reload-path
+    wordings exist and have different status. `config reload last-known-good
+    promotion failed: …` appears whenever an `openclaw-state-init` run
+    delivers a new config while the gateway is still up — which is exactly
+    what §6's channel-activation sequence does — so treat it as expected
+    there and as a deviation anywhere else. `config reload in-process
+    last-known-good promotion failed: …` should never appear: `commands.config`
+    is pinned `false` and the config is mounted read-only, so the gateway
+    never rewrites its own config. The runtime config is
     mounted read-only by design (§5.1 below proves that mount), so the harness
     cannot write its last-known-good copy beside it. Nothing is degraded: the
     config the gateway loaded is the one the initializer validated.
@@ -686,7 +698,17 @@ entry-count, member-size and ratio bounds have no configuration escape.
   manifest with it and aborts with "backup authenticity verification failed"
   otherwise. A fresh key on the recovery host makes every existing recovery
   point unrestorable, so treat the key as part of the recovery point and store
-  it independently of the archives. Then run `./scripts/bootstrap.sh` so the
+  it independently of the archives. The same `.env` must also carry an
+  `OPENCLAW_STATE_ARCHIVE_MAX_BYTES` at least as large as the value in force
+  when the backup was written (empty means the 2 GiB default): the backup
+  records its effective bound in `BACKUP_MANIFEST` and `restore.sh` fails
+  closed pre-mutation, naming the variable and the required minimum, if the
+  target's bound is smaller. Size the target's `${TMPDIR:-/tmp}` for private
+  restore staging at roughly the database dump + (2 × uncompressed state) +
+  uncompressed inbox + (2 × uncompressed quarantine): the extracted trees must
+  survive validation, and restore re-reads the state and quarantine tiers back
+  from the deployment after mutation begins (`OPERATIONS.md`, "Rollback and
+  restore"). Then run `./scripts/bootstrap.sh` so the
   derived CLI image, healthy Postgres,
   initialized volumes, and local `deployment-lock.json` exist. Then restore the
   matching backup from a canonical path outside the package inbox with
@@ -842,7 +864,11 @@ point while consumers are quiesced, and keeps them stopped through the same
 credential, role, migration, readiness, and consumer reconciliation. It records
 new image IDs only after those checks pass. If any later step fails, consumers
 remain stopped; restore the verified pre-update recovery point or repair the
-reviewed release. Repeat all G8 checks affected by binary, schema,
+reviewed release. If the failure landed after the migrations applied, the
+schema is already ahead of the recorded lock: a retry's pre-update backup
+refuses rather than stamp the old version onto the new schema, so the valid
+rollback target is the **first** attempt's recovery point, restored with the
+package revision that matches it. Repeat all G8 checks affected by binary, schema,
 configuration, provider, workflow, or model changes that affect the deployed
 environment.
 
@@ -984,7 +1010,7 @@ record. Autonomous transcript review remains disabled.
   (`POSTGRES_HOST_AUTH_METHOD` and `--auth-host` in `docker-compose.yml` set
   them), so TCP is the only path that actually tests the credential. A correct
   password returns `1`; a wrong one fails with
-  `FATAL: password authentication failed for user "openclaw_owner"`.
+  `FATAL:  password authentication failed for user "openclaw_owner"`.
 
   If `.env` is ahead of the database, the owner password in `.env` is the one to
   correct. Once a working owner credential is in `.env`, re-run the script — it
@@ -1171,7 +1197,7 @@ bookworm `main` pool keeps only the current revision of each package, so once
 Debian ships a newer point release those exact pins are eventually removed from
 `deb.debian.org` and the image build that bootstrap/update run (`docker compose
 -f docker-compose.yml -p openclaw-lead-research-v3 --env-file .env build --pull
-openclaw-gateway`) fails with `has no installation candidate`. The image build wraps the `apt-get
+openclaw-gateway`) fails with ``E: Version '<version>' for '<package>' was not found``. The image build wraps the `apt-get
 install` step to turn that otherwise-opaque failure into an actionable message.
 
 There is a second, less obvious form of this. A pinned package can still be in

@@ -3,7 +3,8 @@
 > [MUST_CUSTOMIZE] The criterion definitions, weights, evidence coverage
 > gates and recommendation thresholds below are examples to edit; the software
 > applies them but does not assess whether they predict anything.
-> Update the machine rubric, helper/workflow versions, and fixtures together.
+> Update the machine rubric and the fixtures together. The policy version is
+> frozen at `3.0` for this release — do not bump it.
 
 Policy version: `3.0`
 

@@ -277,6 +277,25 @@ grep -Fxq 'format_version=3' "$VALIDATION_DIR/BACKUP_MANIFEST" || \
   fail "unsupported backup format"
 grep -Fxq 'state_quiesced=true' "$VALIDATION_DIR/BACKUP_MANIFEST" || \
   fail "backup does not attest quiesced state"
+# BACKUP_MANIFEST records the bound in force when the recovery point was
+# written, not the archive's validated total, so the recorded bound is the only
+# pre-mutation proxy for "could this archive have needed more than this host
+# allows". Reject a smaller target bound conservatively — the archive may in
+# fact be far below it — naming the variable and the required minimum, rather
+# than risking a byte-limit abort inside archive validation that names neither,
+# or one during the post-mutation active-state re-validation below, after the
+# deployment has already been replaced. Manifests written before this field
+# existed (same format_version=3) omit the line and fall through to today's
+# behavior.
+BACKUP_STATE_BOUND="$(sed -n 's/^state_archive_max_bytes=//p' "$VALIDATION_DIR/BACKUP_MANIFEST" | head -n 1)"
+if [ -n "$BACKUP_STATE_BOUND" ]; then
+  case "$BACKUP_STATE_BOUND" in
+    *[!0-9]*) fail "backup manifest carries a malformed state_archive_max_bytes: $BACKUP_STATE_BOUND" ;;
+  esac
+  if [ "$BACKUP_STATE_BOUND" -gt "$STATE_ARCHIVE_MAX_BYTES" ]; then
+    fail "backup was written with OPENCLAW_STATE_ARCHIVE_MAX_BYTES=$BACKUP_STATE_BOUND but this host's effective bound is $STATE_ARCHIVE_MAX_BYTES; set OPENCLAW_STATE_ARCHIVE_MAX_BYTES in .env to at least $BACKUP_STATE_BOUND and re-run"
+  fi
+fi
 if [ "$(tr -d '\r\n' < "$VALIDATION_DIR/VERSION")" != "$(tr -d '\r\n' < "$PACKAGE_DIR/VERSION")" ]; then
   fail "backup package version differs from this restore package; use the matching reviewed release"
 fi
