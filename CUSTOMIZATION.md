@@ -176,7 +176,10 @@ token there). Editing it fails the offline gate. See the
   managed via the `source-watch`/`source-unwatch` fixed workflows) and its scan
   cadence. `source-scan` is operator-triggerable at any time; to make
   surveillance **autonomous**: set `config/openclaw.json` `cron.enabled: true`,
-  re-pin **both** inventories as step 4 requires — record the new artifact hash
+  set `cron.runLog.keepLines` and `cron.sessionRetention` to the firm's
+  retention period in the same edit (harness defaults: 2000 run-log rows per
+  job and `24h`; see `data_retention.md`), re-pin **both** inventories as
+  step 4 requires — record the new artifact hash
   in `config/customization-profile.json` (`review.reviewed_artifacts` plus the
   change record) *and* regenerate `manifest.json` with
   `python3 -B scripts/build_release_manifest.py`, because the file is declared
@@ -193,7 +196,19 @@ token there). Editing it fails the offline gate. See the
   the environment of the `schedule_jobs.sh` invocation only — they are not
   `.env` keys, and `check_env.py` rejects them there as unknown variables.
   It uses OpenClaw's native cron to send `vc-chief` a fixed scan instruction on
-  the chosen schedule. Per `approval-policy.md`, increasing cron frequency or
+  the chosen schedule. A source becomes due once its cadence interval has fully
+  elapsed since the previous scan claimed it: `signal_source_is_due` tests
+  `last_scanned_at < now() - <cadence interval>`, so at exactly one interval the
+  source is not yet due, and the claim stamps `last_scanned_at` with
+  `clock_timestamp()`. A cron firing at the same period as a source's cadence
+  therefore lands within a second of that boundary and can skip the cycle; set
+  `VC_SCAN_CRON` to fire more often than the shortest cadence you register.
+  The shipped default `0 7 * * 1-5` sits on that boundary Monday through
+  Friday against the shortest registerable cadence, `daily`, so registering a
+  `--cadence daily` source without making `VC_SCAN_CRON` sub-daily is the case
+  this rule is about; `docs/RUNBOOK.md` §10 works out the interval a shorter
+  scan period actually produces.
+  Per `approval-policy.md`, increasing cron frequency or
   concurrency is an approval gate. This is a deliberate switch: the shipping
   default is scheduler-off, and autonomous outreach remains prohibited regardless;
 - fact-promotion strictness: the reviewed `fact_promotion_policy` database row

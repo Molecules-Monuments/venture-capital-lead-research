@@ -35,6 +35,18 @@ _REVIEW_SPEC.loader.exec_module(_verify_release)
 EXCLUDED_REVIEW_DIRECTORIES = sorted(_verify_release.REVIEW_ONLY_ROOTS)
 
 
+# The shipped-shell world is enumerated once, by the offline gate, and read
+# from there. Two copies of the shebang rule is exactly how the gate and this
+# module came to disagree: the gate globbed `*.sh` and missed the five
+# suffix-less launchers this module already scanned.
+_OFFLINE_SPEC = importlib.util.spec_from_file_location(
+    "verify_offline_shell_inventory", SCRIPTS / "verify_offline.py"
+)
+assert _OFFLINE_SPEC is not None and _OFFLINE_SPEC.loader is not None
+_verify_offline = importlib.util.module_from_spec(_OFFLINE_SPEC)
+_OFFLINE_SPEC.loader.exec_module(_verify_offline)
+
+
 AUTH_SPEC = importlib.util.spec_from_file_location(
     "backup_authentication_contract", SCRIPTS / "authenticate_backup.py"
 )
@@ -122,19 +134,11 @@ def shipped_shell_scripts() -> list[Path]:
 
     Enumerated from manifest.json rather than a `*.sh` glob: the agent and
     workflow launchers under workspaces/vc-chief/vc/bin/ carry no suffix and
-    run under the same dash inside the derived image.
+    run under the same dash inside the derived image. The enumeration itself
+    lives in scripts/verify_offline.py, which builds its per-file `sh -n`
+    checks from the same list.
     """
-    manifest = json.loads((PACKAGE / "manifest.json").read_text(encoding="utf-8"))
-    found = []
-    for entry in manifest["files"]:
-        path = PACKAGE / entry["path"]
-        try:
-            first = path.read_text(encoding="utf-8", errors="ignore").splitlines()[0]
-        except (OSError, IndexError):
-            continue
-        if re.match(r"^#!\s*/(usr/)?bin/(env\s+)?(sh|bash|dash)\b", first):
-            found.append(path)
-    return sorted(found)
+    return _verify_offline.shell_paths()
 
 
 def shell_bearing_non_shebang_files() -> list[Path]:
@@ -153,7 +157,20 @@ def shell_bearing_non_shebang_files() -> list[Path]:
 
 
 class RecoveryLifecycleContractTests(unittest.TestCase):
-    def test_lifecycle_scripts_are_executable_and_parse_as_posix_shell(self) -> None:
+    def test_lifecycle_scripts_are_executable_and_parse_under_the_gate_host_shell(
+        self,
+    ) -> None:
+        """`sh` here is the gate host's `/bin/sh`, which is not always dash.
+
+        Measured on 2026-08-15: the macOS gate host resolves `/bin/sh` to GNU
+        bash 3.2.57, which parses `ARR=(a b c)`, `function f { echo hi; }` and
+        `cat <<<"here"` with rc=0, while `dash` in debian:bookworm-slim rejects
+        each with rc=2 ('"(" unexpected', '"}" unexpected', 'redirection
+        unexpected'). So a green run here proves the six scripts parse under
+        the host's shell, not that they parse under the deployed one; proving
+        that needs a host whose /bin/sh is dash. The escape guard below records
+        the same host asymmetry for its own half of this class.
+        """
         for name in (
             "backup.sh",
             "restore.sh",
@@ -258,7 +275,12 @@ class RecoveryLifecycleContractTests(unittest.TestCase):
         """
         expected = {
             "migrations/000_roles.sh": 10,
-            "scripts/backup.sh": 13,
+            # 13 pre-existing, plus the `printf '%s\n' "$still_running"` line in
+            # the post-stop quiesce verification. The backslash sits in a
+            # single-quoted FORMAT and the value travels through `%s`, which is
+            # the reviewed pattern already used ten lines above it; re-checked
+            # under Debian dash.
+            "scripts/backup.sh": 14,
             "scripts/bootstrap.sh": 1,
             "scripts/migrate.sh": 32,
             "scripts/restore.sh": 7,
@@ -704,6 +726,27 @@ class RecoveryLifecycleContractTests(unittest.TestCase):
                             info.size = len(payload)
                             archive.addfile(info, io.BytesIO(payload))
 
+            def envelope(stream: str, label: str) -> dict:
+                """Parse the validator's JSON envelope, or fail naming the leak.
+
+                A traceback exits non-zero just like a rejection does, so every
+                assertion below reads the envelope rather than the exit status.
+                """
+                sentinel = object()
+                parsed: object = sentinel
+                try:
+                    parsed = json.loads(stream)
+                except ValueError:
+                    pass
+                if parsed is sentinel or not isinstance(parsed, dict):
+                    self.fail(
+                        f"{label}: validate_recovery_archive.py emitted no JSON envelope. "
+                        f"backup.sh runs it under `set -eu` and update.sh runs backup.sh "
+                        f"after arming MUTATION_STARTED, so an unhandled exception here "
+                        f"stops the deployment with this as the only diagnostic:\n{stream}"
+                    )
+                return parsed
+
             valid = root / "valid.tar.gz"
             write_archive(valid, [("nested/evidence.txt", b"reviewed", None)])
             destination = root / "valid-output"
@@ -739,6 +782,93 @@ class RecoveryLifecycleContractTests(unittest.TestCase):
                     )
                     self.assertNotEqual(0, rejected.returncode)
                     self.assertFalse(output.exists())
+                    # A traceback also exits non-zero, so assert the envelope the
+                    # operator is promised rather than only the exit status.
+                    self.assertEqual(
+                        "FAIL",
+                        envelope(rejected.stderr, name)["result"],
+                        f"{name}: validator must reject with its FAIL envelope on stderr",
+                    )
+
+            # backup.sh runs this validator under `set -eu` on its own freshly
+            # created archives, and update.sh runs backup.sh after arming
+            # MUTATION_STARTED. An input that escapes the envelope therefore
+            # aborts the backup and, on the update path, leaves the deployment
+            # stopped with a Python traceback as the only diagnostic. Both inputs
+            # below produced exactly that before the surrogateescape handling and
+            # the widened except tuple.
+            escapes: dict[str, Path] = {}
+
+            non_utf8 = root / "non-utf8-name.tar.gz"
+            with tarfile.open(non_utf8, "w:gz", encoding="utf-8", errors="surrogateescape") as archive:
+                payload = b"deck"
+                # An operator file dropped into inbox/ off a legacy share: the
+                # name is a byte string the filesystem accepted, and tarfile
+                # hands it back with errors="surrogateescape".
+                info = tarfile.TarInfo("nested/Rapport_ann\udce9e.pdf")
+                info.size = len(payload)
+                archive.addfile(info, io.BytesIO(payload))
+            escapes["non-utf8-name"] = non_utf8
+
+            truncated = root / "truncated.tar.gz"
+            whole = root / "whole.tar.gz"
+            write_archive(whole, [("nested/evidence.txt", b"x" * 4096, None)])
+            raw = whole.read_bytes()
+            truncated.write_bytes(raw[: len(raw) // 2])
+            escapes["truncated"] = truncated
+
+            for name, archive_path in escapes.items():
+                with self.subTest(envelope=name):
+                    output = root / f"{name}-output"
+                    completed = subprocess.run(
+                        [sys.executable, str(validator), str(archive_path), str(output)],
+                        text=True,
+                        capture_output=True,
+                        timeout=10,
+                    )
+                    # Whether the host filesystem accepts the name decides
+                    # PASS vs FAIL — APFS and a C-locale mount return EILSEQ,
+                    # a UTF-8 Linux filesystem takes the bytes. Either is
+                    # correct; a traceback is not, so assert only that one of
+                    # the two envelopes was emitted.
+                    stream = completed.stdout if completed.returncode == 0 else completed.stderr
+                    self.assertIn(
+                        envelope(stream, name)["result"],
+                        {"PASS", "FAIL"},
+                        f"{name}: validator emitted a JSON object without a PASS/FAIL result",
+                    )
+                    if name == "non-utf8-name":
+                        # The envelope assertion above is satisfied by a clean
+                        # FAIL, which is what a filesystem that refuses the name
+                        # produces — so on macOS it would pass even if the name
+                        # measurement went back to plain .encode("utf-8"). Pin
+                        # that directly, independently of any filesystem.
+                        spec = importlib.util.spec_from_file_location(
+                            "g7_archive_validator", validator
+                        )
+                        assert spec is not None and spec.loader is not None
+                        module = importlib.util.module_from_spec(spec)
+                        spec.loader.exec_module(module)
+                        surrogate = "nested/Rapport_ann\udce9e.pdf"
+                        try:
+                            measured = module.normalized_name(surrogate)
+                        except UnicodeError as exc:
+                            self.fail(
+                                "normalized_name raised on a surrogateescaped member "
+                                f"name ({exc!r}). tarfile decodes non-UTF-8 name bytes "
+                                "that way, and backup.sh runs this validator under "
+                                "`set -eu`, so this escapes as a traceback and aborts "
+                                "the backup — on the update path, with the deployment "
+                                "already stopped."
+                            )
+                        self.assertEqual(surrogate, measured)
+                    if name == "non-utf8-name" and completed.returncode == 0:
+                        # Where the extraction succeeded it must be byte-faithful:
+                        # restore.sh matches on these names.
+                        self.assertIn(
+                            b"Rapport_ann\xe9e.pdf",
+                            os.listdir(os.fsencode(output / "nested")),
+                        )
 
     def test_pristine_verifier_rejects_cache_and_special_junk(self) -> None:
         verifier = (SCRIPTS / "verify_release.py").read_text(encoding="utf-8")
@@ -1207,6 +1337,162 @@ class RecoveryLifecycleContractTests(unittest.TestCase):
         self.assertLess(backup, build)
         self.assertLess(build, record)
         self.assertIn("consumers remain stopped", script)
+        # The lifecycle render writes config/runtime/secrets/, which every
+        # container-creating Compose call bind-mounts. A freshly exported package
+        # has none of those files, so a render placed after backup.sh lets the
+        # pre-update backup quiesce the gateway and then die on a missing bind
+        # source: production down, no recovery point. Keep it ahead of both the
+        # mutation flag and the backup.
+        render = script.index('python3 scripts/render_channel_config.py "$ENV_FILE"')
+        mutation = script.index("MUTATION_STARTED=1")
+        self.assertLess(
+            render, mutation,
+            "update.sh renders config/runtime/secrets/ after arming MUTATION_STARTED; "
+            "a fresh package directory would quiesce the deployment and then fail on "
+            "the missing secrets bind source",
+        )
+        self.assertLess(
+            render, backup,
+            "update.sh renders config/runtime/secrets/ after backup.sh, whose first "
+            "container-creating Compose call needs those files to exist",
+        )
+
+    def test_quiesce_is_verified_against_the_services_it_stops(self) -> None:
+        # `compose stop <service>` does not reach a `docker compose run` one-off,
+        # which is how every CLI turn executes, so the stop alone cannot justify
+        # backup.sh's constant `state_quiesced=true`. Derive the guarded names
+        # from each script's own stop line rather than restating them here, so a
+        # service added to the stop is either guarded or fails this test.
+        backup = body("backup.sh")
+        stop_line = next(
+            line for line in backup.splitlines()
+            if "compose --profile tools stop" in line
+        )
+        stopped = [
+            word for word in stop_line.split()
+            if word.startswith("openclaw-")
+        ]
+        self.assertEqual(["openclaw-cli", "openclaw-gateway"], stopped, stop_line)
+        guard = next(
+            (line for line in backup.splitlines() if line.startswith("for service in ")),
+            "",
+        )
+        guarded = [
+            word.rstrip(";") for word in guard.split()
+            if word.startswith("openclaw-")
+        ]
+        self.assertEqual(
+            stopped, guarded,
+            "backup.sh must re-read the running set for exactly the services it "
+            f"stops; stop={stopped} guard={guarded}",
+        )
+        self.assertLess(
+            backup.index("compose --profile tools stop"),
+            backup.index("for service in "),
+            "the quiesce verification must run after the stop it verifies",
+        )
+
+        # `ps --status running` alone omits `docker compose run` one-offs on
+        # Compose 2.20-2.23, and docs/RUNBOOK.md's documented floor is 2.20 —
+        # measured across pinned plugin builds: 2.20.0/2.21.0/2.22.0/2.23.3 hide
+        # the one-off, 2.24.7 and later list it. Every gate host runs a newer
+        # Compose, so a guard written without `--all` is inert exactly on the
+        # oldest supported host and no gate can see it. Pin the flag on every
+        # such call rather than only the guard's position.
+        # Tokenise rather than match a substring: `ps --services --status running`
+        # is the same invocation with the flags reordered, and a substring pin
+        # silently stops covering it.
+        for name in ("backup.sh", "restore.sh", "update.sh"):
+            joined = body(name).replace("\\\n", " ")
+            for line in joined.splitlines():
+                tokens = line.split()
+                if "ps" not in tokens or "--status" not in " ".join(tokens):
+                    continue
+                if not any(token.startswith("--status") for token in tokens):
+                    continue
+                self.assertTrue(
+                    {"--all", "-a"} & set(tokens),
+                    f"{name}: a `compose ps --status ...` invocation without --all "
+                    f"does not list a `docker compose run` one-off on Compose "
+                    f"2.20-2.23, the documented floor, so the quiesce check it feeds "
+                    f"is inert exactly on the oldest supported host: {line.strip()}",
+                )
+
+        # restore.sh and update.sh check pre-mutation instead, where the gateway
+        # is still legitimately running, so only the CLI one-off is a valid
+        # signal there. backup.sh's post-stop loop remains the backstop for a
+        # one-off that starts during the stop itself.
+        # The two blocks are near-identical and were introduced together, so a
+        # refactor breaks both at once: run them as subTests and assert the
+        # guard is present before ordering it, or one script's regression is
+        # masked by the other's failure and a deleted guard raises a bare
+        # ValueError from `.index()` that names no script at all.
+        for name in ("restore.sh", "update.sh"):
+            with self.subTest(script=name):
+                script = body(name)
+                self.assertEqual(
+                    script.count("| grep -Fxq openclaw-cli"), 1,
+                    f"{name} must carry exactly one refusal of a live "
+                    f"'docker compose run' CLI turn; the ordering assertion below "
+                    f"reads the first occurrence, so a missing or duplicated guard "
+                    f"makes it meaningless",
+                )
+                self.assertEqual(
+                    script.count("MUTATION_STARTED=1"), 1,
+                    f"{name} must arm MUTATION_STARTED exactly once; the ordering "
+                    f"assertion below has nothing to order the CLI refusal against "
+                    f"otherwise",
+                )
+                self.assertLess(
+                    script.index("| grep -Fxq openclaw-cli"),
+                    script.index("MUTATION_STARTED=1"),
+                    f"{name} must refuse a live 'docker compose run' CLI turn before "
+                    f"it starts mutating; refusing afterwards leaves the deployment "
+                    f"stopped with no recovery point",
+                )
+
+    def test_every_mutation_flag_is_armed_before_the_command_it_guards(self) -> None:
+        # `trap '...' HUP INT TERM` runs between commands, so a signal delivered
+        # during the guarded command is handled with the flag still at its old
+        # value. A flag armed on the line after its command therefore leaves the
+        # cleanup handler blind: measured on backup.sh, one SIGTERM during
+        # `compose stop` left the gateway down, skipped the restore branch and
+        # printed nothing at all, and the next backup reported success while
+        # production was still offline. Each pair below is (flag assignment,
+        # the command whose failure the flag makes recoverable).
+        # Each command is anchored with its exact redirection: the bare form also
+        # appears inside restore.sh's and update.sh's cleanup handlers, where it
+        # is `>/dev/null 2>&1 || true`, and matching that occurrence would
+        # compare the flag against the wrong line.
+        guarded = {
+            "backup.sh": (
+                "QUIESCED=1",
+                "compose --profile tools stop openclaw-cli openclaw-gateway >/dev/null\n",
+            ),
+            "restore.sh": (
+                "MUTATION_STARTED=1",
+                "compose --profile tools stop openclaw-cli openclaw-gateway >/dev/null\n",
+            ),
+            "update.sh": ("MUTATION_STARTED=1", './scripts/backup.sh "$BACKUP_DESTINATION"'),
+        }
+        for name, (flag, command) in guarded.items():
+            with self.subTest(script=name):
+                script = body(name)
+                self.assertEqual(
+                    1, script.count(flag),
+                    f"{name} must arm {flag} exactly once for this ordering to be unambiguous",
+                )
+                self.assertEqual(
+                    1, script.count(command),
+                    f"{name}: `{command.strip()}` is no longer unique, so this ordering "
+                    f"check may be comparing against the wrong occurrence",
+                )
+                self.assertLess(
+                    script.index(flag), script.index(command),
+                    f"{name} arms {flag} after `{command}`. A signal during that "
+                    f"command is handled with the flag still unset, so cleanup skips "
+                    f"the branch that would report or undo the half-finished state",
+                )
 
     def test_rotation_seeds_approval_state_before_no_dependency_gateway_start(self) -> None:
         script = body("rotate_runtime_role.sh")
@@ -1368,6 +1654,22 @@ class LifecycleScriptRefusalExecutionTests(unittest.TestCase):
         # edit must name the rebuild.
         module = self._record_images()
         self.assertIn("bootstrap.sh", module.STALE_DEPLOYMENT_MESSAGE)
+        # Take the message's subject set from the digest inputs themselves
+        # rather than spot-checking a name or two. Any of these paths can be
+        # the one that raised the notice, so an operator who is told the
+        # deployment is stale needs the notice to name all of them; a path
+        # silently dropped from the sentence leaves them guessing. Substring
+        # matching suffices because the message writes the trees with a
+        # trailing slash.
+        for name in (*module.BAKED_SOURCE_FILES, *module.BAKED_SOURCE_TREES):
+            with self.subTest(name=name):
+                self.assertIn(
+                    name,
+                    module.STALE_DEPLOYMENT_MESSAGE,
+                    f"{name} is digested into baked_sources_sha256, so changing it is "
+                    "one of the things that raises this notice — but the notice never "
+                    "names it, so the operator cannot tell what went stale",
+                )
         checker = (SCRIPTS / "check_customization.py").read_text(encoding="utf-8")
         self.assertIn("STALE_DEPLOYMENT_MESSAGE", checker)
         self.assertIn('"notices": stale_deployment_notices()', checker)

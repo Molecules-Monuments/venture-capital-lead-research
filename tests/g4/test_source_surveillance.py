@@ -229,6 +229,27 @@ class SourceSurveillanceTests(unittest.TestCase):
             self.assertIs(self.query("SELECT signal_source_is_due(%s, NULL)", (cadence,)), True)
         # A just-scanned daily source is not yet due.
         self.assertIs(self.query("SELECT signal_source_is_due('daily', now())"), False)
+        # The boundary is a strict `<` against transaction-start now(), which is
+        # what CUSTOMIZATION.md states verbatim ("at exactly one interval the
+        # source is not yet due") and what passive_sourcing.md's skip-a-cycle
+        # warning rests on. The caller's now() and the function's own now() are
+        # the same transaction start, so both comparisons below are exact rather
+        # than timing-dependent.
+        self.assertIs(
+            self.query("SELECT signal_source_is_due('daily', now() - interval '1 day')"),
+            False,
+            "signal_source_is_due no longer uses a strict `<`: a source scanned "
+            "exactly one cadence interval ago came back due, contradicting the "
+            "boundary CUSTOMIZATION.md states",
+        )
+        self.assertIs(
+            self.query(
+                "SELECT signal_source_is_due('daily', now() - interval '1 day' - interval '1 second')"
+            ),
+            True,
+            "a daily source scanned one second past its cadence interval was not "
+            "due; the cadence window has widened beyond the documented interval",
+        )
         with self.assertRaises(psycopg.errors.InvalidParameterValue):
             self.query("SELECT signal_source_is_due('hourly', now())")
 

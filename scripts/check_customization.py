@@ -174,8 +174,30 @@ def main() -> int:
     env_path = Path(sys.argv[2]) if len(sys.argv) > 2 else None
     errors: list[str] = []
     try:
+        # Absence is a different operator situation from a symlink, a
+        # directory, or an oversized file: it is the state of a restore target
+        # (docs/OPERATIONS.md, "Rollback and restore" — the profile is
+        # deliberately not inside the backup) and the state left by skipping
+        # the scaffold step, and it is fixed by writing the profile, not by
+        # correcting its type. Both still fail closed with rc=1.
+        #
+        # lstat, not Path.exists(): exists() also answers False for a profile
+        # inside a directory this process cannot traverse, which would send the
+        # operator to init_customization.py for an EACCES. lstat separates the
+        # two, and a dangling symlink still lstats fine and falls through to
+        # the type check below.
+        try:
+            path.lstat()
+        except FileNotFoundError as exc:
+            raise OSError(
+                f"{path}: customization profile does not exist; "
+                "scripts/init_customization.py writes config/customization-profile.json "
+                "(see CUSTOMIZATION.md)"
+            ) from exc
         if path.is_symlink() or not path.is_file() or path.stat().st_size > 2 * 1024 * 1024:
-            raise OSError("customization profile must be a regular, non-symlink file of at most 2 MiB")
+            raise OSError(
+                f"{path}: customization profile must be a regular, non-symlink file of at most 2 MiB"
+            )
         profile = json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=unique_object)
     # UnicodeDecodeError is a ValueError but neither of the two below, so a
     # non-UTF-8 profile would otherwise exit with a traceback instead of this
@@ -208,8 +230,15 @@ def main() -> int:
         if not isinstance(investment.get(key), list) or not investment[key]:
             errors.append(f"investment_policy.{key} must be a non-empty list")
     models = sections["models"]
+    # Only the provider prefix is this package's to interpret; everything after
+    # the first slash is an opaque model id, exactly as check_env.py's
+    # `value.split("/", 1)[0] != provider` test and render_channel_config.py's
+    # `split("/", 1)[1]` treat it. Requiring a slash-free remainder here would
+    # reject Hub-style ids (hf/meta-llama/Llama-3.3-70B-Instruct-Turbo) that
+    # check_env.py accepts, and the profile/env binding below demands the two
+    # values be byte-equal — so the divergence left no satisfiable value.
     for key in ("primary", "fast"):
-        if not isinstance(models.get(key), str) or not re.fullmatch(r"[^\s/]+/[^\s/]+", models[key]):
+        if not isinstance(models.get(key), str) or not re.fullmatch(r"[^\s/]+/[^\s]+", models[key]):
             errors.append(f"models.{key} must be a concrete provider/model reference")
     if models.get("provider") not in {"openai", "ollama", "custom"}:
         errors.append("models.provider must be openai, ollama, or custom")

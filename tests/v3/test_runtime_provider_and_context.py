@@ -7,6 +7,7 @@ import hmac
 import importlib.util
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -230,6 +231,22 @@ class RuntimeProviderTests(unittest.TestCase):
         # on the vendor's hardware.
         self.assertEqual([], self._errors_for(configured_example()))
 
+    def _g6_channel_profiles(self) -> set[str]:
+        """The channel roster scripts/run_g6_image.py validates inside the image.
+
+        Read from that file's source rather than restated, so a fifth channel
+        added to the image gate cannot quietly skip the load-path check below.
+        """
+        source = (ROOT / "scripts/run_g6_image.py").read_text(encoding="utf-8")
+        match = re.search(r"^PROFILES = \(([^)]*)\)", source, re.M)
+        self.assertIsNotNone(
+            match,
+            "scripts/run_g6_image.py no longer declares PROFILES as a literal "
+            "tuple, so this test can no longer read the channel roster from it",
+        )
+        assert match is not None
+        return set(re.findall(r'"([a-z]+)"', match.group(1))) - {"none"}
+
     def test_a_selected_channel_is_enabled_without_a_load_path(self) -> None:
         # The harness grants its keyed store only to a plugin whose registry
         # record is origin "bundled" (or a recorded trusted official install).
@@ -241,7 +258,23 @@ class RuntimeProviderTests(unittest.TestCase):
         # while bootstrap.sh exited 0 and the container reported healthy.
         # Dockerfile.openclaw now places all four channel distributions under the
         # harness's own extension scan root, so a load path must never come back.
+        # The roster below is the image gate's own, checked against it; the slack
+        # and discord credentials are scripts/run_g6_image.py's CHANNEL_VALUES
+        # literals verbatim, and every value here is inert.
         families = {
+            "slack": {
+                "SLACK_BOT_TOKEN": "xoxb-" + "A" * 24,
+                "SLACK_APP_TOKEN": "xapp-" + "B" * 24,
+                "SLACK_ALLOWED_USER_IDS": "U12345678,U87654321",
+                "SLACK_ALLOWED_CHANNEL_ID": "C12345678",
+            },
+            "discord": {
+                "DISCORD_BOT_TOKEN": "D" * 40,
+                "DISCORD_APPLICATION_ID": "123456789012345678",
+                "DISCORD_ALLOWED_USER_IDS": "223456789012345678,223456789012345679",
+                "DISCORD_ALLOWED_GUILD_ID": "323456789012345678",
+                "DISCORD_ALLOWED_CHANNEL_ID": "423456789012345678",
+            },
             "msteams": {
                 "MSTEAMS_APP_ID": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
                 "MSTEAMS_APP_PASSWORD": "inert-render-test-app-password",
@@ -257,6 +290,12 @@ class RuntimeProviderTests(unittest.TestCase):
                 "TELEGRAM_ALLOWED_GROUP_ID": "-1001234567890",
             },
         }
+        self.assertEqual(
+            set(families), self._g6_channel_profiles(),
+            "the channel roster here has drifted from the one "
+            "scripts/run_g6_image.py validates in the image; a channel absent "
+            "from this dict gets no load-path assertion at all",
+        )
         for channel, family in families.items():
             with self.subTest(channel=channel):
                 body = replace_line(configured_example(), "PRIMARY_CHANNEL", channel)
@@ -266,11 +305,19 @@ class RuntimeProviderTests(unittest.TestCase):
                 plugins = config["plugins"]
                 self.assertIn(channel, plugins["allow"])
                 self.assertTrue(plugins["entries"][channel]["enabled"])
+                # Check the rendered paths against the whole roster, not just
+                # the selected channel: a path hardcoded for some other channel
+                # revokes that channel's keyed store on the render that selects
+                # it, and naming only `channel` here would never see it.
                 for path in plugins["load"]["paths"]:
-                    self.assertNotIn(
-                        channel, path,
-                        f"{channel} must load as a bundled plugin, not from {path}",
-                    )
+                    for name in sorted(families):
+                        self.assertNotIn(
+                            name, path,
+                            f"the {channel} render carries a load path naming "
+                            f"{name}: {path}. A channel named in "
+                            "plugins.load.paths becomes a path-origin plugin, "
+                            "and openKeyedStore then throws for it.",
+                        )
 
     def test_rendered_config_disables_the_harness_heartbeat(self) -> None:
         # The harness runs a periodic main-session agent turn independently of
@@ -565,6 +612,89 @@ console.log(JSON.stringify({{
         # The macro workbook is never signed, and it blocks its own run.
         self.assertEqual([], second["media_paths"])
         self.assertEqual("unsupported_attachment_type", rendered["secondBlocked"]["reason"])
+
+    def test_plugin_survives_a_turn_longer_than_the_stuck_session_budget(self) -> None:
+        # A capture waits for the run that claims it, and a run can sit behind a
+        # long one. config/openclaw.json allows a turn up to stuckSessionAbortMs
+        # (960 s) and the reference host measures a 331 s first turn, so a
+        # capture window shorter than that budget silently drops the token — and
+        # with it the unsupported-attachment refusal. A claim must likewise
+        # outlive the run that owns it, because before_prompt_build runs once per
+        # attempt. The clock is driven explicitly rather than by sleeping.
+        dm_key = "agent:vc-chief:slack:direct:u12345678"
+        deck = "/home/node/.openclaw/media/inbound/deck---550e8400-e29b-41d4-a716-446655440000.pdf"
+        macro = "/home/node/.openclaw/media/inbound/book---550e8400-e29b-41d4-a716-446655440001.xlsm"
+        with tempfile.TemporaryDirectory(prefix="trusted-plugin-clock-") as raw:
+            key_path = Path(raw) / "key"
+            key_path.write_bytes(b"k" * 64)
+            script = f"""
+let clock = 1_000_000;
+const realNow = Date.now;
+Date.now = () => clock;
+const plugin = (await import({json.dumps(PLUGIN_PATH.as_uri())})).default;
+const hooks = {{}};
+plugin.register({{on: (name, handler) => {{ hooks[name] = handler; }}}});
+const ctxFor = (messageId) => ({{channelId: 'slack', accountId: 'acc-1', conversationId: 'D123', messageId, senderId: 'U1', sessionKey: {json.dumps(dm_key)}}});
+const agentCtx = (runId) => ({{runId, senderId: 'U1', sessionKey: {json.dumps(dm_key)}, messageProvider: 'slack'}});
+
+hooks.message_received({{messageId: 'm1', senderId: 'U1', sessionKey: {json.dumps(dm_key)}, metadata: {{mediaPaths: [{json.dumps(deck)}]}}}}, ctxFor('m1'));
+hooks.message_received({{messageId: 'm2', senderId: 'U1', sessionKey: {json.dumps(dm_key)}, metadata: {{mediaPaths: [{json.dumps(macro)}]}}}}, ctxFor('m2'));
+
+// The first run starts 900 s after its message was captured: inside the
+// stuckSessionAbortMs budget, far outside the old 120 s window.
+clock += 900_000;
+const late = hooks.before_prompt_build({{}}, agentCtx('run-1'));
+// The queued macro message, captured at the same time, must still block its own
+// run. before_prompt_build claims the capture and registers the block, which is
+// the order the runtime drives these hooks in.
+hooks.before_prompt_build({{}}, agentCtx('run-2'));
+const queuedBlocked = hooks.before_agent_run({{}}, agentCtx('run-2')) ?? null;
+// run-1 is then retried another 900 s later, after a compaction. Its capture is
+// long past the pending window by now, so only a claim that is *not* age-pruned
+// can still answer.
+clock += 900_000;
+const lateRetry = hooks.before_prompt_build({{}}, agentCtx('run-1'));
+Date.now = realNow;
+console.log(JSON.stringify({{
+  late: late?.prependContext ?? null,
+  lateRetry: lateRetry?.prependContext ?? null,
+  queuedBlocked,
+}}));
+"""
+            process = subprocess.run(
+                ["node", "--input-type=module", "-e", script],
+                text=True,
+                encoding="utf-8",
+                capture_output=True,
+                check=False,
+                env={**os.environ, "VC_TRUSTED_CONTEXT_KEY_FILE": str(key_path)},
+            )
+            self.assertEqual(0, process.returncode, process.stderr)
+            rendered = json.loads(process.stdout)
+
+        def payload(context: str) -> dict[str, object]:
+            encoded = context.split("[VC_TRUSTED_CONTEXT_V1]\n", 1)[1].split("\n", 1)[0].split(".", 1)[0]
+            return json.loads(base64.urlsafe_b64decode(encoded + "=" * (-len(encoded) % 4)))
+
+        self.assertIsNotNone(
+            rendered["late"],
+            "a run dispatched 900 s after its message got no trusted-context token; "
+            "the pending capture window is shorter than stuckSessionAbortMs",
+        )
+        late = payload(rendered["late"])
+        self.assertEqual("m1", late["event_id"])
+        self.assertEqual([deck], late["media_paths"])
+        self.assertIsNotNone(
+            rendered["lateRetry"],
+            "a retried prompt build 900 s after the first attempt lost its token; "
+            "the claim must outlive the run it is keyed to",
+        )
+        self.assertEqual("m1", payload(rendered["lateRetry"])["event_id"])
+        self.assertEqual(
+            "unsupported_attachment_type",
+            (rendered["queuedBlocked"] or {}).get("reason"),
+            "the queued macro-bearing message stopped blocking its own run",
+        )
 
     def test_plugin_correlates_identity_media_and_dm_scope(self) -> None:
         dm_key = "agent:vc-chief:slack:direct:u12345678"

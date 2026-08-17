@@ -63,7 +63,15 @@ def write_ooxml(path: Path, sheet_xml: str, *, macro: bool = False, external: bo
             archive.writestr(name, payload)
 
 
-def write_pptx(path: Path, *, macro: bool = False, external: bool = False, doctype: bool = False, embedded: bool = False):
+def write_pptx(
+    path: Path,
+    *,
+    macro: bool = False,
+    external: bool = False,
+    doctype: bool = False,
+    embedded: bool = False,
+    notes_target=None,
+):
     slide = (
         '<?xml version="1.0"?>'
         '<p:sld xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" '
@@ -99,6 +107,77 @@ def write_pptx(path: Path, *, macro: bool = False, external: bool = False, docty
             '<Relationship Id="rId1" Type="image" Target="https://attacker.invalid/x" '
             'TargetMode="External"/></Relationships>'
         )
+    if notes_target is not None:
+        # An internal notesSlide relationship whose Target is under the
+        # caller's control; the deck ships no notes part of its own.
+        files["ppt/slides/_rels/slide1.xml.rels"] = (
+            '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+            '<Relationship Id="rId1" '
+            'Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/notesSlide" '
+            f'Target="{notes_target}"/></Relationships>'
+        )
+    with zipfile.ZipFile(path, "w", compression=zipfile.ZIP_STORED) as archive:
+        for name, payload in files.items():
+            archive.writestr(name, payload)
+
+
+def write_pptx_sparse_notes(path: Path):
+    """Write a three-slide deck whose notes were authored on slides 2 and 3.
+
+    A producer numbers notesSlide parts in the order the notes are created, so
+    a deck with notes on a subset of its slides has notesSlide1.xml bound to
+    slide2.xml and notesSlide2.xml bound to slide3.xml. The slide's own ordinal
+    therefore does not name its notes part; only the relationship does.
+    """
+    def slide(text):
+        return (
+            '<?xml version="1.0"?>'
+            '<p:sld xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" '
+            'xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">'
+            f'<p:cSld><p:spTree><p:sp><p:txBody><a:p><a:r><a:t>{text}</a:t>'
+            '</a:r></a:p></p:txBody></p:sp></p:spTree></p:cSld></p:sld>'
+        )
+
+    def notes(text):
+        return (
+            '<?xml version="1.0"?>'
+            '<p:notes xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" '
+            'xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">'
+            f'<p:cSld><p:spTree><p:sp><p:txBody><a:p><a:r><a:t>{text}</a:t>'
+            '</a:r></a:p></p:txBody></p:sp></p:spTree></p:cSld></p:notes>'
+        )
+
+    def rels(target):
+        return (
+            '<?xml version="1.0"?>'
+            '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+            '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/'
+            f'2006/relationships/notesSlide" Target="{target}"/></Relationships>'
+        )
+
+    files = {
+        "[Content_Types].xml": (
+            '<?xml version="1.0"?><Types '
+            'xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+            '<Default Extension="rels" '
+            'ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+            '<Default Extension="xml" ContentType="application/xml"/>'
+            '<Override PartName="/ppt/presentation.xml" '
+            'ContentType="application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml"/>'
+            '</Types>'
+        ),
+        "ppt/presentation.xml": (
+            '<?xml version="1.0"?><p:presentation '
+            'xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"/>'
+        ),
+        "ppt/slides/slide1.xml": slide("Cover"),
+        "ppt/slides/slide2.xml": slide("Traction"),
+        "ppt/slides/slide3.xml": slide("Ask"),
+        "ppt/notesSlides/notesSlide1.xml": notes("NOTE ON TRACTION"),
+        "ppt/notesSlides/notesSlide2.xml": notes("NOTE ON ASK"),
+        "ppt/slides/_rels/slide2.xml.rels": rels("../notesSlides/notesSlide1.xml"),
+        "ppt/slides/_rels/slide3.xml.rels": rels("../notesSlides/notesSlide2.xml"),
+    }
     with zipfile.ZipFile(path, "w", compression=zipfile.ZIP_STORED) as archive:
         for name, payload in files.items():
             archive.writestr(name, payload)
@@ -164,6 +243,11 @@ class DocumentSecurityTests(unittest.TestCase):
         (cls.inbox / "formula.csv").write_text("metric,value\narr,=1+1\n", encoding="utf-8")
         (cls.outside / "outside-root.csv").write_text("secret,value\nx,1\n", encoding="utf-8")
         (cls.inbox / "unsupported.txt").write_text("not accepted", encoding="utf-8")
+        # The quarantine copy is named "<64 hex digest><suffix>", so a source
+        # whose final extension is long enough pushes that name past the 255-byte
+        # filename limit. Unsupported suffixes are exactly the inputs that reach
+        # quarantine, so the suffix here is caller-controlled and unbounded.
+        (cls.inbox / f"long-suffix.{'e' * 200}").write_text("not accepted", encoding="utf-8")
         (cls.inbox / "renamed-png.xlsx").write_bytes(b"\x89PNG\r\n\x1a\nnot an office document")
         (cls.inbox / "legacy.xls").write_bytes(bytes.fromhex("D0CF11E0A1B11AE1") + b"legacy")
         (cls.inbox / "oversized.csv").write_bytes(b"x" * (int(CASES["environment"]["VCOPS_MAX_DOCUMENT_BYTES"]) + 1))
@@ -196,6 +280,8 @@ class DocumentSecurityTests(unittest.TestCase):
         write_pptx(cls.inbox / "external-link.pptx", external=True)
         write_pptx(cls.inbox / "doctype.pptx", doctype=True)
         write_pptx(cls.inbox / "embedded.pptx", embedded=True)
+        write_pptx_sparse_notes(cls.inbox / "sparse-notes.pptx")
+        write_pptx(cls.inbox / "escaping-notes.pptx", notes_target="../slides/slide1.xml")
         (cls.inbox / "symlink.csv").symlink_to(cls.outside / "outside-root.csv")
         (cls.inbox / "linked-parent").symlink_to(cls.outside, target_is_directory=True)
         (cls.inbox / "sub").mkdir()
@@ -276,6 +362,19 @@ class DocumentSecurityTests(unittest.TestCase):
         self.assert_rejected(self.inbox / "unsupported.txt", must_quarantine=True)
         self.assert_rejected(self.inbox / "renamed-png.xlsx", must_quarantine=True)
         self.assert_rejected(self.inbox / "legacy.xls", must_quarantine=True)
+
+    def test_unwritable_quarantine_name_keeps_the_typed_rejection(self):
+        # quarantine_document runs inside document-extract's error handler. An
+        # OSError escaping it (here: a quarantine filename longer than the
+        # filesystem allows) replaces the caller's typed rejection with an
+        # opaque internal_error and drops the `quarantine` key that
+        # docs/RUNBOOK.md tells the operator to read. The copy is allowed to
+        # fail; the rejection is not.
+        proc, payload = self.invoke("document-extract", self.inbox / f"long-suffix.{'e' * 200}")
+        self.assertNotEqual(proc.returncode, 0, (payload, proc.stderr))
+        rendered = json.dumps(payload, sort_keys=True).lower()
+        self.assertNotIn("internal_error", rendered, (payload, proc.stderr))
+        self.assertIn("quarant", rendered, (payload, proc.stderr))
 
     def test_macro_extensions_and_payloads_quarantine(self):
         self.assert_rejected(self.inbox / "macro.xlsm", "active", must_quarantine=True)
@@ -359,6 +458,49 @@ class DocumentSecurityTests(unittest.TestCase):
         extracted = json.loads(Path(payload["extracted_json_path"]).read_text(encoding="utf-8"))
         self.assertEqual(1, extracted["extraction"]["slides"][0]["slide"])
         self.assertIn("Acme pitch deck", extracted["extraction"]["slides"][0]["text"])
+
+    def test_pptx_notes_follow_the_slide_relationship_not_the_slide_ordinal(self):
+        # sparse-notes.pptx has notes on slides 2 and 3 only, so its notes
+        # parts are notesSlide1.xml and notesSlide2.xml. Naming a slide's notes
+        # part from the slide's own ordinal shifts every note one slide earlier
+        # and drops the last one, silently and with truncated still false.
+        proc, payload = self.invoke("document-extract", self.inbox / "sparse-notes.pptx")
+        self.assertEqual(proc.returncode, 0, (payload, proc.stderr))
+        extraction = json.loads(Path(payload["extracted_json_path"]).read_text(encoding="utf-8"))["extraction"]
+        # No bound may cut this deck short, or the notes assertions below would
+        # pass on an extraction that simply stopped early.
+        self.assertEqual(3, extraction["slide_count"], extraction)
+        self.assertFalse(extraction["truncated"], extraction)
+        slides = extraction["slides"]
+        self.assertEqual(["Cover", "Traction", "Ask"], [entry["text"] for entry in slides], extraction)
+        self.assertEqual("", slides[0]["notes"], f"slide 1 has no notes part but was given notes: {slides[0]}")
+        self.assertEqual(
+            "NOTE ON TRACTION",
+            slides[1]["notes"],
+            f"slide 2's notes must come from the part its rels bind (notesSlide1.xml): {slides[1]}",
+        )
+        self.assertEqual(
+            "NOTE ON ASK",
+            slides[2]["notes"],
+            f"slide 3's notes must come from the part its rels bind (notesSlide2.xml): {slides[2]}",
+        )
+
+    def test_pptx_notes_relationship_pointing_outside_notesslides_reads_nothing(self):
+        # escaping-notes.pptx gives its only slide a notesSlide relationship
+        # whose Target resolves to ppt/slides/slide1.xml — an archive member,
+        # but not a notes part. Following a Target without confining the
+        # resolved name to ppt/notesSlides/ would republish that part's own
+        # body text ("Acme pitch deck") as the slide's speaker notes.
+        proc, payload = self.invoke("document-extract", self.inbox / "escaping-notes.pptx")
+        self.assertEqual(proc.returncode, 0, (payload, proc.stderr))
+        extraction = json.loads(Path(payload["extracted_json_path"]).read_text(encoding="utf-8"))["extraction"]
+        self.assertEqual("Acme pitch deck", extraction["slides"][0]["text"], extraction)
+        self.assertEqual(
+            "",
+            extraction["slides"][0]["notes"],
+            "a notesSlide Target resolving outside ppt/notesSlides/ must yield no notes, "
+            f"not the contents of the part it names: {extraction['slides'][0]}",
+        )
 
     def test_pptx_active_external_and_xml_payloads_quarantine(self):
         for name, reason in (

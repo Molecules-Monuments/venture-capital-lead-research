@@ -156,8 +156,18 @@ class RuntimeGrantEnumerationTests(unittest.TestCase):
         self.assertGreaterEqual(
             len(definers), 12, "the SECURITY DEFINER function scan has rotted"
         )
+        # Both halves are anchored to the grantee their failure messages name.
+        # An unanchored `GRANT … ON FUNCTION public\.(\w+)` would also count a
+        # grant to some other role as "the runtime may call it", and an
+        # unanchored REVOKE would count `REVOKE ALL … FROM <owner>` — a line
+        # pg_dump does emit — as "PUBLIC no longer holds EXECUTE".
         granted = set(
-            re.findall(r"GRANT (?:ALL|EXECUTE) ON FUNCTION public\.(\w+)", SCHEMA)
+            re.findall(
+                r"^GRANT (?:ALL|EXECUTE) ON FUNCTION public\.(\w+)\(.*?\) "
+                r"TO openclaw_runtime;$",
+                SCHEMA,
+                re.M,
+            )
         )
         ungranted = sorted(set(definers) - granted)
         self.assertEqual(
@@ -175,7 +185,11 @@ class RuntimeGrantEnumerationTests(unittest.TestCase):
         # default described above is what the migration failed to withhold.
         # Both halves or the pair is not a pair.
         revoked = set(
-            re.findall(r"REVOKE ALL ON FUNCTION public\.(\w+)", SCHEMA)
+            re.findall(
+                r"^REVOKE ALL ON FUNCTION public\.(\w+)\(.*?\) FROM PUBLIC;$",
+                SCHEMA,
+                re.M,
+            )
         )
         unrevoked = sorted(set(definers) - revoked)
         self.assertEqual(
@@ -199,6 +213,52 @@ class RuntimeGrantEnumerationTests(unittest.TestCase):
             f"these tables now grant one: {offenders}",
         )
         self.assertIn("grants no `DELETE`, `TRUNCATE`", DATA_MODEL)
+        # Everything above reads `runtime_grants()`, which filters on
+        # `TO openclaw_runtime`, so a grant to a second grantee is invisible to
+        # it — PUBLIC most of all: PUBLIC privileges are held by every role
+        # directly rather than through membership, so `NOINHERIT` on
+        # `openclaw_runtime` (migrations/000_roles.sh:60) does not withhold
+        # them. Enumerate the grantee of every GRANT line so a second one has
+        # to be reviewed into this set before the gate goes green again.
+        grant_lines = re.findall(r"^GRANT .+;$", SCHEMA, re.M)
+        grantees = re.findall(
+            r"^GRANT .+? ON (?:TABLE|SEQUENCE|FUNCTION|SCHEMA) .+ TO (\S+);$",
+            SCHEMA,
+            re.M,
+        )
+        self.assertEqual(
+            len(grantees), len(grant_lines),
+            f"{len(grant_lines)} GRANT lines in docs/SCHEMA.sql but only "
+            f"{len(grantees)} name a TABLE/SEQUENCE/FUNCTION/SCHEMA target with "
+            "a parsable grantee, so this grantee scan would enumerate a partial "
+            "world",
+        )
+        self.assertEqual(
+            sorted(set(grantees)), ["openclaw_runtime"],
+            "docs/SCHEMA.sql grants a privilege to a grantee other than "
+            f"openclaw_runtime: {sorted(set(grantees) - {'openclaw_runtime'})}. "
+            "Every other check in this suite reads only the openclaw_runtime "
+            "grant lines, so such a grant would be invisible to them.",
+        )
+        # `GRANT …` is one of two spellings pg_dump emits for a privilege. The
+        # other is `ALTER DEFAULT PRIVILEGES … GRANT … TO <role>`, which the
+        # scan above cannot see because it does not begin with GRANT. Rather
+        # than widen the detector, pin the world: docs/SCHEMA.sql carries no
+        # such statement today (measured), because pg_dump emits one only when
+        # `pg_default_acl` holds a row — and migration 002's three
+        # `ALTER DEFAULT PRIVILEGES … REVOKE ALL … FROM PUBLIC` statements
+        # create none, which is exactly why
+        # `test_no_security_definer_function_relies_on_default_privileges`
+        # above exists. A future migration that sets a default privilege lands
+        # here verbatim and has to be reviewed in.
+        self.assertEqual(
+            re.findall(r"^ALTER DEFAULT PRIVILEGES.*$", SCHEMA, re.M), [],
+            "docs/SCHEMA.sql now carries a default-privilege statement. pg_dump "
+            "emits one only when the default ACL is non-default, and neither the "
+            "grantee scan above nor any other check in this suite reads that "
+            "spelling, so it must be reviewed into this suite before the gate "
+            "goes green.",
+        )
 
     def test_history_tables_are_select_insert_only(self):
         for table in sorted(HISTORY_TABLES):

@@ -49,7 +49,7 @@ The initial migration uses `CREATE ... IF NOT EXISTS` for controlled repeat appl
 - Provider events are deduplicated by provider, account, and stable event ID. This is separate from the application idempotency key.
 - `row_version` on companies and leads supports optimistic updates. The trigger increments it on every update.
 - Unknown origin and evidence states remain explicit. They are never rewritten to verified values merely to satisfy a required field.
-- `workflow_requests` claims the canonical complete inbound/outbound outer
+- `workflow_requests` claims the canonical inbound/outbound outer
   payload before any company, lead, workflow-run, or extraction mutation.
   `(workflow_id, idempotency_key)` is unique and append-only. A replay with any
   different canonical argument—or a different inspected document SHA for

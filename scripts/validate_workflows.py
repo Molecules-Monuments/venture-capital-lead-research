@@ -10,6 +10,7 @@ is a release failure. It never executes a workflow or opens the database.
 from __future__ import annotations
 
 import argparse
+import collections.abc
 import importlib.util
 import json
 import os
@@ -21,6 +22,7 @@ from pathlib import Path
 from typing import Any, Sequence
 
 import yaml
+import yaml.constructor
 import yaml.resolver
 
 
@@ -95,6 +97,18 @@ def _unique_mapping(loader: UniqueSafeLoader, node: yaml.MappingNode, deep: bool
     result: dict[Any, Any] = {}
     for key_node, value_node in node.value:
         key = loader.construct_object(key_node, deep=deep)
+        # Replacing SafeConstructor.construct_mapping means re-performing its
+        # hashability guard. YAML permits a complex key (`? [a, b]`), which
+        # arrives here as a list; without this the `key in result` lookup below
+        # raises TypeError outside every handler in this module and the
+        # validator aborts with a traceback that never names the file, instead
+        # of the bounded `yaml_parse` finding. ConstructorError is a
+        # yaml.YAMLError, which validate_workflow() already catches.
+        if not isinstance(key, collections.abc.Hashable):
+            raise yaml.constructor.ConstructorError(
+                "while constructing a mapping", node.start_mark,
+                "found unhashable key", key_node.start_mark,
+            )
         if key in result:
             raise DuplicateKeyError(f"duplicate YAML key: {key!r}")
         result[key] = loader.construct_object(value_node, deep=deep)
@@ -192,6 +206,46 @@ def _shell_active_text(command: str, *, expansion: bool = False) -> str:
     return "".join(rendered)
 
 
+def _double_quoted_mask(command: str) -> list[bool]:
+    """Mark, per character index, whether `/bin/sh -lc` reads it inside `"`.
+
+    `_shell_active_text` answers "can the shell act on this position"; this
+    answers "is this position inside a double-quoted region", which is the
+    property that actually contains a channel-controlled expansion. Testing
+    the single preceding byte does not: `""$X`, `"p"$X` and `"a"$X"b"` all put
+    a quote character immediately before the `$` while leaving the expansion
+    itself unquoted, so it word-splits and glob-expands exactly as bare `$X`
+    does.
+
+    Backslash handling matches `_shell_active_text`: a backslash and the
+    character it escapes are both marked unquoted. That makes the escaped
+    spellings (`\\$X`, `"\\$X"`) report as unquoted even though they expand to
+    nothing at all. Rejecting an inert spelling is the fail-closed direction,
+    and no shipped workflow uses one — the whole workflow inventory validates
+    with zero findings under this rule — so this stays a rejection rather than
+    a carve-out.
+    """
+    mask = [False] * len(command)
+    quote: str | None = None
+    index = 0
+    while index < len(command):
+        character = command[index]
+        if quote is None:
+            if character in "'\"":
+                quote = character
+            elif character == "\\":
+                # The escaped character is outside any quoting too.
+                index += 1
+        elif character == quote:
+            quote = None
+        elif quote == '"' and character == "\\":
+            index += 1
+        else:
+            mask[index] = quote == '"'
+        index += 1
+    return mask
+
+
 def _validate_command(
     command: str,
     *,
@@ -207,11 +261,27 @@ def _validate_command(
         findings.append(Finding("raw_env", "raw shell/template expansion is forbidden", step_id))
     # Both reference families carry channel-controlled values ($VCOPS_* step
     # env is fed from trusted-context fields such as sender_id, which are
-    # length-bounded but not charset-bounded), so both must be quoted or the
-    # `/bin/sh -lc` layer word-splits and globs them. Same alternation as
-    # _substitute_bounded_references, which erases them before the later scans.
-    if re.search(r"(?<![\"'])\$(?:LOBSTER_ARG|VCOPS)_[A-Z][A-Z0-9_]*", command):
-        findings.append(Finding("arg_unquoted", "Lobster argument and step-env references must be double-quoted", step_id))
+    # length-bounded but not charset-bounded), so the expansion has to sit
+    # inside a double-quoted region or the `/bin/sh -lc` layer word-splits and
+    # globs it. Decide that against the command's quote state, not against the
+    # byte before the `$`: a preceding-character test passes `""$X` and
+    # `"a"$X"b"`, which are unquoted expansions with a quote character in front
+    # of them. Same alternation as _substitute_bounded_references, which erases
+    # these references before the later scans.
+    quoted = _double_quoted_mask(command)
+    for reference in sorted({
+        match.group(0)
+        for match in re.finditer(r"\$(?:LOBSTER_ARG|VCOPS)_[A-Z][A-Z0-9_]*", command)
+        if not quoted[match.start()]
+    }):
+        findings.append(
+            Finding(
+                "arg_unquoted",
+                "Lobster argument and step-env references must sit inside a "
+                f"double-quoted region: {reference}",
+                step_id,
+            )
+        )
     if "openclaw.invoke" in command:
         findings.append(Finding("openclaw_invoke", "arbitrary OpenClaw tool invocation is forbidden", step_id))
     if re.search(r"(?:^|\s)--unsafe(?:-|\b)|(?:^|\s)--unsafe-ground(?:\s|$)", command):
@@ -322,9 +392,15 @@ def validate_workflow(
     # This validator enforces structural and helper-contract safety. The exact
     # per-workflow lifecycle step inventory (workflow_start/running/succeed) is
     # enforced by scripts/validate_skill_system.py's EXPECTED_WORKFLOW_STEPS.
+    # `UnicodeError` covers the decode half of read_text: UnicodeDecodeError is
+    # a ValueError, so it is none of the other three types, and without it a
+    # workflow saved in a non-UTF-8 encoding aborts the `fixed-workflows` gate
+    # step with a traceback that does not name the offending workflow file.
+    # scripts/validate_skill_system.py reads the same *.lobster set and reports
+    # a decode failure over it as workflow_parse / workflow_read.
     try:
         body = yaml.load(path.read_text(encoding="utf-8"), Loader=UniqueSafeLoader)  # noqa: S506  # SafeLoader subclass; adds duplicate-key rejection
-    except (OSError, yaml.YAMLError, DuplicateKeyError) as exc:
+    except (OSError, UnicodeError, yaml.YAMLError, DuplicateKeyError) as exc:
         return [Finding("yaml_parse", f"workflow YAML rejected: {exc}")], {}
     if not isinstance(body, dict) or not isinstance(body.get("steps"), list):
         return [Finding("workflow_shape", "workflow must be an object with a steps array")], {}

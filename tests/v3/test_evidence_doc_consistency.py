@@ -15,13 +15,17 @@ suite requires the documented dev interpreter (requirements-dev.lock), not a
 bare host python3 — the same requirement the offline gate already carries.
 """
 
+import contextlib
+import io
 import json
 import os
 import re
 import subprocess
 import sys
 import unittest
+from collections import Counter
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -54,6 +58,35 @@ EVIDENCE_TEXT = {
     for relative in evidence_dates.EVIDENCE_DOCS
 }
 
+# The per-document inventory of tool-managed date mentions is
+# evidence_dates.MANAGED_MENTIONS, imported above rather than restated here:
+# the tool's `--check` and this suite have to fail on the same drift, and a
+# second copy of the numbers could disagree with the first. Why the inventory
+# exists at all is documented beside the constant in
+# scripts/set_evidence_execution_date.py.
+
+# The phrasings that state the offline totals, each tagged so the sites can be
+# pinned rather than counted. A bare floor let one phrasing be reworded away
+# while its document's stated test/check counts stopped being checked at all.
+OFFLINE_TOTAL_PATTERNS = (
+    ("base-checks", r"\*\*(\d+) tests, (\d+)/(\d+)\*\* base checks"),
+    ("pass-line", r"PASS — (\d+) tests, (\d+)/(\d+) checks"),
+    ("passed-failed-skipped",
+     r"(\d+) tests passed; 0 failed; 0 skipped; (\d+)/(\d+) offline checks"),
+    ("unittest-cases",
+     r"(\d+) offline unittest cases pass, 0 fail, 0 skip; (\d+)/(\d+) offline checks"),
+    ("suites-pass", r"suites pass (\d+) tests"),
+)
+
+# Every (document, phrasing) pair the four evidence documents currently carry.
+OFFLINE_TOTAL_CLAIM_SITES = frozenset({
+    ("docs/V3_RELEASE_EVIDENCE.md", "base-checks"),
+    ("docs/V3_RELEASE_EVIDENCE.md", "pass-line"),
+    ("docs/V3_RELEASE_EVIDENCE.md", "suites-pass"),
+    ("docs/PRODUCTION_READINESS.md", "passed-failed-skipped"),
+    ("evals/V3_EVAL_RESULTS.md", "unittest-cases"),
+})
+
 UNITS = [
     "zero", "one", "two", "three", "four", "five", "six", "seven", "eight",
     "nine", "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen",
@@ -64,12 +97,21 @@ TENS = {2: "twenty", 3: "thirty", 4: "forty", 5: "fifty", 6: "sixty",
 
 
 def number_word(value: int) -> str:
-    """English word for 0-99, hyphenated ('thirty-three') like the docs."""
+    """English word for 0-999, hyphenated ('thirty-three') like the docs.
+
+    Hundreds are spelled 'one hundred and four'. The growth-bridge delta this
+    serves crossed 100 during the pre-publication audit remediation, so the
+    range is not decorative.
+    """
     if 0 <= value < 20:
         return UNITS[value]
     if value < 100:
         tens, unit = divmod(value, 10)
         return f"{TENS[tens]}-{UNITS[unit]}" if unit else TENS[tens]
+    if value < 1000:
+        hundreds, rest = divmod(value, 100)
+        head = f"{UNITS[hundreds]} hundred"
+        return f"{head} and {number_word(rest)}" if rest else head
     raise AssertionError(f"no English number-word mapping for {value}")
 
 
@@ -90,6 +132,30 @@ def discovered_count(directory: str, pattern: str) -> int:
     return int(process.stdout.strip())
 
 
+def measured_gate_checks() -> list[str]:
+    """The offline gate's own check inventory, taken by running it stubbed.
+
+    scripts/verify_offline.py calls subprocess in exactly one place — its
+    module-level `run` — so replacing that with a zero-exit "Ran 1 test / OK"
+    result makes main() assemble its complete check list in about a second
+    without executing a suite, a linter or a shell parse. Counting the names it
+    emits replaces a hand-maintained constant that restated the gate's fixed
+    steps: with the number measured, a step added to or removed from the gate
+    moves the figure the evidence documents have to state.
+    """
+    def stub(command: list[str], *, timeout: int = 300) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(command, 0, "Ran 1 test\nOK\n", "")
+
+    buffer = io.StringIO()
+    with (
+        mock.patch.object(verify_offline, "run", stub),
+        mock.patch.object(sys, "argv", ["verify_offline.py"]),
+        contextlib.redirect_stdout(buffer),
+    ):
+        verify_offline.main()
+    return [check["name"] for check in json.loads(buffer.getvalue())["checks"]]
+
+
 def all_claims(pattern: str) -> list[tuple[str, tuple[str, ...]]]:
     """Every match of pattern across the evidence documents, with its source."""
     claims = []
@@ -101,15 +167,23 @@ def all_claims(pattern: str) -> list[tuple[str, tuple[str, ...]]]:
 
 class EvidenceDateConsistencyTests(unittest.TestCase):
     def test_matrix_and_rebuild_dates_are_each_a_single_date(self):
-        for label, patterns, minimum in (
-            ("matrix re-execution", evidence_dates.MATRIX_DATE_PATTERNS, 6),
-            ("image rebuild", evidence_dates.REBUILD_DATE_PATTERNS, 3),
+        for label, patterns in (
+            ("matrix re-execution", evidence_dates.MATRIX_DATE_PATTERNS),
+            ("image rebuild", evidence_dates.REBUILD_DATE_PATTERNS),
         ):
             found = evidence_dates.collect(patterns)
-            self.assertGreaterEqual(
-                len(found), minimum,
-                f"{label}: only {len(found)} mentions matched; the patterns in "
-                "scripts/set_evidence_execution_date.py no longer fit the documents",
+            self.assertEqual(
+                dict(Counter(document for document, _ in found)),
+                evidence_dates.MANAGED_MENTIONS[label],
+                f"{label}: the per-document inventory of tool-managed date "
+                "mentions moved. A mention that stops matching a pattern in "
+                "scripts/set_evidence_execution_date.py leaves the managed set "
+                "in silence — the tool skips it, --check still prints OK, and "
+                "the document keeps a superseded date. Restore the phrasing, or "
+                "update MANAGED_MENTIONS if the mention was deliberately added "
+                "or removed — the inventory lives in "
+                "scripts/set_evidence_execution_date.py, so `--check` and this "
+                "gate read one source of truth.",
             )
             dates = {date for _, date in found}
             self.assertEqual(
@@ -214,23 +288,48 @@ class EvidenceCountConsistencyTests(unittest.TestCase):
             for name, directory, pattern in verify_offline.SUITES
         }
         cls.offline_tests = sum(cls.suite_counts.values())
-        shell_paths = sorted(ROOT.glob("scripts/*.sh")) + sorted(ROOT.glob("migrations/*.sh"))
-        # python-syntax, ruff, ty, skill-agent-system, fixed-workflows,
-        # manifest-current, release-pristine: the gate's fixed non-suite,
-        # non-shell steps. Moving that set means updating this constant, the
-        # evidence documents, and verify_offline together.
-        fixed_steps = 7
-        cls.offline_checks = len(verify_offline.SUITES) + len(shell_paths) + fixed_steps
+        # Measured from the gate rather than restated: the previous arithmetic
+        # here reconstructed the inventory (suites + a *.sh glob + a hardcoded
+        # count of fixed steps), so deleting a fixed step from verify_offline.py
+        # left this figure — and the checks total the documents print —
+        # unchanged and green.
+        cls.offline_check_names = measured_gate_checks()
+        cls.offline_checks = len(cls.offline_check_names)
 
     def test_offline_totals_match_every_documented_claim(self):
-        claims = (
-            all_claims(r"\*\*(\d+) tests, (\d+)/(\d+)\*\* base checks")
-            + all_claims(r"PASS — (\d+) tests, (\d+)/(\d+) checks")
-            + all_claims(r"(\d+) tests passed; 0 failed; 0 skipped; (\d+)/(\d+) offline checks")
-            + all_claims(r"(\d+) offline unittest cases pass, 0 fail, 0 skip; (\d+)/(\d+) offline checks")
-            + all_claims(r"suites pass (\d+) tests")
+        # Folded in rather than given a test of its own: a new test method here
+        # would move the offline total the four evidence documents pin. The
+        # check count is measured, so this pins identity, not arithmetic — a
+        # fixed step renamed or dropped fails naming itself, where a count
+        # alone stays green whenever something else moves the other way.
+        for step in (
+            "python-syntax",
+            "ruff",
+            "ty",
+            "skill-agent-system",
+            "fixed-workflows",
+            "manifest-current",
+            "release-pristine",
+        ):
+            self.assertIn(
+                step, self.offline_check_names,
+                f"scripts/verify_offline.py no longer emits a '{step}' check; "
+                "the offline gate's fixed step set changed",
+            )
+        claims = []
+        sites = []
+        for identifier, pattern in OFFLINE_TOTAL_PATTERNS:
+            for relative, groups in all_claims(pattern):
+                claims.append((relative, groups))
+                sites.append((relative, identifier))
+        self.assertEqual(
+            set(sites), set(OFFLINE_TOTAL_CLAIM_SITES),
+            "the offline-count phrasings moved: "
+            f"gone {sorted(set(OFFLINE_TOTAL_CLAIM_SITES) - set(sites))}, "
+            f"new {sorted(set(sites) - set(OFFLINE_TOTAL_CLAIM_SITES))}. A "
+            "reworded phrasing stops being matched here, which leaves that "
+            "document's stated test and check counts bound to nothing.",
         )
-        self.assertGreaterEqual(len(claims), 4, "the offline-count phrasings have rotted")
         for relative, groups in claims:
             self.assertEqual(
                 int(groups[0]), self.offline_tests,
@@ -270,7 +369,9 @@ class EvidenceCountConsistencyTests(unittest.TestCase):
         # re-derive, so it is taken as stated and only the delta arithmetic is
         # enforced.
         claims = all_claims(
-            r"measures (\d+) offline tests[\s\S]{0,200}?added ([a-z-]+) in total"
+            # The delta word may now be a multi-word hundreds form
+            # ("one hundred and four"), so spaces are part of the capture.
+            r"measures (\d+) offline tests[\s\S]{0,200}?added ([a-z][a-z\- ]*?) in total"
         )
         self.assertGreaterEqual(len(claims), 1, "the growth-bridge phrasing has rotted")
         for relative, (baseline, delta_word) in claims:

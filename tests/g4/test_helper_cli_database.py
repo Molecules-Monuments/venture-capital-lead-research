@@ -75,7 +75,13 @@ class HelperCliDatabaseTests(unittest.TestCase):
         cls.tmp.cleanup()
 
     @classmethod
-    def invoke(cls, arguments, expect_ok=True, env_extra=None):
+    def run_helper(cls, arguments, env_extra=None):
+        """Run the helper and return the CompletedProcess, exit code included.
+
+        `invoke` below reads only the payload, so a test that has to
+        distinguish exit bands (a typed denial at 2 from internal_error at 3)
+        calls this directly instead of rebuilding the lane's environment.
+        """
         env = os.environ.copy()
         env.update({
             "DATABASE_URL": DATABASE_URL,
@@ -88,13 +94,17 @@ class HelperCliDatabaseTests(unittest.TestCase):
         })
         if env_extra:
             env.update(env_extra)
-        proc = subprocess.run(
+        return subprocess.run(
             [PYTHON, str(HELPER), *arguments, "--json"],
             text=True,
             capture_output=True,
             env=env,
             timeout=30,
         )
+
+    @classmethod
+    def invoke(cls, arguments, expect_ok=True, env_extra=None):
+        proc = cls.run_helper(arguments, env_extra=env_extra)
         try:
             payload = json.loads(proc.stdout)
         except json.JSONDecodeError as exc:
@@ -764,6 +774,33 @@ class HelperCliDatabaseTests(unittest.TestCase):
             drifted[drifted.index(option) + 1] = changed_value
             mismatch = self.invoke(drifted, expect_ok=False)
             self.assertEqual(mismatch["error"]["code"], "idempotency_payload_mismatch")
+
+    def test_memo_content_file_that_is_not_utf8_is_a_typed_denial(self):
+        """`--content-file` bytes that are not UTF-8 deny at exit 2, not 3.
+
+        The decode happens in main() before any handler or database work, so
+        the evaluation/compiled-truth ids below are never dereferenced. Without
+        the guard the UnicodeDecodeError reaches the bare handler and is
+        emitted as internal_error at exit 3, while the same flag's other input
+        rejections (its suffix check and the intake-path guards) are typed
+        denials at exit 2.
+        """
+        bad = self.inbox / "memo-not-utf8.md"
+        bad.write_bytes(b"valid start \xff\xfe bad bytes\n")
+        proc = self.run_helper([
+            "memo-save", "--lead-id", str(self.lead_id), "--evaluation-id", "1",
+            "--compiled-truth-id", "1", "--title", "G4 memo", "--citations", "[]",
+            "--evidence-hash", "x", "--content-file", str(bad),
+        ])
+        try:
+            denied = json.loads(proc.stdout)
+        except json.JSONDecodeError as exc:
+            raise AssertionError(
+                f"helper emitted invalid JSON: rc={proc.returncode} "
+                f"stdout={proc.stdout!r} stderr={proc.stderr!r}"
+            ) from exc
+        self.assertEqual(denied["error"]["code"], "memo_content_encoding", denied)
+        self.assertEqual(proc.returncode, 2, denied)
 
     def test_compiled_truth_rejects_empty_evidence_and_preserves_numeric_zero(self):
         empty_lead = self.invoke([

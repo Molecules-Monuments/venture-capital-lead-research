@@ -74,8 +74,12 @@ Each reviewed workflow declares and uses one caller-generated
 1. preflight;
 2. document workflows preview their bounded document or verify their prior extraction;
 3. inbound/outbound/document workflows append an immutable canonical `workflow_requests` claim
-   for every outer argument (plus the inspected SHA and verified principal/channel provenance where applicable), before any
-   business mutation;
+   over the company/lead identity arguments the lane resolves against (plus the inspected SHA and verified principal/channel provenance where applicable), before any
+   business mutation. The claim is not the binding for the whole argument set:
+   `vcrun` computes an `input_digest` over the validated, normalized argument
+   payload and `workflow-replay-probe` refuses a digest mismatch before the
+   first step runs, so an argument outside the claim step still cannot be
+   changed under a reused idempotency key;
 4. idempotent lead/company materialization when their IDs are needed by the run;
 5. `vcops workflow-start` returns `queued` at record revision 1;
 6. `vcops workflow-transition --status running` uses that exact revision;

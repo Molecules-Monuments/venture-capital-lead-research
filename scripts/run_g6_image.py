@@ -64,6 +64,15 @@ EXPECTED_PACKAGES = {
     "ollama": "2026.7.1",
     "trusted_context": "3.0.0",
 }
+# Scope of this exact-pin set: it fixes the revisions of the package *names*
+# written on the `apt-get install` line of Dockerfile.openclaw — the same list
+# tests/g6/test_image_gate_contract.py parses out of that line and compares to
+# this dict for equality. Packages apt pulls in transitively are not pinned by
+# name, so a fresh build can install a different revision of one of them with
+# the pins here still satisfied. What freezes that transitive closure is the
+# snapshot.debian.org timestamp recipe in the RECOVERY comment of
+# Dockerfile.openclaw (docs/RUNBOOK.md, "Rebuilding after a Debian point
+# release"), not these pins.
 EXPECTED_DEBIAN_PACKAGES = {
     "ca-certificates": "20230311+deb12u1",
     "curl": "7.88.1-10+deb12u15",
@@ -75,6 +84,22 @@ EXPECTED_DEBIAN_PACKAGES = {
     # security bump to the library break a fresh build.
     "libpoppler126": "22.12.0-2+deb12u3",
     "poppler-utils": "22.12.0-2+deb12u3",
+    # These two are the python3-defaults metapackages, so their `3.11.2` is that
+    # source's revision and not the interpreter's: measured in
+    # openclaw-lead-research:3.0.0, `/usr/bin/python3` is a symlink owned by
+    # python3-minimal, while the interpreter binary `/usr/bin/python3.11` belongs
+    # to python3.11-minimal=3.11.2-6+deb12u8, which the digest-pinned base image
+    # already carries. The interpreter revision is therefore inherited, not
+    # pinned here, and it can move on a fresh build: python3-venv pulls
+    # python3.11-venv (unpinned by name), which declares
+    # `Depends: python3.11 (= <revision>)`, while these pins constrain the
+    # interpreter only as `python3.11 (>= 3.11.2-1~)`.
+    # Adding `python3.11*` names is deliberately not the fix. It would have to
+    # change three welded sites in lockstep — Dockerfile.openclaw, this dict, and
+    # the hardcoded tuple in tests/infrastructure/test_infrastructure_contract.py
+    # — and it would take on the fresh-build fragility the poppler pair above
+    # demonstrated in 85feb53, where the pool moved to a newer revision under an
+    # exact pin and no cached build noticed.
     "python3": "3.11.2-1+b1",
     "python3-pip": "23.0.1+dfsg-1",
     "python3-venv": "3.11.2-1+b1",

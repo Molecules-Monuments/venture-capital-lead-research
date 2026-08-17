@@ -39,9 +39,20 @@ class ImageChannelGateContractTests(unittest.TestCase):
         # Derived from the Dockerfile rather than counted: a count-only pin let
         # a name or version swap inside the gate's own list pass unnoticed.
         dockerfile = (PACKAGE / "Dockerfile.openclaw").read_text(encoding="utf-8")
-        install_block = dockerfile.split("apt-get install -y --no-install-recommends", 1)[1]
+        remainder = dockerfile.split("apt-get install -y --no-install-recommends", 1)[1]
+        # Bound the parse to this one shell continuation. Splitting alone leaves
+        # the whole rest of the file, where any later `key=value \` line matches
+        # the same shape — a LABEL block did, and its keys were read as Debian
+        # package pins, failing this test with a package-drift message.
+        install_lines: list[str] = []
+        for line in remainder.splitlines():
+            install_lines.append(line)
+            if not line.rstrip().endswith("\\"):
+                break
         declared = dict(
-            re.findall(r"^\s+([a-z0-9][a-z0-9.+-]*)=(\S+) \\$", install_block, re.MULTILINE)
+            re.findall(
+                r"^\s+([a-z0-9][a-z0-9.+-]*)=(\S+) \\$", "\n".join(install_lines), re.MULTILINE
+            )
         )
         self.assertEqual(declared, dict(gate.EXPECTED_DEBIAN_PACKAGES))
 

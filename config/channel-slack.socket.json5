@@ -24,6 +24,7 @@
       },
       "allowBots": false,
       "dangerouslyAllowNameMatching": false,
+      "contextVisibility": "allowlist",
       "execApprovals": { "enabled": false },
       "thread": { "requireExplicitMention": true },
       "unfurlLinks": false,

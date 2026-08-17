@@ -8,7 +8,8 @@ passes each found one of these hand-edited dates left stale (one instance
 missed out of eight), so hand-editing them is a demonstrated defect class:
 this script is the only supported way to move them.
 ``tests/v3/test_evidence_doc_consistency.py`` imports the patterns below and
-fails the offline gate whenever the stated dates diverge.
+fails the offline gate whenever the stated dates diverge or a document's count
+of tool-managed mentions moves.
 
 Usage:
     python3 -B scripts/set_evidence_execution_date.py 2026-08-10
@@ -19,7 +20,9 @@ Setting rewrites every matrix-date mention to the given date and every
 rebuild-date mention to ``--rebuild-date`` (default: the same date). The
 matrix group includes the G8 re-run and retrieval-benchmark re-run mentions,
 which move with every full matrix re-execution. ``--check`` verifies that
-each group is internally consistent and prints both dates. Historical dates
+each group is internally consistent, that every document still carries the
+number of managed mentions recorded in ``MANAGED_MENTIONS``, and prints both
+dates. Historical dates
 (the original 2026-07-23 execution, the retrieval-gate run-history *list* in
 V3_RELEASE_EVIDENCE — append today's date there by hand when the scale gate
 re-runs — and per-finding re-check dates) are deliberately not managed here:
@@ -29,6 +32,7 @@ they are records of past events, not statements about the current tree.
 import argparse
 import re
 import sys
+from collections import Counter
 from pathlib import Path
 
 PACKAGE = Path(__file__).resolve().parent.parent
@@ -64,6 +68,29 @@ REBUILD_DATE_PATTERNS = tuple(
         rf"G6\s+gate\s+was\s+re-run\s+on\s+{DATE}",
     )
 )
+
+# Measured mention inventory per document, taken from the shipped tree. These
+# numbers move only when a phrasing is deliberately added to or removed from a
+# document; a mention that merely stops matching a pattern above leaves the
+# managed set in silence — the rewrite skips it, and without this comparison
+# `--check` still prints OK while the document keeps a superseded date.
+# docs/OFFLINE_RELEASE_EVIDENCE.md carries no managed mention and therefore no
+# key, so one appearing there is a mismatch too.
+# tests/v3/test_evidence_doc_consistency.py imports this constant and asserts it
+# against fresh document text, so `--check` and the offline gate fail on the same
+# drift; do not restate these numbers there or anywhere else.
+MANAGED_MENTIONS = {
+    "matrix re-execution": {
+        "docs/V3_RELEASE_EVIDENCE.md": 3,
+        "docs/PRODUCTION_READINESS.md": 3,
+        "evals/V3_EVAL_RESULTS.md": 4,
+    },
+    "image rebuild": {
+        "docs/V3_RELEASE_EVIDENCE.md": 2,
+        "docs/PRODUCTION_READINESS.md": 1,
+        "evals/V3_EVAL_RESULTS.md": 1,
+    },
+}
 
 
 def collect(patterns: tuple[re.Pattern[str], ...]) -> list[tuple[str, str]]:
@@ -102,6 +129,13 @@ def check() -> int:
         ("image rebuild", REBUILD_DATE_PATTERNS),
     ):
         found = collect(patterns)
+        measured = dict(Counter(relative for relative, _ in found))
+        if measured != MANAGED_MENTIONS[label]:
+            print(
+                f"FAIL: {label} mention inventory moved: "
+                f"{measured} != {MANAGED_MENTIONS[label]}"
+            )
+            status = 1
         dates = sorted({date for _, date in found})
         if not found:
             print(f"FAIL: no {label} dates matched; the patterns have rotted")

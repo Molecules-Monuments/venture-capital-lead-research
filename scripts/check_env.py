@@ -256,7 +256,17 @@ def parse_dotenv(path: Path) -> dict[str, str]:
                     "convert it to LF, e.g. `tr -d '\\r' < .env > .env.lf && "
                     "mv .env.lf .env && chmod 0600 .env`"
                 )
-            lines = content.decode("utf-8").splitlines()
+            # split("\n"), not splitlines(): splitlines() ends a line on ten
+            # characters, and the eight the CRLF guard above does not reject
+            # (U+000B, U+000C, U+001C, U+001D, U+001E, U+0085, U+2028, U+2029)
+            # are ordinary value bytes to Compose's --env-file parser and to
+            # the grep/sed reads in bootstrap.sh, update.sh, backup.sh and
+            # restore.sh — so treating them as line breaks here validated a
+            # KEY=VALUE that those readers swallow into the preceding value.
+            # Splitting on \n alone keeps the separator inside the line, where
+            # the key pattern, the value pattern and the surrounding-whitespace
+            # test below reject it. Same failure class as CRLF above.
+            lines = content.decode("utf-8").split("\n")
     finally:
         if descriptor >= 0:
             os.close(descriptor)

@@ -52,6 +52,11 @@ through the fixed workflows via `data-steward`:
   (`web_search`/`web_fetch`), and any thesis-matching candidate is persisted as
   low-authority evidence through the existing `outbound-scout` (candidate lead)
   and `evidence-record` (submitted claims) workflows for human review.
+  Due-ness is measured from the previous claim: a source is due once its
+  cadence interval has fully elapsed since `last_scanned_at`, so a scan
+  schedule firing at the same period as a source's cadence can skip cycles.
+  Set `VC_SCAN_CRON` to fire more often than the shortest cadence you
+  register (see `CUSTOMIZATION.md`).
 
 `source-scan` can be triggered on demand by the operator or on a reviewed
 schedule once the OpenClaw `cron` job is deliberately enabled (see

@@ -226,18 +226,36 @@ numbered application migrations are streamed exactly once by `migrate.sh`.
 
 `bootstrap.sh` already records the immutable image IDs and pinned upstream
 digests into `deployment-lock.json` as its final step, so no separate command is
-required. Retain the complete command transcript; to re-affirm or re-print the
-recorded lock independently you may re-run the same recorder:
+required. Retain the complete command transcript. To inspect the recorded lock,
+read the file or re-validate it against the running deployment — neither writes
+to it:
 
 ```sh
-python3 -B scripts/record_images.py
+cat deployment-lock.json
+python3 -B scripts/record_images.py --validate-live deployment-lock.json
 ```
+
+The recorder itself is a writer, not a reporter. A no-argument
+`python3 -B scripts/record_images.py` rewrites `deployment-lock.json` from the
+current tree — re-stamping `baked_sources_sha256` from the host artifacts below
+and `release_manifest_sha256` from `manifest.json`, without comparing either
+against the lock it replaces — and prints just the lock's path, never its
+contents. It therefore belongs immediately after a `compose build`, which is
+where `bootstrap.sh` and `update.sh` already invoke it. Run it standalone after
+an edit to an image-baked artifact and it re-stamps the very digest the
+`--validate-baked-sources` assertion below reads, so that assertion then reports
+`PASS` against an image that was not rebuilt; the same run also clears the
+`differing: release_manifest_sha256` abort that `backup.sh`'s internal
+`--validate-live` step would otherwise raise (§9). Re-running the recorder alone
+re-affirms the lock and leaves the running image stale.
 
 The lock also records which image-baked artifacts the running image was built
 from — the reviewed `workspaces/` tree, the trusted-context extension, the
-exec-approvals seed and the dependency locks. Nothing bind-mounts those, so an
-edit to a thesis, rubric, prompt or skill only reaches the gateway through a
-rebuild. Assert at any time that a deployment reflects the current tree:
+exec-approvals seed, the dependency locks, and `Dockerfile.openclaw` itself: the
+recipe is digested too, because editing it changes the image. Nothing
+bind-mounts those, so an edit to a thesis, rubric, prompt or skill only reaches
+the gateway through a rebuild. Assert at any time that a deployment reflects the
+current tree:
 
 ```sh
 python3 -B scripts/record_images.py --validate-baked-sources deployment-lock.json
@@ -284,12 +302,12 @@ it only stops you re-deriving what the package already demonstrates.
 
 | Rows | Already proven by | What is still yours |
 | --- | --- | --- |
-| 5.1 OpenClaw/Lobster/channel/search/Python/Debian versions; per-profile config validation; skill-workshop hook | `verify_offline.py --with-g6-image <image>` | Record *your* live image IDs: `python3 -B scripts/record_images.py --validate-live deployment-lock.json` |
+| 5.1 Lobster, channel, search, Ollama and trusted-context extension versions; the ten pinned Debian package names, `python3` and `python3-venv` among them (their `3.11.2` is the python3-defaults revision, not the interpreter's — see the pin-scope comment in `scripts/run_g6_image.py` and §11); per-profile config validation; skill-workshop hook | `verify_offline.py --with-g6-image <image>` | The OpenClaw harness version: the probe reads the extensions and Debian packages listed here, never `openclaw --version`, so §5.1's first bullet stays yours (`check_env.py` refuses an `.env` whose `OPENCLAW_IMAGE` is not the pinned `2026.7.1@sha256:…` base, which is what constrains it between builds). Also record *your* live image IDs: `python3 -B scripts/record_images.py --validate-live deployment-lock.json` |
 | 5.1 agent authority boundary (no direct Lobster, exec, config, cron, gateway or DB authority) | `validate_skill_system.py` and the `tests/infrastructure` exec-allowlist contract, both inside `verify_offline.py` | — |
 | 5.1 rendered-config mode, ownership, digest and read-only mounting | `tests/infrastructure` plus the in-container initializer assertions exercised by `run_g8_deployment.py` | — |
 | 5.1 `/healthz` and `/readyz` behaviour; private-path reachability | — | Yours: depends on your host and proxy |
 | 5.2 migration names, checksums, and no-op replay | `verify_offline.py --with-g4-database` (applies and registers every migration twice) | Inspect `schema_migrations` once on your database |
-| 5.2 `openclaw_runtime` cannot create schema objects or temporary objects, and holds only the reviewed table/function grants | `tests/g4/test_database_contract.py` asserts, against a live database, that the role cannot create schema or temporary objects, that DDL as the runtime role fails, and a spot-check of eight table privileges across six tables and eight function grants. The *whole* 42-table grant matrix is enumerated offline instead, by `tests/v3/test_runtime_grant_enumeration.py` against `docs/SCHEMA.sql`: every table carries exactly one reviewed grant, none grants `DELETE`/`TRUNCATE`, the append-only tables grant no `UPDATE`, and the read-only trio stays read-only | — |
+| 5.2 `openclaw_runtime` cannot create schema objects or temporary objects, and holds only the reviewed table/function grants | `tests/g4/test_database_contract.py` asserts, against a live database, that the role cannot create schema or temporary objects, that DDL as the runtime role fails, and a spot-check of eight table privileges across six tables and eight function grants. The *whole* 42-table grant matrix is enumerated offline instead, by `tests/v3/test_runtime_grant_enumeration.py` against `docs/SCHEMA.sql`: every table carries exactly one reviewed grant, none grants `DELETE`/`TRUNCATE`, the append-only tables grant no `UPDATE`, the read-only trio stays read-only, and every `GRANT` line in that file names `openclaw_runtime` as its grantee | — |
 | 5.2 `openclaw_runtime` is `NOINHERIT`, non-superuser, non-replication, non-`BYPASSRLS`, cannot create databases or roles, connection-limited, and holds no role membership in either direction | `scripts/rotate_runtime_role.sh` asserts exactly that predicate against `pg_roles`/`pg_auth_members` and fails closed; `bootstrap.sh` and `update.sh` both run it, so `run_g8_deployment.py` exercises it. **No offline gate covers it** — G4 builds its own throwaway role rather than applying `migrations/000_roles.sh` | Read the reconciler's output on *your* deployment (it runs on every bootstrap/update/rotate) |
 | 5.2 typed lifecycle, idempotent replay, optimistic conflict, approval consume/replay denial, notification claim/retry, cross-lead document provenance | the same G4 gate | — |
 | 5.3 all eighteen workflows parse, reject shell injection, environment leaks and unsafe authority | `validate_workflows.py` and `tests/g5` | — |
@@ -330,15 +348,24 @@ commissioning record: leave it `false` while the matrix is outstanding, set it
 validator, as the enforcement point. Setting it `true` changes nothing the
 software does.
 
-The restore drill in §5.4 is the one item no gate covers.
+Do not skip the restore drill in §5.4 — §5.0 records it as **never executed by
+any gate**. Read the rest of that table by its `What is still yours` column
+rather than by `Already proven by`: the restore drill sits in a row that *does*
+name a gate, and so do the rows that still leave you the OpenClaw harness
+version and your live image IDs, one look at `schema_migrations`, the role
+reconciler's output on your deployment, the remaining twelve workflows, and the
+channel matrix. A row a gate closes outright carries a `—` in that column.
 
 ### 5.1 Image and configuration
 
 - Prove the runtime OpenClaw version is exactly `2026.7.1` and record the image
   digest/ID.
-- Prove Lobster resolves from `/opt/openclaw-runtime` at exact `2026.6.11`,
-  Slack, Teams, and Discord resolve from the locked runtime graph at exact
-  `2026.7.1`, and bundled Telegram is exact `2026.7.1`.
+- Prove Lobster resolves from `/opt/openclaw-runtime` at exact `2026.6.11`; that
+  Slack, Teams, and Discord — installed from the locked npm graph and then moved
+  into `/app/dist/extensions/<id>` by `Dockerfile.openclaw` (see §10, "Channel
+  plugins must stay under the harness's own extension scan root") — resolve
+  there at exact `2026.7.1`; and that bundled Telegram at
+  `/app/extensions/telegram` is exact `2026.7.1`.
 - Run the pinned OpenClaw configuration validation, `doctor`, secret audit, and
   deep security audit inside the exact image. Each runs through the gateway
   container, in the same form as §5.2 and §5.3:
@@ -365,8 +392,10 @@ The restore drill in §5.4 is the one item no gate covers.
   - `tools.exec.fs_tools_disabled_but_exec_enabled` — the `data-steward` exec
     permission: the reviewed design, see "Sandboxing and security design" in
     `README.md`. `data-steward` holds exec for exactly two allowlisted launcher
-    paths (`config/exec-approvals.json`) and no filesystem tools, which is the
-    combination this check flags generically.
+    paths (`config/exec-approvals.json`) and read-only filesystem access —
+    `read` is granted while `write`, `edit` and `apply_patch` are denied — which
+    is the combination (those three mutating tools off, exec on) this check
+    flags generically.
   - `gateway.probe_failed` (`missing scope: operator.read`) — expected. The
     audit's own probe authenticates with no operator scope against a
     token-authenticated gateway. It is the access control working, not a fault.
@@ -706,7 +735,16 @@ entry-count, member-size and ratio bounds have no configuration escape.
   Copy your reviewed policy artifacts and `config/customization-profile.json`
   across, set `channels.selected` to `none` and `approvals.allowed_channel_ids`
   to `[]` so they match the inert `.env`, keep `organization.timezone`,
-  `models.*` and `search.*` byte-identical to that `.env`, re-pin with
+  `models.*` and `search.*` byte-identical to that `.env`. Then, before
+  re-pinning, run
+  `python3 -B scripts/check_customization.py config/customization-profile.json .env`
+  and read the `reviewed artifact changed after review: <path>` lines it prints.
+  Account for each path it names — a deliberate edit of yours, or a change this
+  release made to a shipped artifact. A path you cannot account for is a
+  customization that was not carried across; re-pinning it is how you lose it,
+  silently, because the re-pin reports only a count and no later gate can see
+  the reversion (§9, "Never regenerate hashes around a change you cannot account
+  for"). Only then re-pin with
   `python3 -B scripts/init_customization.py --update-hashes`, and confirm
   `python3 -B scripts/check_customization.py config/customization-profile.json .env`
   passes. A production profile that selects a channel will not validate here. That `.env` **must carry the same `BACKUP_HMAC_KEY` that was in force
@@ -862,8 +900,26 @@ Then carry the deployed revision's runtime files into the new package directory:
 `config/connectors.json` if you use connectors, and every customized policy
 artifact. A freshly built package contains none of them, and `update.sh` runs
 `check_env.sh` and `check_customization.py` — which re-hashes the twenty
-reviewed artifacts against the new tree — before it takes the lifecycle lock. So
-re-pin afterwards:
+reviewed artifacts against the new tree — before it takes the lifecycle lock.
+
+`inbox/` is bind-mounted from the package directory (`docker-compose.yml`,
+`./inbox:/inbox:ro`), not held in a named volume, so a new package directory
+starts with the shipped placeholder alone. Copy the deployed revision's
+`inbox/` contents across too if you want the operator lane to keep seeing them;
+the pre-update recovery point captures whatever the new directory's `inbox/`
+holds when `update.sh` runs. Operator payload under `inbox/` is excluded from
+`manifest.json` and tolerated by `verify_release.py --pristine`, so carrying it
+across does not affect the re-pin below.
+
+So re-pin afterwards. First run
+`python3 -B scripts/check_customization.py config/customization-profile.json .env`
+and read the `reviewed artifact changed after review: <path>` lines it prints.
+Account for each path it names — a deliberate edit of yours, or a change this
+release made to a shipped artifact. A path you cannot account for is a
+customization that was not carried across; re-pinning it is how you lose it,
+silently, because the re-pin reports only a count and no later gate can see the
+reversion (§9, "Never regenerate hashes around a change you cannot account
+for"). Only then:
 
 ```sh
 python3 -B scripts/init_customization.py --update-hashes
@@ -1086,20 +1142,33 @@ record. Autonomous transcript review remains disabled.
     the bytes change between the preview and extract steps.
   - **The attempt can still copy nothing.** `quarantine_document` returns
     `materialized: false` for an oversized document (it refuses to copy bytes
-    above the same `MAX_DOCUMENT_BYTES` that raised `document_too_large`) and
-    for any input it cannot safely read — symlink, outside the intake root,
-    non-regular, empty, missing. Failures raised before the handler opens
+    above the same `MAX_DOCUMENT_BYTES` that raised `document_too_large`), for
+    any input it cannot safely read — symlink, outside the intake root,
+    non-regular, empty, missing — and, as `quarantine_write_failed`, when the
+    copy or its metadata marker cannot be written, which a source file with a
+    very long extension can cause because the quarantine name carries that
+    extension. `quarantine_write_failed` reports that *this* rejection
+    published nothing new, not that the volume is clean: quarantine names are
+    content-addressed, so a copy and marker published by an earlier rejection
+    of the same bytes are deliberately retained rather than removed by the
+    failing one.
+    Failures raised before the handler opens
     (workflow-claim and media-context validation) or after it closes
     (`artifact_integrity_conflict`, `artifact_classification_conflict`,
     `lineage_mismatch`, the replay `idempotency_payload_mismatch`) never reach
     it and carry no `quarantine` key at all.
 
-  When `materialized` is `false` or absent, the surviving artifact is the
+  When `materialized` is `false` or absent, the artifact to preserve is the
   original itself — under the OpenClaw inbound-media root for a channel
-  attachment, or `./inbox` for an operator drop — and the returned object is
-  your only governed rejection evidence. Record the hash and provenance from
-  there. When it is `true`, `vc-quarantine` holds hostile bytes at the recorded
-  path; treat the volume accordingly on teardown.
+  attachment, or `./inbox` for an operator drop — together with the returned
+  `{code, message, details}` object. Record the hash and provenance from there.
+  When it is `true`, `vc-quarantine` holds hostile bytes at the recorded path.
+
+  A `false` result describes this rejection, not the volume's contents. After a
+  `quarantine_write_failed` on bytes an earlier rejection already recorded, the
+  copy and marker for exactly those bytes are still on `vc-quarantine` under
+  their content-addressed names. Decide teardown handling from whether any
+  rejection has recorded a copy, not from the latest result alone.
 - **Integrity mismatch:** if the reported paths are edits you deliberately made
   — customized policy artifacts, a replaced rubric — re-pin **both** inventories
   and re-run the gate:
@@ -1210,7 +1279,17 @@ record. Autonomous transcript review remains disabled.
   operator-triggered checklist that mechanism would otherwise have run
   unattended. Autonomous source surveillance is available as a
   deliberate four-step opt-in. (1) Set `config/openclaw.json`
-  `cron.enabled: true`. (2) Because that file is a hash-pinned reviewed
+  `cron.enabled: true`. In the same edit set the two cron retention keys to
+  the firm's period — `cron.runLog.keepLines` (cron run history, written to
+  the `cron_run_logs` table of the SQLite state database, whose `summary`
+  column holds each run's reply text; harness default 2000 rows per job, and
+  `openclaw sessions cleanup` does not prune it) and `cron.sessionRetention`
+  (the completed session each cron run leaves behind; harness default `24h`,
+  which fires sooner than the `session.maintenance.pruneAfter` of `30d`
+  configured here) — since this edit already re-pins the profile hash. Both
+  keys are unset in `config/openclaw.json` today; see
+  `workspaces/vc-chief/vc/data_retention.md`. (2) Because that file is a
+  hash-pinned reviewed
   artifact, record the edit in `config/customization-profile.json` — update its
   `review.reviewed_artifacts` SHA-256 for `config/openclaw.json` and the change
   record — or the next lifecycle validation fails closed. `config/openclaw.json`
@@ -1231,6 +1310,19 @@ record. Autonomous transcript review remains disabled.
     due watchlist through the normal `source-scan` → research → `evidence-record`
     path for human review. It does not invoke the `source-scan` selector
     directly. Schedule and timezone default to `0 7 * * 1-5` / `Europe/Berlin`.
+    Monday through Friday, successive fires sit 24 h apart — exactly the
+    `daily` cadence boundary. `signal_source_is_due` requires the interval to
+    have *fully* elapsed since the previous claim, and the claim stamps
+    `last_scanned_at` with `clock_timestamp()`, later than the `now()` that
+    judged the source due; so a source registered `--cadence daily` is skipped
+    on the following weekday unless run-to-run timing jitter starts the scan
+    later in the day than the previous claim landed. (The Friday-to-Monday gap
+    is 72 h and clears it.) Before registering a `daily` source, give
+    `VC_SCAN_CRON` a sub-daily schedule. The claim lands on the first fire more
+    than 24 h after the previous one, so an evenly spaced schedule of period P
+    settles at the smallest multiple of P strictly above 24 h: 25 h for an
+    hourly `0 * * * *`, 36 h for a twelve-hourly one. `CUSTOMIZATION.md` states
+    the general rule, and the approval that raising the frequency needs.
   - **`vc-heartbeat`** (only when `VC_HEARTBEAT_CRON` is set). A read-only
     health review per `workspaces/vc-chief/HEARTBEAT.md`.
 
@@ -1289,31 +1381,73 @@ including `run_g6_image.py`, whose provenance assertions must list both names.
 Verify a *fresh* build explicitly with `docker compose -f docker-compose.yml
 -p openclaw-lead-research-v3 --env-file .env build --no-cache
 openclaw-gateway`; a cached build proves nothing about the pool.
-To recover a byte-reproducible build, point apt at a `snapshot.debian.org`
-timestamp that still carries the pinned versions before building. Add **both**
-archives: the poppler pair sits at a `bookworm-security` revision, which is
-never published into the `bookworm main` suite, so a main-only snapshot cannot
-satisfy it however recent it is.
+To rebuild the reviewed package set, point apt at a `snapshot.debian.org`
+timestamp that still carries the pinned versions before building, and
+**displace** the base image's own source list rather than adding beside it. The
+`node:24-bookworm-slim` base ships `/etc/apt/sources.list.d/debian.sources`
+pointing at `deb.debian.org`; left in place it gives apt a second source at the
+same priority (500), and apt takes the higher version wherever the two differ.
+Measured against `20260805T000000Z` with that file still present: `libnss3`
+resolved to `2:3.87.1-1+deb12u4` from `deb.debian.org` rather than to the
+snapshot's `2:3.87.1-1+deb12u3`, so the snapshot decided nothing. Add **both**
+snapshot archives: the poppler pair sits at a `bookworm-security` revision,
+which is never published into the `bookworm main` suite, so a main-only
+snapshot cannot satisfy it however recent it is.
 
 ```sh
-SNAPSHOT=20260805T000000Z   # at or after this release's last apt-pin change
+SNAPSHOT=20260816T000000Z   # the date the reviewed image was built
+rm -f /etc/apt/sources.list.d/debian.sources
 { printf 'deb [check-valid-until=no] https://snapshot.debian.org/archive/debian/%s/ bookworm main\n' "$SNAPSHOT"
   printf 'deb [check-valid-until=no] https://snapshot.debian.org/archive/debian-security/%s/ bookworm-security main\n' "$SNAPSHOT"
 } > /etc/apt/sources.list.d/snapshot.list
 ```
 
 (add it inside the build, or bake it into a local Dockerfile overlay). The
-timestamp must be at or after the last change to any pin in
-`Dockerfile.openclaw` — currently **2026-08-03**, when `libpoppler126` and
-`poppler-utils` moved to `22.12.0-2+deb12u3`. Re-check it whenever a pin moves,
-and confirm the snapshot actually resolves every pinned name before relying on
-it: an earlier timestamp reproduces the exact `held broken packages` failure
-this recipe exists to cure. Editing `Dockerfile.openclaw` to
-add the overlay makes `verify_release.py --pristine` report a hash mismatch for
-that one file from then on, which is expected and does not affect
-bootstrap or update. Alternatively, run the
-reviewed-release process: bump the pins in `Dockerfile.openclaw`, then re-run
-every release gate (offline, disposable Postgres, retrieval-scale, exact-image,
-and the real deployment gate) and regenerate the manifest before shipping. A
-floating (unpinned) fallback is intentionally not used because it would break the
-exact-pin reproducibility contract.
+timestamp must be at or after the date the reviewed image was built —
+`docs/V3_RELEASE_EVIDENCE.md` records **2026-08-16** — not merely at or after
+the last pin change, which is an earlier and different date. The gap is a
+security revision: with `debian.sources` removed, `20260805T000000Z` resolves
+`libnss3` to `2:3.87.1-1+deb12u3` while the reviewed image carries
+`2:3.87.1-1+deb12u4`. That measurement is why the rule is the build date and
+not the last pin change; the recipe's own timestamp above supplies the revision
+the reviewed image carries.
+`tests/v3/test_snapshot_recipe_currency.py` holds the `SNAPSHOT=` literal here
+and in `Dockerfile.openclaw` to each other and to that recorded rebuild date, so
+re-check it whenever the image is rebuilt. Resolving every pinned name is
+necessary but not sufficient, and this is the trap: `20260805T000000Z` resolves
+all ten pins and still installs `libnss3` one bookworm-security revision behind
+the reviewed image, as measured above. A timestamp early enough to drop a
+pinned version fails loudly, with the same ``E: Version '<version>' for
+'<package>' was not found`` this section opens with — measured at
+`20260731T000000Z`, which is before `libpoppler126=22.12.0-2+deb12u3` entered
+the archive. (The `held broken packages` form above is the opposite condition,
+an unpinned dependency moving *forward*, and cannot arise from an early
+snapshot.) A timestamp that predates the build but still satisfies every pin
+fails silently instead, in the thirty-eight added packages carrying no version
+pin. Use the recorded build date, not the earliest timestamp that resolves. Editing
+`Dockerfile.openclaw` to add the overlay makes `verify_release.py --pristine`
+report a hash mismatch for that one file from then on, which is expected and
+does not affect bootstrap or update. Alternatively, run the reviewed-release
+process: bump the pins in `Dockerfile.openclaw`, then re-run every release gate
+(offline, disposable Postgres, retrieval-scale, exact-image, and the real
+deployment gate) and regenerate the manifest before shipping.
+
+Be precise about what the pins contract. Ten package versions are fixed in
+`Dockerfile.openclaw` and re-asserted against the built image by
+`scripts/run_g6_image.py`. Comparing `dpkg-query` output between the base image
+and the reviewed derived image, the apt step adds 45 packages, of which 7 carry
+those pins; the other 38 — among them `libtiff6`, `libfreetype6`,
+`libopenjp2-7`, `liblcms2-2` and `libnss3`, the imaging and TLS dependencies
+poppler pulls in — carry no version pin, and nothing in the gates would notice
+if the pool moved them. The `python3` and `python3-venv` pins are
+python3-defaults metapackages, so the `3.11.2` they fix is that source's
+revision and not the interpreter's: in `openclaw-lead-research:3.0.0`
+`/usr/bin/python3` is a symlink to `python3.11` owned by `python3-minimal`,
+while the interpreter binary `/usr/bin/python3.11` belongs to
+`python3.11-minimal=3.11.2-6+deb12u8`, inherited from the digest-pinned base
+image rather than pinned here. `scripts/run_g6_image.py` records why adding
+`python3.11*` to the pin set is rejected. The snapshot timestamp is what reproduces that
+remainder, which is why the recipe above is the reproducibility mechanism rather
+than a fallback. A floating (unpinned) fallback for the ten is not offered
+either: it would give up the one part of the apt step that is pinned and gated,
+without making the other 38 any more determined.

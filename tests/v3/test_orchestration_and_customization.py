@@ -6,6 +6,7 @@ import hashlib
 import json
 import re
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -14,6 +15,25 @@ from jsonschema import Draft202012Validator, ValidationError
 
 
 ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "scripts"))
+
+# Importing a script byte-compiles it into scripts/__pycache__, which
+# `verify_release.py --pristine` then reports as an undeclared file. Suppress it
+# the way tests/v3/test_doc_tree_consistency.py does, so this suite stays safe
+# to run even when someone omits `-B`.
+sys.dont_write_bytecode = True
+
+import check_env  # noqa: E402
+
+
+def unique_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    """Reject duplicate keys, which plain json.loads silently resolves last-wins."""
+    result: dict[str, object] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate JSON key: {key!r}")
+        result[key] = value
+    return result
 
 
 class Version3ContractTests(unittest.TestCase):
@@ -141,7 +161,15 @@ class Version3ContractTests(unittest.TestCase):
         }
         for profile, filename in profiles.items():
             with self.subTest(profile=profile):
-                overlay = json.loads((ROOT / "config" / filename).read_text(encoding="utf-8"))
+                # Strict JSON with the renderer's duplicate-key rejection
+                # (scripts/render_channel_config.py load_strict_json): a second
+                # "plugins" or "bindings" key would otherwise win last-wins here
+                # and pass, while docs/CHANNELS.md promises these tests parse the
+                # overlays the way the renderer does.
+                overlay = json.loads(
+                    (ROOT / "config" / filename).read_text(encoding="utf-8"),
+                    object_pairs_hook=unique_object,
+                )
                 self.assertNotIn("plugins", overlay)
                 self.assertEqual(
                     overlay["bindings"],
@@ -265,7 +293,17 @@ class Version3ContractTests(unittest.TestCase):
         self.assertIn("`REVIEW_AND_CONFIRM`", guide)
         self.assertIn("`DO_NOT_CUSTOMIZE_DIRECTLY`", guide)
 
-    def test_reviewed_customization_profile_can_pass(self) -> None:
+    @staticmethod
+    def reviewed_profile() -> dict:
+        """Build the smallest profile scripts/check_customization.py accepts.
+
+        Every value here is what an accountable reviewer would have written:
+        the review flags set true, real hashes for the reviewed artifacts, and a
+        models/search selection that matches the environment
+        reviewed_env_body() renders beside it. That the flag set is complete is
+        not asserted here but by test_reviewed_customization_profile_can_pass,
+        which requires the validator to answer PASS on what this returns.
+        """
         profile = json.loads(
             (ROOT / "config/customization-profile.example.json").read_text(encoding="utf-8")
         )
@@ -336,22 +374,50 @@ class Version3ContractTests(unittest.TestCase):
         )
         for relative in artifact_paths:
             artifact_paths[relative] = hashlib.sha256((ROOT / relative).read_bytes()).hexdigest()
+        return profile
 
+    @staticmethod
+    def reviewed_env_body(overrides: dict[str, str]) -> str:
+        """Render .env.example with whole KEY=VALUE lines replaced.
+
+        Line-anchored, not substring: .env.example carries a commented
+        custom-provider worked example (VC_CUSTOM_PROVIDER_ID=anthropic and
+        three siblings), and a substring replace of a bare `KEY=` rewrites that
+        comment instead of the live line. Raises if a key names no live line,
+        so a renamed variable fails here rather than silently doing nothing.
+        """
+        lines = (ROOT / ".env.example").read_text(encoding="utf-8").split("\n")
+        applied: set[str] = set()
+        for index, line in enumerate(lines):
+            if line.startswith("#") or "=" not in line:
+                continue
+            key = line.split("=", 1)[0]
+            if key in overrides:
+                lines[index] = f"{key}={overrides[key]}"
+                applied.add(key)
+        if applied != set(overrides):
+            raise AssertionError(
+                f".env.example has no assignment line for: {sorted(set(overrides) - applied)}"
+            )
+        return "\n".join(lines)
+
+    def test_reviewed_customization_profile_can_pass(self) -> None:
+        profile = self.reviewed_profile()
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "profile.json"
             path.write_text(json.dumps(profile), encoding="utf-8")
             env_path = Path(directory) / "reviewed.env"
-            env_body = (ROOT / ".env.example").read_text(encoding="utf-8")
-            env_body = env_body.replace(
-                "VC_PRIMARY_MODEL=openai/gpt-5.6", "VC_PRIMARY_MODEL=provider/model-primary"
-            ).replace(
-                "VC_FAST_MODEL=openai/gpt-5.6", "VC_FAST_MODEL=provider/model-fast"
-            ).replace(
-                "VC_MODEL_PROVIDER=openai", "VC_MODEL_PROVIDER=custom"
-            ).replace(
-                "VC_WEB_SEARCH_PROVIDER=auto", "VC_WEB_SEARCH_PROVIDER=duckduckgo"
+            env_path.write_text(
+                self.reviewed_env_body(
+                    {
+                        "VC_PRIMARY_MODEL": "provider/model-primary",
+                        "VC_FAST_MODEL": "provider/model-fast",
+                        "VC_MODEL_PROVIDER": "custom",
+                        "VC_WEB_SEARCH_PROVIDER": "duckduckgo",
+                    }
+                ),
+                encoding="utf-8",
             )
-            env_path.write_text(env_body, encoding="utf-8")
             env_path.chmod(0o600)
             result = subprocess.run(
                 [
@@ -382,6 +448,113 @@ class Version3ContractTests(unittest.TestCase):
         self.assertNotEqual(mismatch.returncode, 0)
         self.assertIn("models.fast does not match", mismatch.stdout)
 
+    def test_model_reference_verdicts_are_pinned_across_both_validators(self) -> None:
+        """Both validators must leave a deployable model id in reach.
+
+        `check_customization.py` binds `models.primary`/`models.fast` to
+        `VC_PRIMARY_MODEL`/`VC_FAST_MODEL` byte for byte, so a shape check_env
+        accepts and the profile refuses is a value no operator can deploy:
+        writing it fails the profile check, and writing anything else fails the
+        binding. The seven rows below are verdicts measured against both
+        validators, recorded rather than re-derived from their source.
+
+        `hf/` is the one deliberate disagreement: check_env requires a slash and
+        a prefix equal to the configured provider, while the profile
+        additionally requires a non-empty model id after the slash. The closing
+        assertion is over these seven rows — no sampled shape with a non-empty
+        id after the first slash is accepted by check_env and refused by the
+        profile.
+        """
+        shapes = (
+            # (model reference, check_env accepts, check_customization accepts)
+            ("openai/gpt-5.6", True, True),
+            ("ollama/qwen3:14b", True, True),
+            ("hf/meta-llama/Llama-3.3-70B-Instruct-Turbo", True, True),
+            ("openrouter/google/gemini-3.1-flash", True, True),
+            # No slash at all: check_env wants "<provider>/model", and the
+            # profile wants a concrete provider/model reference.
+            ("bare-model", False, False),
+            ("hf/", True, False),
+            # parse_dotenv refuses the whitespace before validate_runtime_selection
+            # ever sees the value.
+            ("hf/model id", False, False),
+        )
+        measured: list[tuple[str, bool, bool]] = []
+        for shape, env_accepts, profile_accepts in shapes:
+            profile = self.reviewed_profile()
+            profile["models"]["primary"] = shape
+            profile["models"]["fast"] = shape
+            with tempfile.TemporaryDirectory() as directory:
+                env_path = Path(directory) / "shape.env"
+                env_path.write_text(
+                    self.reviewed_env_body(
+                        {
+                            "VC_MODEL_PROVIDER": "custom",
+                            "VC_PRIMARY_MODEL": shape,
+                            "VC_FAST_MODEL": shape,
+                            "VC_WEB_SEARCH_PROVIDER": "duckduckgo",
+                            "VC_CUSTOM_PROVIDER_ID": shape.split("/", 1)[0],
+                            "VC_CUSTOM_BASE_URL": "https://models.example.com",
+                            "VC_CUSTOM_API": "openai-completions",
+                            "VC_CUSTOM_API_KEY": "k" * 32,
+                        }
+                    ),
+                    encoding="utf-8",
+                )
+                env_path.chmod(0o600)
+                profile_path = Path(directory) / "profile.json"
+                profile_path.write_text(json.dumps(profile), encoding="utf-8")
+                try:
+                    env_errors = check_env.validate_runtime_selection(
+                        check_env.parse_dotenv(env_path)
+                    )
+                except (OSError, ValueError) as exc:
+                    env_errors = [str(exc)]
+                result = subprocess.run(
+                    [
+                        "python3",
+                        "-B",
+                        str(ROOT / "scripts/check_customization.py"),
+                        str(profile_path),
+                        str(env_path),
+                    ],
+                    check=False,
+                    capture_output=True,
+                    text=True,
+                )
+            concrete = "must be a concrete provider/model reference" in result.stdout
+            measured.append((shape, not env_errors, not concrete))
+            # A crash would leave stdout empty, so read the envelope defensively
+            # rather than raising a decode error out of the failure message.
+            profile_errors = (
+                json.loads(result.stdout)["errors"] if result.stdout else [result.stderr]
+            )
+            with self.subTest(model=shape):
+                self.assertEqual(
+                    (not env_errors, not concrete),
+                    (env_accepts, profile_accepts),
+                    f"{shape}: check_env said {env_errors}; "
+                    f"check_customization said {profile_errors}",
+                )
+                # Acceptance means the whole profile validates against this
+                # environment, not merely that the model message is absent.
+                self.assertEqual(
+                    result.returncode == 0, profile_accepts, result.stdout
+                )
+        self.assertEqual(
+            [],
+            [
+                shape
+                for shape, env_ok, profile_ok in measured
+                if env_ok and not profile_ok and shape.partition("/")[2]
+            ],
+            "a sampled model reference with a non-empty id after the provider "
+            "prefix is accepted by check_env and refused by the profile; because "
+            "check_customization binds models.primary/models.fast to "
+            "VC_PRIMARY_MODEL/VC_FAST_MODEL byte for byte, no operator value "
+            "satisfies both validators",
+        )
+
     def test_customization_rejects_duplicate_keys(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "duplicate.json"
@@ -396,6 +569,38 @@ class Version3ContractTests(unittest.TestCase):
             )
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("duplicate JSON key", result.stdout)
+
+    def test_absent_and_non_regular_profiles_report_different_causes(self) -> None:
+        """Two failures, two repairs — the messages must not collapse into one.
+
+        A profile that was never written is fixed by running
+        `scripts/init_customization.py`; a path that resolves to a directory (or
+        a symlink) is fixed by correcting the path, and running the scaffold
+        against it would not help. Both branches stay fatal, and the wrong-type
+        branch must not claim the file does not exist.
+        """
+        with tempfile.TemporaryDirectory() as directory:
+            absent = Path(directory) / "absent.json"
+            not_regular = Path(directory) / "dir.json"
+            not_regular.mkdir()
+            missing = subprocess.run(
+                ["python3", "-B", str(ROOT / "scripts/check_customization.py"), str(absent)],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            wrong_type = subprocess.run(
+                ["python3", "-B", str(ROOT / "scripts/check_customization.py"), str(not_regular)],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            self.assertNotEqual(0, missing.returncode, missing.stdout)
+            self.assertIn("does not exist", missing.stdout)
+            self.assertIn(str(absent), missing.stdout)
+            self.assertNotEqual(0, wrong_type.returncode, wrong_type.stdout)
+            self.assertIn("regular, non-symlink", wrong_type.stdout)
+            self.assertNotIn("does not exist", wrong_type.stdout)
 
     def test_reviewed_artifact_inventories_cannot_drift(self) -> None:
         """The reviewed-artifact set is written down in three places.

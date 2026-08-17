@@ -39,6 +39,17 @@ tests pass (see the banner above):
   (The generated-media `media.ttlHours` sweep is intentionally not enabled: it
   prunes empty directories including the workflow inbound-media root. Inbound
   document snapshots are product data, retained by the product operation below.)
+  Turning the optional `cron` job on brings two further retention keys into
+  scope, both unset in `config/openclaw.json` today. Cron run history is
+  written to the `cron_run_logs` table of the SQLite state database in the
+  persistent `openclaw-state` volume, and its `summary` column holds the run's
+  reply text; it is pruned by `cron.runLog.keepLines` (harness default: 2000
+  rows per job) and is outside `openclaw sessions cleanup`, whose own
+  documentation states that it does not prune cron run history. The completed
+  session each cron run leaves behind is additionally pruned by
+  `cron.sessionRetention` (harness default: 24h), which fires sooner than
+  `session.maintenance.pruneAfter`. Set both to the firm's period in the same
+  edit that sets `cron.enabled: true`.
 - **Product data** (companies, leads, facts, evidence, memos in Postgres) is
   governed by the reviewed, approval-gated `vcops data-erase-lead` operation
   (operator lane). It consumes a scoped one-time approval in the **same

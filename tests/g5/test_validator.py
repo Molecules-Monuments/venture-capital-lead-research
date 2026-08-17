@@ -6,6 +6,8 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from typing import Any
+from unittest import mock
 
 
 PACKAGE = Path(__file__).resolve().parents[2]
@@ -15,6 +17,18 @@ assert SPEC is not None and SPEC.loader is not None
 g5 = importlib.util.module_from_spec(SPEC)
 sys.modules[SPEC.name] = g5
 SPEC.loader.exec_module(g5)
+
+# The gate step runs two validators, each with its own strict mapping
+# constructor. Load the second one too: its guards are otherwise exercised by
+# nothing in tests/, so a refactor that drops one passes the whole offline gate.
+SKILLS_VALIDATOR_PATH = PACKAGE / "scripts/validate_skill_system.py"
+SKILLS_SPEC = importlib.util.spec_from_file_location(
+    "validate_skill_system_g5_tests", SKILLS_VALIDATOR_PATH
+)
+assert SKILLS_SPEC is not None and SKILLS_SPEC.loader is not None
+skills = importlib.util.module_from_spec(SKILLS_SPEC)
+sys.modules[SKILLS_SPEC.name] = skills
+SKILLS_SPEC.loader.exec_module(skills)
 
 
 class WorkflowValidatorTests(unittest.TestCase):
@@ -78,6 +92,70 @@ class WorkflowValidatorTests(unittest.TestCase):
         self.assertIn("raw_env", raw_template)
         self.assertIn("arg_unquoted", unquoted_env)
         self.assertIn("arg_unquoted", unquoted_step_env)
+        # The rule this replaced tested only the byte immediately before `$`,
+        # so a quote character anywhere in front of the expansion satisfied it.
+        # Verified against that rule: all four spellings below are accepted by
+        # it and flagged by the current one, which decides on the command's
+        # double-quote state instead. They run as subTests so a regression
+        # reports each spelling rather than stopping at the first. The four are
+        # not one failure mode: `""$X`, `"p"$X` and `"a"$X"b"` leave the
+        # expansion unquoted, so `sh` word-splits and globs the
+        # channel-controlled value, while `'$X'` is not expanded at all and the
+        # helper receives the literal reference text as a lead id. Neither
+        # delivers the value intact, and
+        # docs/TASKFLOW_LOBSTER_COMPATIBILITY.md tells authors to double-quote.
+        for spelling in ("'$VCOPS_SENDER_ID'", '""$VCOPS_SENDER_ID',
+                         '"p"$VCOPS_SENDER_ID', '"a"$VCOPS_SENDER_ID"b"'):
+            with self.subTest(spelling=spelling):
+                # The shell spelling is carried inside a YAML double-quoted
+                # scalar, so its own quotes are escaped for YAML; the validator
+                # sees the unescaped shell text.
+                escaped = spelling.replace('"', '\\"')
+                codes = self.validate(
+                    'name: fixture\nsteps:\n'
+                    '  - id: bad\n    run: "/workspaces/vc-chief/vc/bin/agent/vcops lead-show'
+                    f' --lead-id {escaped}"\n    timeout_ms: 1000\n'
+                )
+                self.assertNotIn(
+                    "yaml_parse", codes,
+                    f"the fixture for {spelling} did not parse, so the quoting rule "
+                    "was never exercised",
+                )
+                self.assertIn(
+                    "arg_unquoted", codes,
+                    f"{spelling} leaves the expansion outside a double-quoted "
+                    "region: `sh` either word-splits and globs the "
+                    "channel-controlled value or, inside single quotes, does not "
+                    "expand it at all and passes the literal reference text on. "
+                    "Neither delivers the value intact",
+                )
+        # Positive control: the spelling the documentation tells authors to use
+        # must not be flagged, or the rule is unusable.
+        self.assertNotIn(
+            "arg_unquoted",
+            self.validate(
+                'name: fixture\nsteps:\n'
+                '  - id: ok\n    run: "/workspaces/vc-chief/vc/bin/agent/vcops lead-show'
+                ' --lead-id \\"$VCOPS_SENDER_ID\\""\n    timeout_ms: 1000\n'
+            ),
+            "the documented fully-quoted spelling must pass the quoting rule",
+        )
+
+    def test_unhashable_yaml_key_is_a_finding_not_a_traceback(self) -> None:
+        # `? [a, b]` is legal YAML whose key is a list. This validator's strict
+        # mapping constructor replaces SafeConstructor's, so without its own
+        # Hashable check (scripts/validate_workflows.py:107) the gate step
+        # aborts with a traceback that never names the file. The gate's second
+        # validator carries the same guard for the same reason and is covered
+        # by SkillSystemValidatorTests below, not by this method — `validate()`
+        # drives scripts/validate_workflows.py alone.
+        self.assertIn(
+            "yaml_parse",
+            self.validate(
+                "name: fixture\n? [a, b]\n: c\nsteps:\n  - id: ok\n"
+                "    run: /workspaces/vc-chief/vc/bin/agent/vcops preflight\n    timeout_ms: 1000\n"
+            ),
+        )
 
     def test_legacy_future_and_unbounded_step_refs_are_rejected(self) -> None:
         legacy = self.validate(
@@ -292,6 +370,77 @@ steps:
             with self.subTest(path=path.name):
                 findings, _ = g5.validate_workflow(path, self.parser)
                 self.assertEqual([], [item.as_dict() for item in findings])
+
+
+class SkillSystemValidatorTests(unittest.TestCase):
+    """The `skill-agent-system` gate step's own loader guards.
+
+    `WorkflowValidatorTests.validate` drives scripts/validate_workflows.py only,
+    so scripts/validate_skill_system.py's identical strict mapping constructor
+    was reachable from no test: deleting its Hashable guard left every offline
+    suite green and the gate step exiting 0.
+    """
+
+    def parse_skill_frontmatter(self, frontmatter: str) -> list[Any]:
+        """Run `parse_skill` over a temp SKILL.md and return its findings.
+
+        `add()` reports paths through `relative()`, which is anchored to the
+        module's `PACKAGE`, so the fixture root is patched in rather than
+        written into the package tree.
+        """
+        findings: list[Any] = []
+        with tempfile.TemporaryDirectory(prefix="g5-skill-") as temp:
+            root = Path(temp)
+            path = root / "workspaces/shared-skills/fixture/SKILL.md"
+            path.parent.mkdir(parents=True)
+            path.write_text(f"---\n{frontmatter}\n---\nbody\n", encoding="utf-8")
+            with mock.patch.object(skills, "PACKAGE", root):
+                try:
+                    skills.parse_skill(path, findings)
+                except (TypeError, skills.DuplicateKeyError) as exc:
+                    self.fail(
+                        f"parse_skill let {type(exc).__name__}: {exc} escape its "
+                        "`except (yaml.YAMLError, DuplicateKeyError)` handler. A key "
+                        "this loader refuses has to surface as one of those two "
+                        "types; otherwise the skill-agent-system gate step aborts "
+                        "with a traceback that never names the offending file."
+                    )
+        return findings
+
+    def test_unhashable_yaml_key_is_a_bounded_finding_not_a_traceback(self) -> None:
+        # `? [a, b]` is legal YAML whose key is a list. Replacing
+        # SafeConstructor.construct_mapping drops its Hashable check, and the
+        # `key in result` lookup then raises TypeError from outside every
+        # handler in the module.
+        findings = self.parse_skill_frontmatter("name: fixture\n? [a, b]\n: c")
+        codes = [item.code for item in findings]
+        self.assertEqual(
+            codes, ["skill_frontmatter"],
+            "a complex YAML key must stop parse_skill at one bounded "
+            f"skill_frontmatter finding; it reported {findings}",
+        )
+        self.assertEqual(
+            findings[0].path,
+            "workspaces/shared-skills/fixture/SKILL.md",
+            "the finding must name the offending file",
+        )
+        self.assertIn("found unhashable key", findings[0].message)
+
+    def test_duplicate_yaml_key_in_frontmatter_is_a_bounded_finding(self) -> None:
+        # The same constructor's other guard. SafeConstructor merges duplicate
+        # keys last-one-wins; this loader refuses them, and the refusal has to
+        # reach the same handler rather than escaping as DuplicateKeyError.
+        findings = self.parse_skill_frontmatter("name: fixture\nname: replacement")
+        codes = [item.code for item in findings]
+        self.assertIn(
+            "skill_frontmatter", codes,
+            "scripts/validate_skill_system.py did not reject a duplicated "
+            f"frontmatter key as skill_frontmatter; it reported {findings}",
+        )
+        self.assertIn(
+            "duplicate YAML key: name",
+            next(item.message for item in findings if item.code == "skill_frontmatter"),
+        )
 
 
 if __name__ == "__main__":
