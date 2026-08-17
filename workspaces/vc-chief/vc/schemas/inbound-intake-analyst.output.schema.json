@@ -31,7 +31,7 @@
           "type": "object", "additionalProperties": false, "required": ["group", "subtype", "confidence"],
           "properties": {
             "group": { "const": "inbound" },
-            "subtype": { "enum": ["founder_direct", "referral", "channel_forward", "event", "application", "unknown"] },
+            "subtype": { "enum": ["direct_contact", "network_referral", "event_followup", "unknown"] },
             "confidence": { "$ref": "#/$defs/confidence" }
           }
         },

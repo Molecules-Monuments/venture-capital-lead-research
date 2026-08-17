@@ -29,6 +29,18 @@ SUITES = (
     ("g4-document-security", "tests/g4", "test_document_security.py"),
 )
 
+# First line of a shipped file that hands it to a POSIX shell. The same
+# expression selects the world tests/g7/test_recovery_lifecycle.py scans for
+# dash-mangled escapes; that module imports shell_paths() rather than keeping a
+# second copy of the rule.
+SHELL_SHEBANG = re.compile(r"^#!\s*/(usr/)?bin/(env\s+)?(sh|bash|dash)\b")
+
+# Measured floor for the enumeration below (the shipped tree yields 14). It is
+# not a target for growth: it exists so that an enumeration which silently
+# empties — an unreadable manifest, a shebang expression that stops matching —
+# fails the gate instead of reporting PASS with nothing parsed.
+SHELL_SCRIPT_FLOOR = 14
+
 
 def run(command: list[str], *, timeout: int = 300) -> subprocess.CompletedProcess[str]:
     environment = os.environ.copy()
@@ -88,6 +100,28 @@ def command_check(name: str, command: list[str], timeout: int = 300) -> dict[str
     }
 
 
+def shell_paths() -> list[Path]:
+    """Every file declared in manifest.json whose shebang selects a POSIX shell.
+
+    Enumerated from the manifest rather than from a `scripts/*.sh` +
+    `migrations/*.sh` glob: the five launchers under
+    workspaces/vc-chief/vc/bin/ (`vcops-workflow`, `vcops-operator`,
+    `vcrun-control`, `agent/vcops`, `agent/vcrun`) carry no suffix, so both
+    globs missed them and no step of this matrix parsed them at all.
+    """
+    manifest = json.loads((PACKAGE / "manifest.json").read_text(encoding="utf-8"))
+    found: list[Path] = []
+    for entry in manifest["files"]:
+        path = PACKAGE / entry["path"]
+        try:
+            first = path.read_text(encoding="utf-8", errors="ignore").splitlines()[0]
+        except (OSError, IndexError):
+            continue
+        if SHELL_SHEBANG.match(first):
+            found.append(path)
+    return sorted(found)
+
+
 def syntax_checks() -> list[dict[str, Any]]:
     python_errors: list[str] = []
     for path in sorted(PACKAGE.rglob("*.py")):
@@ -104,9 +138,36 @@ def syntax_checks() -> list[dict[str, Any]]:
             "detail": python_errors or None,
         }
     ]
-    shell_paths = sorted(PACKAGE.glob("scripts/*.sh")) + sorted(PACKAGE.glob("migrations/*.sh"))
-    for path in shell_paths:
-        checks.append(command_check(f"shell-syntax:{path.name}", ["sh", "-n", str(path)]))
+    paths = shell_paths()
+    if len(paths) < SHELL_SCRIPT_FLOOR:
+        # Emitted only when the enumeration has shrunk below the measured
+        # floor, so a healthy tree carries exactly one check per shipped shell
+        # script and no permanent placeholder in the documented check count.
+        checks.append(
+            {
+                "name": "shell-inventory",
+                "result": "FAIL",
+                "detail": (
+                    f"manifest.json declares {len(paths)} files with a POSIX-shell "
+                    f"shebang; at least {SHELL_SCRIPT_FLOOR} are expected. The "
+                    "shell-syntax enumeration reads the manifest, so a stale or "
+                    "unreadable manifest silently empties it."
+                ),
+            }
+        )
+    # One `sh -n` per shipped shell script. This parses each file with whichever
+    # /bin/sh the machine running the gate provides, so it catches parse errors
+    # under that shell. It is not by itself a proof of dash-parseability, which
+    # is what the deployment needs: on the macOS gate host /bin/sh is GNU bash
+    # 3.2, which accepts `ARR=(a b c)`, `function f { }` and here-strings that
+    # Debian's dash rejects with rc=2 (measured 2026-08-15).
+    for path in paths:
+        checks.append(
+            command_check(
+                f"shell-syntax:{path.relative_to(PACKAGE).as_posix()}",
+                ["sh", "-n", str(path)],
+            )
+        )
     return checks
 
 

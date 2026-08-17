@@ -212,7 +212,7 @@ and every later lifecycle run fails.
 
 | ID | Test | Required result |
 | --- | --- | --- |
-| CH-01 | Exact plugin/image/config inspection and probe | Pinned plugin loads; no auth/schema/policy warning |
+| CH-01 | Exact plugin/image/config inspection, plus the credential probe `openclaw channels status --probe` (the plain `channels status` in step 7 defaults `--probe` to false) and, on Discord, the channel permission audit `openclaw channels capabilities --channel discord --target channel:<id>` — the pinned CLI restricts `--target` to Discord | Pinned plugin loads; no auth/schema/policy warning |
 | CH-02 | First and second allowed-user DM; unknown-user DM | Both allowed principals route once to chief in different sessions; unknown denied |
 | CH-03 | Same preference key for two allowed users | Values remain principal-isolated; neither appears in the other's lookup/output |
 | CH-04 | Explicit preference, three inferred events, duplicate event, forget, group change | Exact activation thresholds; duplicate ignored; forget cutoff works; group change denied |
@@ -269,6 +269,20 @@ channel actions, unfurls, and native exec approvals are disabled. Thread
 replies require an explicit mention. Slack-hosted files are best-effort;
 thread-starter hydration may fail, in which case the user must attach the file
 to the current request.
+
+The overlay also sets `channels.slack.contextVisibility: "allowlist"`, matching
+the Discord, Teams, and Telegram overlays. It covers the *supplemental thread
+context* the plugin fetches from the Slack API around a thread reply — the
+thread starter and the thread replies loaded up to `thread.initialHistoryLimit`
+(unset here, so the plugin's own default of 20 applies) — and drops the ones
+whose author is not in `SLACK_ALLOWED_USER_IDS`, which this overlay uses for
+both the channel `users` list and the DM `allowFrom` list. Without the key the
+pinned plugin resolves the mode to `all` and passes that thread context through
+unfiltered. Note the boundary: the key does not reach the pending room-history
+window (`messages.groupChat.historyLimit`, unset here, harness default 50),
+which a shared history helper assembles with no visibility mode of its own.
+Because the thread starter now goes through the allowlist, re-run CH-05 and
+CH-07 after re-rendering the config.
 
 Add Slack-specific checks for token separation, exactly one Socket Mode
 connection, WSS reconnect, thread starter/reply behavior, file-only starters,

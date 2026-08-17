@@ -84,6 +84,47 @@ class EnvironmentFileSecurityTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     check_env.parse_dotenv(path)
 
+    def test_every_python_line_terminator_is_rejected_inside_a_value(self) -> None:
+        # parse_dotenv splits on "\n" alone. The other characters that end a
+        # line for str.splitlines() are ordinary value bytes to Compose's
+        # --env-file parser and to the grep/sed reads in bootstrap.sh,
+        # update.sh, backup.sh and restore.sh, so a validator that treated them
+        # as line breaks would approve a KEY=VALUE those readers swallow into
+        # the preceding value.
+        #
+        # Derive that character set from the running interpreter instead of
+        # restating the list the check_env comment enumerates: a restated list
+        # only ever covers the members someone remembered, and an interpreter
+        # that starts honouring a new terminator is then covered on the day it
+        # does.
+        terminators = [
+            chr(code)
+            for code in range(0x110000)
+            if len(("A=1" + chr(code) + "B=2").splitlines()) > 1
+        ]
+        self.assertIn(
+            "\n", terminators,
+            "the terminator derivation has rotted: it no longer even finds newline",
+        )
+        with tempfile.TemporaryDirectory(prefix="env-contract-") as raw:
+            root = Path(raw)
+            for terminator in terminators:
+                if terminator == "\n":
+                    continue
+                with self.subTest(terminator=hex(ord(terminator))):
+                    path = self.make_env(root, "A=1" + terminator + "B=2\n")
+                    with self.assertRaises(
+                        ValueError,
+                        msg=(
+                            f"parse_dotenv accepted U+{ord(terminator):04X} in the middle "
+                            "of a value. str.splitlines() ends a line there, so this file "
+                            "reads as two keys to a validator that splits with it, but the "
+                            "lifecycle scripts' grep/sed reads and Compose's --env-file "
+                            "parser keep it inside the value of A"
+                        ),
+                    ):
+                        check_env.parse_dotenv(path)
+
     def test_non_0600_mode_fails(self) -> None:
         with tempfile.TemporaryDirectory(prefix="env-contract-") as raw:
             path = self.make_env(Path(raw), "PRIMARY_CHANNEL=none\n", 0o640)

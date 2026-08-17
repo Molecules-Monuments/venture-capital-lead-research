@@ -44,4 +44,11 @@ the approval policy for frequency/concurrency. The `notification_outbox` SQL
 lifecycle (claim/dispatch/retry/receipt) is **superseded by that native queue
 and is not driven by this release**; only the internal-log record is written by
 `vcops notification-enqueue`. Same-thread channel replies are governed
-separately by `channel_policy.md`.
+separately by `channel_policy.md`. The window at the top of this document is
+the policy the `quiet-hours-reporting` classification reasons against, and the
+one an operator computes a `notification_outbox` record's `deliver_after` from;
+the gateway's cron scheduler does not read this document, so a seeded job fires
+on the schedule handed to `openclaw cron add`. When you set `VC_SCAN_DELIVERY`
+so the scan announces its result, put `VC_SCAN_CRON`
+(`scripts/schedule_jobs.sh`, default `0 7 * * 1-5`) inside the window you state
+here.

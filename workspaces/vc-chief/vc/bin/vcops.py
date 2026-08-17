@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import contextlib
 import csv
 from difflib import SequenceMatcher
 import hashlib
@@ -20,6 +21,7 @@ import ipaddress
 from itertools import combinations
 import json
 import os
+import posixpath
 import re
 import secrets
 import stat
@@ -1305,6 +1307,39 @@ def _extract_xlsx(path: Path) -> dict[str, Any]:
         workbook.close()
 
 
+def _pptx_notes_part(archive: zipfile.ZipFile, slide_name: str, names: Sequence[str], index: int) -> str | None:
+    """Return the notesSlide part the slide's relationship part binds to it.
+
+    A deck whose notes were authored on a subset of its slides numbers its
+    notesSlide parts independently of its slide parts, so a slide's own
+    ordinal cannot name its notes: ppt/notesSlides/notesSlide1.xml can belong
+    to ppt/slides/slide2.xml. The relationship part is the binding. Resolving
+    the Target against the slide's directory and then requiring the normalised
+    name to be an archive member under ppt/notesSlides/ is what keeps a
+    crafted Target from naming a member elsewhere in the package.
+    """
+    slide_dir = posixpath.dirname(slide_name)
+    rels_name = posixpath.join(slide_dir, "_rels", posixpath.basename(slide_name) + ".rels")
+    if rels_name not in names:
+        return None
+    try:
+        rels_root = ElementTree.fromstring(archive.read(rels_name))  # noqa: S314  # DTD/entity parts rejected pre-extraction
+    except ElementTree.ParseError as exc:
+        raise VcopsError("pptx_extract_failed", f"relationships for slide {index} are malformed") from exc
+    for relationship in rels_root:
+        if relationship.tag.rpartition("}")[2] != "Relationship":
+            continue
+        if not relationship.get("Type", "").endswith("/notesSlide"):
+            continue
+        target = relationship.get("Target", "")
+        if not target:
+            continue
+        candidate = posixpath.normpath(posixpath.join(slide_dir, target))
+        if candidate.startswith("ppt/notesSlides/") and candidate in names:
+            return candidate
+    return None
+
+
 def _extract_pptx(path: Path) -> dict[str, Any]:
     text_tag = "{http://schemas.openxmlformats.org/drawingml/2006/main}t"
     slides: list[dict[str, Any]] = []
@@ -1331,9 +1366,9 @@ def _extract_pptx(path: Path) -> dict[str, Any]:
             if len(text) > remaining:
                 text = text[:max(remaining, 0)]
                 truncated = True
-            note_name = f"ppt/notesSlides/notesSlide{index}.xml"
+            note_name = _pptx_notes_part(archive, name, names, index)
             notes = ""
-            if note_name in names and not truncated:
+            if note_name is not None and not truncated:
                 try:
                     notes_root = ElementTree.fromstring(archive.read(note_name))  # noqa: S314  # same pre-extraction rejection
                 except ElementTree.ParseError as exc:
@@ -1412,7 +1447,24 @@ def quarantine_document(raw_path: str | Path, error: VcopsError) -> dict[str, An
         # branches of this function.
         return {"materialized": False, "reason": "exceeds_quarantine_byte_limit"}
     digest = hashlib.sha256(payload).hexdigest()
-    target, stored_digest = write_content_addressed(QUARANTINE_ROOT, f"{digest}{path.suffix.lower()}", payload)
+    copy_name = f"{digest}{path.suffix.lower()}"
+    # Quarantine names are content-addressed, so re-rejecting the same bytes
+    # lands on a copy an earlier rejection already published and recorded. Note
+    # whether it is already there: the marker-failure branch below may only
+    # remove a copy this call created.
+    try:
+        copy_preexisted = (_secure_directory(QUARANTINE_ROOT, create=True) / copy_name).exists()
+    except (OSError, VcopsError):
+        copy_preexisted = False
+    try:
+        target, stored_digest = write_content_addressed(QUARANTINE_ROOT, copy_name, payload)
+    except OSError:
+        # Same return-never-raise contract as the oversize branch above. The
+        # suffix is caller-controlled and unbounded here (this function runs
+        # precisely when _detect_type rejected it), so a long one overflows the
+        # 255-byte filename limit; any other write error lands here too. Raising
+        # would replace the caller's typed rejection with internal_error.
+        return {"materialized": False, "reason": "quarantine_write_failed"}
     if stored_digest != digest:
         raise VcopsError("artifact_integrity_conflict", "quarantined document hash changed during publication", exit_code=3)
     metadata = {
@@ -1425,7 +1477,19 @@ def quarantine_document(raw_path: str | Path, error: VcopsError) -> dict[str, An
     }
     marker_payload = (json.dumps(metadata, sort_keys=True, separators=(",", ":")) + "\n").encode("utf-8")
     marker_digest = hashlib.sha256(marker_payload).hexdigest()
-    marker, _ = write_content_addressed(QUARANTINE_ROOT, f"{digest}.{marker_digest}.json", marker_payload)
+    try:
+        marker, _ = write_content_addressed(QUARANTINE_ROOT, f"{digest}.{marker_digest}.json", marker_payload)
+    except OSError:
+        # The payload copy landed but its metadata marker did not, so this
+        # rejection reports `materialized: false` and must leave nothing of its
+        # own behind. Remove the copy only if this call created it: on a repeat
+        # rejection of the same bytes the copy belongs to an earlier, fully
+        # recorded quarantine, and deleting it would strand that marker and
+        # destroy the hostile bytes RUNBOOK section 9 promises are there.
+        if not copy_preexisted:
+            with contextlib.suppress(OSError):
+                target.unlink()
+        return {"materialized": False, "reason": "quarantine_write_failed"}
     return {"materialized": True, "sha256": digest, "copy": str(target), "metadata": str(marker)}
 
 
@@ -2032,7 +2096,7 @@ def cmd_company_upsert(args: argparse.Namespace) -> dict[str, Any]:
             if str(row["name"]).strip().casefold() != name.casefold():
                 raise VcopsError(
                     "company_identity_conflict",
-                    "the canonical domain is already bound to a different company name; use a reviewed identity-change operation",
+                    "the canonical domain is already bound to a different company name; this helper does not change the name bound to a domain",
                     exit_code=1,
                 )
         else:
@@ -6322,7 +6386,13 @@ def main(argv: Sequence[str] | None = None) -> None:
             content_path = bounded_input_path(args.content_file)
             if content_path.suffix.lower() not in {".md", ".txt"}:
                 raise VcopsError("unsupported_memo_input", "memo content file must be .md or .txt")
-            args.content = content_path.read_text(encoding="utf-8")
+            try:
+                args.content = content_path.read_text(encoding="utf-8")
+            except UnicodeDecodeError as exc:
+                # Without this the decode failure reaches the bare handler below
+                # and is reported as internal_error at exit 3, where the same
+                # flag's other input rejections are typed denials at exit 2.
+                raise VcopsError("memo_content_encoding", "memo content file must be UTF-8") from exc
         result = args.handler(args)
         if not isinstance(result, dict):
             raise VcopsError("internal_contract", "command handler did not return a JSON object", exit_code=3)

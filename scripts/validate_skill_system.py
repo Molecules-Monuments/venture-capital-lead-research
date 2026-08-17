@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import collections.abc
 import importlib.util
 import json
 import os
@@ -15,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+import yaml.constructor
 import yaml.resolver
 
 
@@ -173,6 +175,18 @@ def unique_mapping(loader: UniqueSafeLoader, node: yaml.MappingNode, deep: bool 
     result: dict[Any, Any] = {}
     for key_node, value_node in node.value:
         key = loader.construct_object(key_node, deep=deep)
+        # Replacing SafeConstructor.construct_mapping means re-performing its
+        # hashability guard. A YAML complex key (`? [a, b]`) arrives here as a
+        # list; without this the `key in result` lookup below raises TypeError
+        # outside every handler in this module, so the validator aborts with a
+        # traceback that never names the file instead of emitting the bounded
+        # skill_frontmatter/workflow_parse finding. ConstructorError is a
+        # yaml.YAMLError, which both of those handlers already catch.
+        if not isinstance(key, collections.abc.Hashable):
+            raise yaml.constructor.ConstructorError(
+                "while constructing a mapping", node.start_mark,
+                "found unhashable key", key_node.start_mark,
+            )
         if key in result:
             raise DuplicateKeyError(f"duplicate YAML key: {key}")
         result[key] = loader.construct_object(value_node, deep=deep)
@@ -198,9 +212,14 @@ def add(findings: list[Finding], code: str, path: Path | str, message: str) -> N
 
 
 def load_config(findings: list[Finding]) -> dict[str, Any]:
+    # `UnicodeError` for the same reason parse_skill below catches it: a config
+    # saved in a non-UTF-8 encoding raises UnicodeDecodeError out of read_text,
+    # which is a ValueError and so none of the other three types, and the
+    # skill-agent-system gate step would abort with a traceback instead of this
+    # bounded config_parse finding.
     try:
         value = json.loads(CONFIG_PATH.read_text(encoding="utf-8"), object_pairs_hook=unique_object)
-    except (OSError, json.JSONDecodeError, DuplicateKeyError) as exc:
+    except (OSError, UnicodeError, json.JSONDecodeError, DuplicateKeyError) as exc:
         add(findings, "config_parse", CONFIG_PATH, str(exc))
         return {}
     if not isinstance(value, dict):
@@ -465,8 +484,19 @@ def validate_resolver_routing(config: dict[str, Any], workflows: dict[str, Any],
     #    check in part 2 above.
     workflow_root = PACKAGE / "workspaces/vc-chief/vc/workflows"
     created_origins: set[str] = set()
-    for path in workflow_root.glob("*.lobster"):
-        for match in re.finditer(r"--origin-group\s+(\S+)", path.read_text(encoding="utf-8")):
+    for path in sorted(workflow_root.glob("*.lobster")):
+        # Second read of the same *.lobster set validate_workflows() above
+        # already reported on, so it needs the same bounded handler: a workflow
+        # saved in a non-UTF-8 encoding raises UnicodeDecodeError out of
+        # read_text, which reached no handler here and aborted this gate step
+        # with a traceback *after* the earlier workflow_parse finding had
+        # already been collected.
+        try:
+            body = path.read_text(encoding="utf-8")
+        except (OSError, UnicodeError) as exc:
+            add(findings, "workflow_read", path, str(exc))
+            continue
+        for match in re.finditer(r"--origin-group\s+(\S+)", body):
             created_origins.add(match.group(1).strip())
     for required in ("inbound", "outbound"):
         if required not in created_origins:

@@ -1,21 +1,22 @@
 # Version 3.0 release evidence
 
 Date: 2026-07-23 (final-audit session; supersedes the earlier 2026-07-23 and 2026-07-22 evidence)
-Last full re-execution: **2026-08-11** — see "Count re-verification" below. Every *count* in this document is that run's measurement; the one latency figure the gates produce is treated separately under "Image digests — regenerate at deployment", because it is a property of the measuring host rather than of this tree.
+Last full re-execution: **2026-08-16** — see "Count re-verification" below. Counts here are that run's measurement unless the sentence quoting one names a different source — the `c72d8b9` baseline under "Count re-verification", and the latency figure under "Image digests — regenerate at deployment", which is a property of the measuring host rather than of this tree.
 Package version: `3.0.0`
 Status: **Deterministic package + deployment path VERIFIED; live-model behavioral gates BLOCKED (not run). See `PRODUCTION_READINESS.md` for the exact boundary.**
 
 Count re-verification: the suites grew across the remediation sessions that
-followed the 2026-07-23 evidence, so every count below is the count this tree
-actually produces rather than a carried-forward figure. **The full matrix was
-last re-executed on 2026-08-11**, against this tree and against the derived
-image rebuilt from it with `docker build --no-cache --pull` on **2026-08-11**,
-after that day's edits to the image-baked `workspaces/` files, `Dockerfile.openclaw` itself, one migration, and the host-side recovery-lifecycle and workflow-validation scripts. The image is
+followed the 2026-07-23 evidence, so the counts below are what this tree
+produces rather than figures carried forward, except where a sentence names the
+commit or host a figure came from. **The full matrix was last re-executed on
+2026-08-16**, against this tree and against the derived
+image rebuilt from it with `docker build --no-cache --pull` on **2026-08-16**,
+after that day's edits to the image-baked `workspaces/` files, the trusted-context extension, `Dockerfile.openclaw` itself, and the host-side recovery-lifecycle and workflow-validation scripts. The image is
 therefore derived from exactly this tree rather than reused. Earlier in the same
 session `bootstrap.sh` also built the image during the live channel exercise,
 and the G8 deployment gate's own bootstrap built and tore down another. The gates: `verify_offline.py`
-(**274 tests, 25/25** base checks), and each opt-in gate individually —
-`run_g4.py` (**90/90** across seven suites, migrations 001–018 applied
+(**315 tests, 30/30** base checks), and each opt-in gate individually —
+`run_g4.py` (**94/94** across seven suites, migrations 001–018 applied
 twice on PostgreSQL 17.10), `run_g6_image.py` (**8/8**, against an image rebuilt from this tree with
 `docker build --no-cache --pull` and again against the one `bootstrap.sh`
 builds during the deployment gate; both load `vc-trusted-context` from
@@ -29,7 +30,7 @@ frozen 250 ms p95 threshold — see the note on that figure below),
 still installs from the live Debian pool. For reference, `c72d8b9` — the last
 commit before the channel-setup rewrite — measures 210 offline tests across
 these same suites, so everything from that rewrite through the pre-publication
-audit remediation added sixty-four in total; the per-suite figures in the table
+audit remediation added one hundred and five in total; the per-suite figures in the table
 below are authoritative and sum to the aggregate.
 
 ## 2026-07-23 final-audit evidence
@@ -52,8 +53,8 @@ Every gate below was executed after those changes:
 
 | Surface | Result | Command |
 | --- | ---: | --- |
-| Offline verification (all suites, ruff, ty, shell syntax, fixed workflows, skill system, manifest currency, pristine) | **PASS — 274 tests, 25/25 checks** | `python3 -B scripts/verify_offline.py` |
-| Disposable Postgres hard gate | **PASS — 90/90** across seven suites, migrations 001–018 applied twice | `python3 -B scripts/run_g4.py` |
+| Offline verification (all suites, ruff, ty, shell syntax, fixed workflows, skill system, manifest currency, pristine) | **PASS — 315 tests, 30/30 checks** | `python3 -B scripts/verify_offline.py` |
+| Disposable Postgres hard gate | **PASS — 94/94** across seven suites, migrations 001–018 applied twice | `python3 -B scripts/run_g4.py` |
 | Exact-image gate against the image rebuilt from this tree | **PASS — 8/8** (provenance, workshop guard, all five channel schemas, unknown-field fail-closed) | `python3 -B scripts/run_g6_image.py --image openclaw-lead-research:3.0.0` |
 | Real deployment gate (bootstrap → negative-auth proof → live fixed workflows → replay/tamper semantics → teardown) | **PASS** | `python3 -B scripts/run_g8_deployment.py` |
 | Reference retrieval scale (100k companies / 1m facts) | PASS, all frozen thresholds met | `python3 -B scripts/run_retrieval_scale.py` |
@@ -85,25 +86,25 @@ by audit passes outside this package boundary; see
 `docs/PRODUCTION_READINESS.md`, "Exercised against a live model". No gate below
 invokes a model.
 
-## Passing evidence (executed 2026-07-23; last re-executed 2026-08-11)
+## Passing evidence (executed 2026-07-23; last re-executed 2026-08-16)
 
 | Surface | Result | Reproducible command |
 | --- | ---: | --- |
 | Agent schemas/contracts | 42/42 | `python3 -B -m unittest discover -s tests/contracts -p 'test*.py' -v` |
-| Version 3 providers/context/orchestration/customization/skill system | 89/89 | `python3 -B -m unittest discover -s tests/v3 -p 'test*.py' -v` |
+| Version 3 providers/context/orchestration/customization/skill system | 121/121 | `python3 -B -m unittest discover -s tests/v3 -p 'test*.py' -v` |
 | Exact skill/agent/router/workflow inventory | 26 skills, 12 agents, **18 workflows**, 0 findings | `python3 -B scripts/validate_skill_system.py` |
 | Retrieval policy contracts | 7/7 | `python3 -B -m unittest discover -s tests/retrieval -p 'test*.py' -v` |
-| Infrastructure contracts | 29/29 | `python3 -B -m unittest discover -s tests/infrastructure -p 'test*.py' -v` |
+| Infrastructure contracts | 30/30 | `python3 -B -m unittest discover -s tests/infrastructure -p 'test*.py' -v` |
 | G6 image/channel contract (offline) | 4/4 | `python3 -B -m unittest discover -s tests/g6 -p 'test*.py' -v` |
-| Fixed workflow/runner boundary | 50/50 | `python3 -B -m unittest discover -s tests/g5 -p 'test*.py' -v` |
-| Recovery/release lifecycle | 32/32 | `python3 -B -m unittest discover -s tests/g7 -p 'test*.py' -v` |
+| Fixed workflow/runner boundary | 53/53 | `python3 -B -m unittest discover -s tests/g5 -p 'test*.py' -v` |
+| Recovery/release lifecycle | 34/34 | `python3 -B -m unittest discover -s tests/g7 -p 'test*.py' -v` |
 | Scoring/helper semantics | 6/6 | `VCOPS_HELPER=workspaces/vc-chief/vc/bin/vcops.py python3 -B -m unittest discover -s tests/g4 -p 'test_semantics.py' -v` |
-| Document security | 15/15 | `VCOPS_HELPER=workspaces/vc-chief/vc/bin/vcops.py python3 -B -m unittest discover -s tests/g4 -p 'test_document_security.py' -v` |
-| Data/helper/Postgres hard gate | **90/90** | `python3 -B scripts/run_g4.py` |
+| Document security | 18/18 | `VCOPS_HELPER=workspaces/vc-chief/vc/bin/vcops.py python3 -B -m unittest discover -s tests/g4 -p 'test_document_security.py' -v` |
+| Data/helper/Postgres hard gate | **94/94** | `python3 -B scripts/run_g4.py` |
 | Real deployment gate | PASS | `python3 -B scripts/run_g8_deployment.py` (or `verify_offline.py --with-deployment`) |
 
-The aggregate deterministic offline suites pass 274 tests with no failures or
-skips (25/25 offline checks). The per-suite rows above sum to that total. The G4 runner created a disposable PostgreSQL 17
+The aggregate deterministic offline suites pass 315 tests with no failures or
+skips (30/30 offline checks). The per-suite rows above sum to that total. The G4 runner created a disposable PostgreSQL 17
 cluster, applied and registered migrations **001–018** twice, and — in addition
 to the prior trusted-context/preference/idempotency/approval/document coverage —
 now executes the **real `.lobster` workflow files end-to-end** against the live
@@ -128,9 +129,9 @@ base, and tore the deployment down.
 The local image ID is host-specific: `bootstrap.sh` rebuilds
 `openclaw-lead-research:3.0.0` from this tree and `record_images.py` records
 the resulting digest in `deployment-lock.json` at install time. The G6 gate was
-re-run on 2026-08-11 against an image rebuilt from this tree with `docker build
+re-run on 2026-08-16 against an image rebuilt from this tree with `docker build
 --no-cache --pull` (8/8), and the retrieval-scale gate was re-run on 2026-08-06,
-2026-08-07, 2026-08-08, 2026-08-09, 2026-08-10 and 2026-08-11 (160/160 cases
+2026-08-07, 2026-08-08, 2026-08-09, 2026-08-10, 2026-08-11 and 2026-08-16 (160/160 cases
 every time).
 
 **The retrieval p95 is the one figure in this document that is not a stable

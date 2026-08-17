@@ -125,7 +125,7 @@ def valid_packets() -> dict[str, dict]:
         {
             "lead_title": "ExampleCo",
             "origin_group": "inbound",
-            "origin_subtype": "founder_direct",
+            "origin_subtype": "direct_contact",
             "origin_confidence": 0.9,
             "candidate_action": "new_candidate",
             "duplicate_risk": "low",
@@ -223,7 +223,7 @@ def valid_packets() -> dict[str, dict]:
     inbound = base_packet(
         "inbound-intake-analyst",
         {
-            "origin": {"group": "inbound", "subtype": "referral", "confidence": 0.9},
+            "origin": {"group": "inbound", "subtype": "network_referral", "confidence": 0.9},
             "intake_channel": "email_forward",
             "received_at": "2026-07-20T10:00:00Z",
             "source_ids": ["message:123"],

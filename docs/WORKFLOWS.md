@@ -60,7 +60,7 @@ marked optional.
 | --- | --- | --- |
 | `runtime-preflight` | Prove the installed helper/database boundary | `idempotency_key` |
 | `outbound-scout` | Claim, resolve, and persist a candidate already selected by research | `idempotency_key`, `company_name`, `company_domain`, `lead_title` |
-| `inbound-intake` | Authenticated host-operator `/inbox` preview, claim, lead creation, and extraction | `idempotency_key`, `lead_title`, `company_name`, `company_domain`, `document_path`, `channel_provider`, `channel_account_id`, `channel_event_id` |
+| `inbound-intake` | `/inbox` document preview, claim, lead creation, and extraction (the file must already be on the host-written read-only `/inbox` mount) | `idempotency_key`, `lead_title`, `company_name`, `company_domain`, `document_path`, `channel_provider`, `channel_account_id`, `channel_event_id` |
 | `inbound-text-intake` | Create a lead from a text-only inbound signal (no document) and bind its origin subtype | `idempotency_key`, `lead_title`, `company_name`, `company_domain`, `origin_subtype` |
 | `document-ingest` | Verify a current channel attachment capability, claim exact bytes, snapshot, and extract | `idempotency_key`, `document_path`, `trusted_context` |
 | `document-lead-intake` | Bind a verified channel extraction to an exact principal, company, and lead | `idempotency_key`, `trusted_context`, `extraction_id`, `lead_title`, `company_name`, `company_domain` |
@@ -156,13 +156,23 @@ authoritative operator-facing list.
 
 ### Manual versus channel documents
 
-`inbound-intake` is the optional authenticated host-operator lane. Its path
+`inbound-intake` is the optional `/inbox` lane: what makes it the host lane is
+the source, since the file has to be placed on the host-written read-only
+`/inbox` mount that no channel can reach. The selector itself is started
+through `/workspaces/vc-chief/vc/bin/agent/vcrun`, so the data-steward lane can run it on a file that is
+already there; the extraction it writes is `internal`, and the confidentiality
+ceiling described below governs reading it back. Its path
 must be an absolute normalized child of `/inbox` and `channel_provider` must be
 `manual`. Channel attachments cannot be tunneled through that workflow.
 
 To use it: drop the file into the package's `./inbox` directory on the host,
 which the containers mount read-only at `/inbox`, then run the workflow with the
-container path. `channel_account_id` and `channel_event_id` are free-form
+container path. The containers read `/inbox` as uid 1000; a copied file left
+with no read bit for that uid — `scp`/`rsync` preserving a 0600 source, or a
+0640 file owned by another account — fails at the `document_preview` step with
+`document_parse_failed: document parsing failed: PermissionError` and exit 2.
+Run `chmod a+r <file>` after copying; `bootstrap.sh` normalizes the `inbox`
+directory, not its contents. `channel_account_id` and `channel_event_id` are free-form
 provenance labels you choose for a manual submission — they are recorded with
 the lead, and `channel_event_id` must be unique per submission, as must
 `idempotency_key`:
@@ -276,9 +286,16 @@ reference them:
 - **`workflow_requests`** — the outer claim for `inbound-intake`,
   `inbound-text-intake`, `outbound-scout` (`workflow-request-claim`),
   `document-ingest` (`document-request-claim`) and `document-lead-intake`
-  (`document-association-request-claim`). It is committed as the first
-  step, ahead of any company or lead row, and stores a hash of the whole
-  request payload including the document digest and channel principal.
+  (`document-association-request-claim`). It is committed ahead of any company,
+  lead, workflow-run, or extraction mutation, and stores a hash of what its
+  claim step records — the identity arguments that step forwards, plus the
+  inspected document SHA and the verified channel principal on the workflows
+  that carry them. It is not the binding for the whole argument set:
+  `inbound-text-intake` forwards `origin_subtype` to `create-lead` and not to
+  the claim, so that argument is bound after the claim instead — `create-lead`
+  hashes it into `leads.request_hash` and refuses a differing replay with
+  `idempotency_payload_mismatch`, and `vcrun` covers it in the `input_digest` it
+  computes over the validated, normalized argument payload.
 - **`workflow_runs`** — the claim for every other workflow, committed by
   `workflow-start` ahead of that workflow's first domain mutation. It stores
   `input_hash` (lineage and metadata) and `input_digest`, the sha256 of the

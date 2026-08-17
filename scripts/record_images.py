@@ -370,10 +370,10 @@ def validate_live(path: Path, *, structure_only: bool = False) -> dict[str, Any]
 
 STALE_DEPLOYMENT_MESSAGE = (
     "the recorded deployment was built from different image-baked artifacts than this package "
-    "tree now contains. Dockerfile.openclaw bakes workspaces/, "
-    "runtime-extensions/vc-trusted-context/, config/exec-approvals.json, runtime-packages/ and "
-    "requirements.lock into the derived image read-only, and nothing bind-mounts them, so the "
-    "running gateway is still serving the previous version of whichever of those you changed. "
+    "tree now contains. This compares Dockerfile.openclaw itself together with what it bakes "
+    "into the derived image read-only — workspaces/, runtime-extensions/vc-trusted-context/, "
+    "config/exec-approvals.json, runtime-packages/ and requirements.lock — and nothing "
+    "bind-mounts those, so the running gateway was built before your change to one of them. "
     "Re-run ./scripts/bootstrap.sh: it rebuilds the image, recreates the gateway, and re-records "
     "this lock. One exception a rebuild does not resolve: config/exec-approvals.json is seeded "
     "into the state volume only when absent and is not customizable — see CUSTOMIZATION.md, "

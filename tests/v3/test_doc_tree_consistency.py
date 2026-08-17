@@ -19,6 +19,8 @@ import sys
 import unittest
 from pathlib import Path
 
+import yaml
+
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 
@@ -95,6 +97,87 @@ class RotationDocConsistencyTests(unittest.TestCase):
             "description in docs/OPERATIONS.md never names them — an operator "
             "running the script directly would not know it runs them",
         )
+
+
+class SecretRotationRecreationTests(unittest.TestCase):
+    def test_rotation_sequence_recreates_each_gateway_token_carrier(self):
+        """The documented sequence omitted the profile-gated CLI container.
+
+        `OPENCLAW_GATEWAY_TOKEN` is baked into a container's environment at
+        creation, so rotating it reaches a service only by recreating that
+        service. `docker compose up -d --force-recreate` with no service
+        argument covers the default-profile services and skips anything behind
+        a `profiles:` key, which has to be recreated by name with its
+        `--profile` flag. Derive the carrier set from docker-compose.yml and
+        classify each carrier by whether the block covers it the blanket way
+        or the by-name way, so a service that gains the token — or gains a
+        profile — fails here instead of quietly keeping its old secret.
+        """
+        compose = yaml.safe_load((ROOT / "docker-compose.yml").read_text(encoding="utf-8"))
+        carriers = {
+            name: tuple(service.get("profiles") or ())
+            for name, service in compose["services"].items()
+            if "OPENCLAW_GATEWAY_TOKEN" in (service.get("environment") or {})
+        }
+        self.assertIn(
+            "openclaw-gateway", carriers,
+            "the gateway-token carrier derivation has rotted: the gateway itself "
+            "no longer reads OPENCLAW_GATEWAY_TOKEN from its compose environment",
+        )
+
+        operations = (ROOT / "docs/OPERATIONS.md").read_text(encoding="utf-8")
+        anchor = "The sequence for the non-database secrets is:"
+        self.assertIn(anchor, operations, "the secret-rotation sequence has rotted")
+        fenced = operations.split(anchor, 1)[1]
+        self.assertTrue(fenced.lstrip().startswith("```sh"), "the sequence is no longer a sh block")
+        block = fenced.split("```sh", 1)[1].split("```", 1)[0]
+        # Join the backslash continuations so each entry is one command.
+        commands = [
+            " ".join(command.split())
+            for command in block.replace("\\\n", " ").splitlines()
+            if command.strip()
+        ]
+        # A recreate command with no positional service argument is the one
+        # that reaches every default-profile service.
+        blanket = [
+            command
+            for command in commands
+            if " up " in f" {command} "
+            and "--force-recreate" in command
+            and "--profile" not in command
+            and not [
+                token
+                for token in command.split()[command.split().index("up") + 1:]
+                if not token.startswith("-")
+            ]
+        ]
+
+        for name, profiles in sorted(carriers.items()):
+            with self.subTest(service=name):
+                if not profiles:
+                    self.assertTrue(
+                        blanket,
+                        f"{name} carries OPENCLAW_GATEWAY_TOKEN and sits in the default "
+                        "profile, but the documented sequence has no `up ... "
+                        "--force-recreate` command without a service argument, so nothing "
+                        "in it recreates the service and the rotated token never reaches it",
+                    )
+                    continue
+                named = [
+                    command
+                    for command in commands
+                    if "--force-recreate" in command
+                    and name in command.split()
+                    and all(f"--profile {profile}" in command for profile in profiles)
+                ]
+                self.assertTrue(
+                    named,
+                    f"{name} carries OPENCLAW_GATEWAY_TOKEN and sits behind "
+                    f"profiles {list(profiles)}, so `up -d --force-recreate` skips it. "
+                    "The documented rotation sequence never recreates it by name with "
+                    f"--profile {profiles[0]}, so the container keeps the pre-rotation "
+                    "token it was created with, readable through `docker inspect`.",
+                )
 
 
 class PolicyVersionPinTests(unittest.TestCase):
@@ -596,22 +679,40 @@ class DocumentQuarantineLaneTests(unittest.TestCase):
         about `vc-quarantine` and three were wrong, because `quarantine_document`
         has branches that deliberately write nothing: an oversized document (the
         same `MAX_DOCUMENT_BYTES` that raised `document_too_large` also caps what
-        quarantine will copy) and any input it cannot safely read. The documents
-        now tell the operator to read `details.quarantine.materialized` instead
-        of assuming. Pin the branches that make that field meaningful — the
-        world here is two return statements, which is why this check can be
-        exact where a prose universal could not.
+        quarantine will copy), any input it cannot safely read, and a copy the
+        filesystem refuses (`quarantine_write_failed` — the caller-controlled
+        suffix can overflow the 255-byte filename limit). The documents now tell
+        the operator to read `details.quarantine.materialized` instead of
+        assuming. Pin the branches that make that field meaningful — the world
+        here is the function's own `"materialized": False` returns, which is why
+        this check can be exact where a prose universal could not.
+
+        The reverse reading was wrong too: `quarantine_write_failed` used to be
+        documented as "no copy". Quarantine names are content-addressed and the
+        marker-failure branch removes the copy only when this call created it,
+        so a repeat rejection of bytes an earlier rejection recorded returns
+        `materialized: false` over a copy and marker that are still on the
+        volume — `test_a_failed_marker_write_leaves_exactly_what_it_found`
+        executes that. This test asserts the two documents carry the retention
+        wording next to their first mention of the reason: the substrings
+        "published nothing new" and "an earlier rejection" must both appear
+        within 800 characters after it, in whitespace-normalized text.
         """
         vcops = (ROOT / "workspaces/vc-chief/vc/bin/vcops.py").read_text(encoding="utf-8")
         start = vcops.index("def quarantine_document(")
         body = vcops[start:vcops.index("\ndef ", start + 1)]
         reasons = set(re.findall(r'"materialized":\s*False,\s*"reason":\s*"(\w+)"', body))
         self.assertEqual(
-            reasons, {"input_path_not_safe_to_copy", "exceeds_quarantine_byte_limit"},
+            reasons,
+            {
+                "input_path_not_safe_to_copy",
+                "exceeds_quarantine_byte_limit",
+                "quarantine_write_failed",
+            },
             "quarantine_document's non-materializing branches changed: "
-            f"{sorted(reasons)}. docs/RUNBOOK.md §9 'Malicious document' names "
-            "both to the operator as the reasons a rejected document may leave "
-            "no copy; update it with this change.",
+            f"{sorted(reasons)}. docs/RUNBOOK.md §9 'Malicious document' "
+            "describes each of these to the operator as a reason a rejected "
+            "document may leave no copy; update it with this change.",
         )
         runbook = (ROOT / "docs/RUNBOOK.md").read_text(encoding="utf-8")
         self.assertIn(
@@ -619,6 +720,98 @@ class DocumentQuarantineLaneTests(unittest.TestCase):
             "docs/RUNBOOK.md §9 no longer points the operator at the field that "
             "actually says whether a quarantine copy exists",
         )
+        for name in ("docs/RUNBOOK.md", "docs/OPERATIONS.md"):
+            with self.subTest(document=name):
+                text = " ".join((ROOT / name).read_text(encoding="utf-8").split())
+                self.assertIn(
+                    "quarantine_write_failed", text,
+                    f"{name} no longer names the quarantine_write_failed reason",
+                )
+                window = text[text.index("quarantine_write_failed"):][:800]
+                for phrase in ("published nothing new", "an earlier rejection"):
+                    self.assertIn(
+                        phrase, window,
+                        f"{name} describes quarantine_write_failed without saying "
+                        f"(missing: {phrase!r}) that it only means this rejection "
+                        "published nothing new, and that a copy and marker from an "
+                        "earlier rejection of the same content-addressed bytes are "
+                        "kept. The marker-failure branch of quarantine_document "
+                        "deletes the copy only when that call created it, so this "
+                        "wording is what stops an operator reading "
+                        "materialized: false as an empty vc-quarantine volume.",
+                    )
+
+    def test_a_failed_marker_write_leaves_exactly_what_it_found(self) -> None:
+        """Execute the write-failure branch instead of reading it.
+
+        `materialized: false` promises the volume holds nothing from this
+        rejection, so the branch removes the copy it wrote. Quarantine names are
+        content-addressed, so on a repeat rejection that copy belongs to an
+        EARLIER rejection that also published a marker — removing it would
+        strand that marker and destroy the bytes RUNBOOK §9 says are retained.
+        Both halves are asserted against the real filesystem: a source-text
+        assertion cannot see either, which a mutation run proved.
+        """
+        import os
+        import tempfile
+        from unittest import mock
+
+        with tempfile.TemporaryDirectory(prefix="v3-quarantine-branch-") as raw:
+            root = Path(raw)
+            inbox = root / "inbox"
+            quarantine = root / "quarantine"
+            inbox.mkdir()
+            quarantine.mkdir()
+            source = inbox / "rejected.bin"
+            source.write_bytes(b"hostile payload")
+
+            environment = {
+                **os.environ,
+                "VCOPS_INBOX_ROOT": str(inbox),
+                "VCOPS_QUARANTINE_ROOT": str(quarantine),
+            }
+            with mock.patch.dict(os.environ, environment, clear=True):
+                spec = importlib.util.spec_from_file_location(
+                    "v3_quarantine_vcops", ROOT / "workspaces/vc-chief/vc/bin/vcops.py"
+                )
+                assert spec is not None and spec.loader is not None
+                vcops = importlib.util.module_from_spec(spec)
+                sys.modules[spec.name] = vcops
+                spec.loader.exec_module(vcops)
+
+            rejection = vcops.VcopsError("unsupported_format", "unsupported", exit_code=2)
+            real_write = vcops.write_content_addressed
+
+            def marker_write_fails(target_root, filename, payload):
+                if filename.endswith(".json"):
+                    raise OSError(28, "No space left on device")
+                return real_write(target_root, filename, payload)
+
+            # First rejection, marker write fails: nothing of this call survives.
+            with mock.patch.object(vcops, "write_content_addressed", marker_write_fails):
+                first = vcops.quarantine_document(source, rejection)
+            self.assertEqual(
+                {"materialized": False, "reason": "quarantine_write_failed"}, first
+            )
+            self.assertEqual(
+                [], sorted(p.name for p in quarantine.iterdir()),
+                "a failed marker write left an unmarked copy behind while reporting "
+                "materialized: false",
+            )
+
+            # A rejection that fully succeeds, then a repeat whose marker fails:
+            # the earlier recorded copy and marker must both survive.
+            recorded = vcops.quarantine_document(source, rejection)
+            self.assertTrue(recorded["materialized"], recorded)
+            survivors = sorted(p.name for p in quarantine.iterdir())
+            with mock.patch.object(vcops, "write_content_addressed", marker_write_fails):
+                repeat = vcops.quarantine_document(source, rejection)
+            self.assertFalse(repeat["materialized"], repeat)
+            self.assertEqual(
+                survivors, sorted(p.name for p in quarantine.iterdir()),
+                "a later failed rejection deleted the copy an earlier recorded "
+                "rejection had published, stranding its metadata marker",
+            )
 
     def test_shipped_intake_workflows_preview_before_extract(self):
         workflows = ROOT / "workspaces/vc-chief/vc/workflows"
@@ -631,6 +824,116 @@ class DocumentQuarantineLaneTests(unittest.TestCase):
                     "being the first inspection point, the quarantine wording in "
                     "RUNBOOK §9 and OPERATIONS.md must be revisited.",
                 )
+
+
+class LifecycleLockOwnerFileTests(unittest.TestCase):
+    """The stale-lock procedure rests on how the lock is acquired, so read it.
+
+    docs/OPERATIONS.md tells an operator to identify a crash-left lifecycle
+    lock from its `owner` file, and now also covers the state where that file
+    is absent. The directory is created by `mkdir` and named by a separate
+    write a few lines later, with the `*_LOCK_OWNED=1` line the exit trap
+    consults sitting between them — so a signal before that flag is set leaves
+    the lock on disk, unnamed, and the trap declines to remove it. The
+    prescribed `cat`/`ps` identification then dead-ends, which is why the
+    document now gives a fallback.
+
+    Two claims that sentence makes are enumerated from `scripts/*.sh` here
+    rather than trusted: which scripts take that lock, and that each of their
+    acquisitions writes the `owner` line after the `mkdir` and not before it.
+    """
+
+    LOCK_PATH = "/tmp/openclaw-lead-research-v3-lifecycle.lock"
+
+    def _acquisitions(self) -> list[tuple[str, str, str, int, int]]:
+        """(script, variable, script text, mkdir start, mkdir end) per `mkdir`."""
+        found: list[tuple[str, str, str, int, int]] = []
+        for script in sorted((ROOT / "scripts").glob("*.sh")):
+            text = script.read_text(encoding="utf-8")
+            for variable in re.findall(
+                rf'^([A-Z_]+)="{re.escape(self.LOCK_PATH)}"$', text, re.MULTILINE
+            ):
+                for match in re.finditer(rf'mkdir "\${variable}"', text):
+                    found.append((script.name, variable, text, match.start(), match.end()))
+        return found
+
+    def test_the_scripts_taking_the_lifecycle_lock_are_the_five_documented(self):
+        scripts = {name for name, _, _, _, _ in self._acquisitions()}
+        self.assertEqual(
+            scripts,
+            {"backup.sh", "bootstrap.sh", "restore.sh", "rotate_runtime_role.sh", "update.sh"},
+            f"the shell scripts that mkdir {self.LOCK_PATH} changed: "
+            f"{sorted(scripts)}. docs/OPERATIONS.md opens its lifecycle-lock "
+            "paragraph by naming them — 'Backup, restore, update, bootstrap, and "
+            "direct role rotation share ...' — and the stale-lock procedure that "
+            "follows is written for exactly those. Update the sentence with this "
+            "change rather than relaxing this test.",
+        )
+
+    def test_every_lifecycle_lock_acquisition_names_its_holder_after_the_mkdir(self):
+        acquisitions = self._acquisitions()
+        self.assertTrue(
+            acquisitions,
+            f"no shell script under scripts/ was found creating {self.LOCK_PATH}; "
+            "this test can no longer see the acquisitions it is meant to check",
+        )
+        for name, variable, text, start, end in acquisitions:
+            with self.subTest(script=name):
+                owner_write = f'>"${variable}/owner"'
+                self.assertIn(
+                    owner_write, text[end:end + 400],
+                    f"scripts/{name} creates the lifecycle lock but does not write "
+                    f"{owner_write} within 400 characters after the mkdir. "
+                    "docs/OPERATIONS.md tells the operator that a crash-left lock "
+                    "names its holder in `owner`, and reads a missing `owner` file "
+                    "as an acquisition interrupted between those two steps; an "
+                    "acquisition that never writes one breaks both readings.",
+                )
+                self.assertNotIn(
+                    owner_write, text[:start],
+                    f"scripts/{name} writes {owner_write} before it creates the "
+                    "lock directory. docs/OPERATIONS.md explains a missing `owner` "
+                    "file by that write coming second; with this order the file "
+                    "can no longer be missing for the documented reason.",
+                )
+
+
+class CsvFieldLimitDocPinTests(unittest.TestCase):
+    """The CSV field ceiling document_intake.md quotes had no source to check.
+
+    That number is the `csv` module's own `field_size_limit()` default, not one
+    of the compiled-in `bin/vcops.py` constants the document's other extractor
+    bounds point at, so a reader had nothing to grep and prose was its only
+    home. Bind it to the interpreter instead.
+    """
+
+    def test_document_intake_csv_field_ceiling_matches_the_interpreter(self):
+        import csv
+
+        # The document attributes its figure to the image's interpreter; this
+        # test reads `field_size_limit()` from whichever interpreter runs the
+        # suite. Both were measured at 131072 for this release (dev venv 3.14.5,
+        # and 3.11.2 in openclaw-lead-research:3.0.0 via `docker run --rm
+        # --entrypoint python3`), so the substitution holds today — but only the
+        # running one is checked here: were the image's default ever to diverge
+        # from the dev interpreter's, this test would stay green while the
+        # document's figure was wrong for the image it names.
+        text = (ROOT / "workspaces/vc-chief/vc/document_intake.md").read_text(encoding="utf-8")
+        match = re.search(r"field_size_limit\(\)`, measured at ([0-9]+) characters", text)
+        if match is None:
+            self.fail(
+                "document_intake.md no longer says 'measured at N characters' "
+                "after its field_size_limit() mention, so the CSV field ceiling "
+                "it quotes is bound to nothing again"
+            )
+        self.assertEqual(
+            int(match.group(1)),
+            csv.field_size_limit(),
+            f"document_intake.md states a CSV field ceiling of {match.group(1)} "
+            f"characters; csv.field_size_limit() under {sys.version.split()[0]} "
+            f"is {csv.field_size_limit()}. Re-measure on the image interpreter "
+            "the document names and update the sentence.",
+        )
 
 
 class HostUtilityEnumerationTests(unittest.TestCase):
@@ -695,7 +998,7 @@ class HostUtilityEnumerationTests(unittest.TestCase):
 
 
 class DocumentedInvocationTests(unittest.TestCase):
-    """Every command a document tells the operator to run must be runnable.
+    """Commands the documents tell the operator to run must be runnable.
 
     Two defect classes converge here, and both have been observed. The
     fifteenth pass's own fix wave put a `git grep` recipe into RUNBOOK §8.1
@@ -705,13 +1008,33 @@ class DocumentedInvocationTests(unittest.TestCase):
     five reviewers had to be paid to find it.
 
     A documented invocation is checkable without executing anything dangerous:
-    the script must exist, and every long flag must appear in its argument
-    parser. That is the whole world for package scripts, so it is exact.
+    the script must exist, and a long flag read off the command line must
+    appear, quoted, in that script's source. What the scan reaches is bounded
+    by construction rather than by accident, in the idiom
+    `HostUtilityEnumerationTests` above uses:
+
+    - It reads fenced `sh` blocks in tracked documents and matches names
+      written as `scripts/<name>.py` or `scripts/<name>.sh`, with or without a
+      leading `./`.
+    - Flags are taken from the run of dash-prefixed tokens adjacent to the
+      script name, so a flag written after a positional argument is not read:
+      README writes `./scripts/restore.sh <directory>
+      --confirm-destructive-restore` that way. Reading the rest of the line
+      instead would attribute a later pipeline stage's flags to the script.
+    - The quoted-substring oracle fits argparse, where `add_argument("--x")`
+      quotes the flag it defines. It fits shell scripts poorly in both
+      directions: a shell script need not quote the flag it parses, and
+      `schedule_jobs.sh` quotes `--no-deliver`, which it passes through to the
+      OpenClaw CLI rather than parsing itself. The `.sh` half of this check
+      earns its place for script existence, not for flag validity.
     """
 
     # Absolute in-image paths (e.g. /app/skills/skill-creator/scripts/...) are
     # deliberately not package scripts; RUNBOOK §8.1 says so where it uses one.
-    INVOCATION = re.compile(r"(?<![\w/])scripts/([A-Za-z0-9_]+\.py)((?:\s+-{1,2}[A-Za-z0-9][\w-]*(?:[= ][^\s`|>]+)?)*)")
+    # The `./` prefix is consumed by the pattern rather than blocked by the
+    # lookbehind, so `./scripts/x.py` is in scope while `.../skills/.../scripts/`
+    # stays out.
+    INVOCATION = re.compile(r"(?<![\w/])(?:\./)?scripts/([A-Za-z0-9_]+\.(?:py|sh))((?:\s+-{1,2}[A-Za-z0-9][\w-]*(?:[= ][^\s`|>]+)?)*)")
     LONG_FLAG = re.compile(r"(?<!\w)--[A-Za-z][\w-]*")
 
     def documented_invocations(self):
@@ -731,8 +1054,14 @@ class DocumentedInvocationTests(unittest.TestCase):
 
     def test_every_documented_script_exists(self):
         found = self.documented_invocations()
+        # 14 distinct scripts are reached today, .py and .sh together. The floor
+        # is set just under that because the pattern shrinking silently is the
+        # defect this guard exists for: the pre-fix pattern admitted `.py` names
+        # only and saw 9, while its own docstring called the scan exact.
         self.assertGreaterEqual(
-            len(found), 5, "the documented-invocation scan has rotted: no sh block matched"
+            len(found), 12,
+            f"the documented-invocation scan reaches only {len(found)} scripts; "
+            "it has stopped matching a form the documents use",
         )
         missing = {
             script: sorted(entry["docs"])
@@ -744,7 +1073,7 @@ class DocumentedInvocationTests(unittest.TestCase):
             f"documents tell the operator to run scripts that do not ship: {missing}",
         )
 
-    def test_every_documented_flag_exists_in_its_parser(self):
+    def test_every_documented_flag_appears_in_its_script(self):
         offenders = {}
         for script, entry in self.documented_invocations().items():
             source_path = ROOT / "scripts" / script

@@ -1261,8 +1261,11 @@ For long prompts, use the pinned CLI's `--message-file` option with a reviewed
 UTF-8 file. The path is resolved **inside the container**, so a host path will
 not exist there: place the file where the CLI already mounts something — for
 example under `./inbox`, which is mounted read-only at `/inbox` — and pass that
-container path. Do not place credentials, approval tokens, or unnecessary personal
-data in prompts.
+container path. The container reads that path as uid `1000` (`node`), so
+`chmod a+r` the file after placing it: copying a `0600` file leaves it `0600`
+under the default `umask 022`, and the CLI then aborts with `Unable to read
+message file /inbox/<name>: EACCES: permission denied`. Do not place
+credentials, approval tokens, or unnecessary personal data in prompts.
 
 ### Private Control UI
 
@@ -1544,6 +1547,7 @@ Useful checks:
 ```sh
 docker compose --env-file .env ps
 docker compose --env-file .env logs --tail=200 openclaw-gateway postgres
+# Use the OPENCLAW_GATEWAY_PORT from .env (18789 is the shipped default).
 curl -fsS -o /dev/null -w '%{http_code}\n' http://127.0.0.1:18789/readyz
 ```
 

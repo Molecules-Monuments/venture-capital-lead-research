@@ -40,11 +40,17 @@ def normalized_name(raw: str) -> str:
             continue
         if part == "..":
             raise ArchiveError(f"archive path escapes its root: {raw!r}")
-        if len(part.encode("utf-8")) > MAX_SEGMENT_BYTES:
+        # tarfile decodes member names with errors="surrogateescape", so a name
+        # byte that is not valid UTF-8 arrives as a lone surrogate that plain
+        # .encode("utf-8") refuses. Operator files under inbox/ carry whatever
+        # bytes the filesystem gave them, so measure the length the same way
+        # tarfile produced the string. For a name that is already valid UTF-8
+        # this encodes to identical bytes.
+        if len(part.encode("utf-8", "surrogateescape")) > MAX_SEGMENT_BYTES:
             raise ArchiveError(f"archive path segment is too long: {raw!r}")
         parts.append(part)
     rendered = "/".join(parts)
-    if len(rendered.encode("utf-8")) > MAX_PATH_BYTES:
+    if len(rendered.encode("utf-8", "surrogateescape")) > MAX_PATH_BYTES:
         raise ArchiveError(f"archive path is too long: {raw!r}")
     return rendered
 
@@ -193,9 +199,13 @@ def main() -> int:
                     )
                 extract_members(archive, members, args.destination)
         if args.list_file is not None:
-            with args.list_file.open("x", encoding="utf-8") as output:
+            # Same surrogateescape round-trip as normalized_name: without it a
+            # member name carrying non-UTF-8 bytes validates in backup mode and
+            # then fails here in restore mode, i.e. a recovery point that cannot
+            # be restored. restore.sh reads this list byte-faithfully.
+            with args.list_file.open("x", encoding="utf-8", errors="surrogateescape") as output:
                 output.write("".join(f"{name}\n" for _, name in members))
-    except (ArchiveError, OSError, tarfile.TarError) as exc:
+    except (ArchiveError, OSError, tarfile.TarError, UnicodeError, EOFError) as exc:
         print(json.dumps({"result": "FAIL", "error": str(exc)}, sort_keys=True), file=sys.stderr)
         return 1
     print(

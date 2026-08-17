@@ -231,7 +231,7 @@ if [ -e "$STAGING" ] || [ -L "$STAGING" ]; then
 fi
 mkdir -m 0700 "$STAGING"
 
-running_services="$(compose --profile tools ps --status running --services)"
+running_services="$(compose --profile tools ps --all --status running --services)"
 if printf '%s\n' "$running_services" | grep -Fxq openclaw-gateway; then
   GATEWAY_WAS_RUNNING=1
 fi
@@ -239,8 +239,29 @@ fi
 # Postgres remains available on its private local socket, but every state writer
 # is stopped. This makes the SQLite/Task Flow/Lobster archive and the Postgres
 # dump one named, quiesced recovery point.
-compose --profile tools stop openclaw-cli openclaw-gateway >/dev/null
+# Arm before the stop, not after: a signal delivered during the stop is handled
+# between commands, so a flag set on the next line stays 0 while the gateway is
+# already down — cleanup then skips its restore branch and exits silently,
+# leaving production stopped. restore.sh and update.sh arm their mutation flags
+# ahead of the command they guard for the same reason. Arming early is safe: the
+# restore branch is `compose up -d --wait --no-deps openclaw-gateway || true`,
+# a no-op on a gateway the stop never reached.
 QUIESCED=1
+compose --profile tools stop openclaw-cli openclaw-gateway >/dev/null
+# `compose stop <service>` does not reach a container created by
+# `docker compose run`, which is how every CLI turn actually executes. Such a
+# one-off keeps writing the state and quarantine volumes, so re-read the running
+# set and refuse rather than attest a quiesce that did not happen. postgres is
+# deliberately still running and is not checked.
+still_running="$(compose --profile tools ps --all --status running --services)"
+for service in openclaw-cli openclaw-gateway; do
+  if printf '%s\n' "$still_running" | grep -Fxq "$service"; then
+    echo "$service is still running after the quiesce stop; a 'docker compose run'" >&2
+    echo "one-off does not stop with its service. Let the CLI turn finish, then" >&2
+    echo "re-run this backup." >&2
+    exit 1
+  fi
+done
 compose exec -T postgres pg_isready --username openclaw_owner --dbname openclaw >/dev/null
 
 compose exec -T postgres \

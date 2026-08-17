@@ -71,18 +71,27 @@ RUN npm ci --prefix /opt/openclaw-runtime \
      done
 
 # Exact Debian point-release pins are a deliberate part of the reviewed release
-# contract (a byte-reproducible runtime). The bookworm main pool keeps only the
+# contract: these ten package versions, plus the rest of the apt closure they
+# pull in, reproduced by the snapshot timestamp below rather than by pins of
+# their own — in the reviewed build, 38 of the 45 packages this step adds to
+# the base image carry no version pin. The bookworm main pool keeps only the
 # current revision of each package, so when Debian ships the next point release
 # these exact pins are eventually superseded and drop out of deb.debian.org.
 # RECOVERY (documented in docs/RUNBOOK.md "Rebuilding after a Debian point
-# release"): point apt at a snapshot dated at or after the last pin change
-# below (currently 2026-08-03), and add BOTH archives — the poppler pair is a
-# bookworm-security revision, which never reaches the bookworm main suite:
-#   SNAPSHOT=20260805T000000Z
+# release"): point apt at a snapshot dated at or after the date the reviewed
+# image was built (docs/V3_RELEASE_EVIDENCE.md records 2026-08-16), delete the
+# base image's own deb.debian.org source list — left in place it sits at the
+# same priority 500 and apt takes the higher version from it, so the snapshot
+# decides nothing — and add BOTH snapshot archives, since the poppler pair is a
+# bookworm-security revision which never reaches the bookworm main suite:
+#   SNAPSHOT=20260816T000000Z
+#   rm -f /etc/apt/sources.list.d/debian.sources
 #   { printf 'deb [check-valid-until=no] https://snapshot.debian.org/archive/debian/%s/ bookworm main\n' "$SNAPSHOT"
 #     printf 'deb [check-valid-until=no] https://snapshot.debian.org/archive/debian-security/%s/ bookworm-security main\n' "$SNAPSHOT"
 #   } > /etc/apt/sources.list.d/snapshot.list
-# and rebuild; or bump the pins here and re-run every release gate. The wrapper
+# and rebuild; or bump the pins here and re-run every release gate.
+# tests/v3/test_snapshot_recipe_currency.py holds the SNAPSHOT literal above to
+# the one in docs/RUNBOOK.md and to that recorded rebuild date. The wrapper
 # below turns the otherwise-opaque "E: Version '<version>' for '<package>' was not found" apt error into
 # that actionable message instead of a bare non-zero exit.
 # libpoppler126 is pinned alongside poppler-utils deliberately. poppler-utils
@@ -149,5 +158,55 @@ RUN chmod -R a+rX,a-w /workspaces \
 ENV PATH="/opt/vcops-venv/bin:${PATH}" \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
+
+# Without this the derived image reports the base image's identity unchanged:
+# title "OpenClaw", version 2026.7.1, licenses MIT, source/revision/url pointing
+# at the upstream repository. That is wrong for an artifact that is version
+# 3.0.0, is not an upstream build, and adds LGPL-3.0-only psycopg and GPL
+# poppler-utils. Nothing in this package reads .Config.Labels, so this is
+# provenance for whoever inspects the built image, not an input to any gate.
+# licenses is NOASSERTION deliberately: THIRD_PARTY_NOTICES.md declines to state
+# a closed licence inventory for the built image, and this label must not state
+# one either. The four upstream-pointing labels are emptied rather than
+# re-aimed — this package has no published source, revision, url or docs site.
+#
+# What this block does NOT reset is as much a part of the provenance story, so
+# read the list as partial by design rather than as everything the base sets.
+# Measured against the base digest pinned at the top of this file, the base
+# carries eleven org.opencontainers.image.* labels; the eight below replace
+# eight of them, and LABEL touches nothing it does not name, so these three
+# arrive inherited:
+#   * .base.name / .base.digest — docker.io/library/node:24-bookworm-slim and
+#     its digest. These name the base of the PINNED OPENCLAW IMAGE, not the
+#     image this one is built FROM: the FROM above is
+#     ghcr.io/openclaw/openclaw:2026.7.1 at the digest pinned in OPENCLAW_IMAGE,
+#     and these labels arrive from it unchanged. They are left that way on
+#     purpose — THIRD_PARTY_NOTICES.md describes them with exactly that
+#     attribution ("the base the pinned OpenClaw image is built on ... recorded
+#     in that image's own labels") and cites them for the Node.js notices a
+#     redistributor must preserve, so re-aiming them at the OpenClaw image would
+#     remove the reference those notices depend on. Read OPENCLAW_IMAGE at the
+#     top of this file for this image's own base.
+#   * .created — the base's build timestamp, NOT this image's. `docker build`
+#     sets the config `.Created` field; it does not touch this label, so unless
+#     the label is set here the derived image reports the base's creation date
+#     while `.Created` reports its own. It is left alone on purpose: a
+#     per-build value in a label would make the image config differ on every
+#     rebuild of identical inputs, which is the opposite of what the recorded
+#     digests in scripts/record_images.py are for, and a hardcoded date here
+#     would be a second copy of a release date that already lives in generated
+#     evidence state. Read `docker inspect --format '{{.Created}}'` for when
+#     this image was actually built.
+#
+# Placed last on purpose: LABEL after FROM would invalidate the build cache for
+# every layer below it, and label order does not affect the resulting config.
+LABEL org.opencontainers.image.title="OpenClaw Lead Research" \
+      org.opencontainers.image.version="3.0.0" \
+      org.opencontainers.image.description="Independent OpenClaw-derived lead-research runtime; not an official OpenClaw Foundation product" \
+      org.opencontainers.image.licenses="NOASSERTION" \
+      org.opencontainers.image.source="" \
+      org.opencontainers.image.revision="" \
+      org.opencontainers.image.url="" \
+      org.opencontainers.image.documentation=""
 
 USER node

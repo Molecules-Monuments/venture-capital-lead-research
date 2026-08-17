@@ -11,6 +11,19 @@ commits named above. They are not files in this package: read them at
 `github.com/openclaw/openclaw` and `github.com/openclaw/lobster` at those
 commits. Line numbers are as of the audit date.
 
+Two short forms also appear, and neither is a path in this package either. A
+citation that is a bare file name with no directory — `lobster-runner.ts` with
+a line range — belongs to the upstream repository named by a fully-qualified
+citation in the same paragraph; a citation that is only a line range continues
+the file cited immediately before it. A path beginning `@clawdbot/lobster/` is
+the Lobster package as installed in the pinned image, not a repository
+checkout.
+
+`tests/v3/test_taskflow_citation_paths.py` classifies every backticked
+`<path>:<lines>` citation in this document against those forms and against this
+package's own file tree, so a citation matching none of them fails the offline
+gate rather than sending a reader to look for a file that is not here.
+
 ## Release verdict
 
 The package's source, configuration, fixed-runner, negative-boundary, and
@@ -54,7 +67,7 @@ Do not copy Task Flow rows into Postgres as a second Task Flow authority. Store 
 
 ## Pinned-source evidence
 
-The OpenClaw plugin package pins the embedded runtime exactly: `extensions/lobster/package.json:1-12` declares `@openclaw/lobster@2026.7.1` and `@clawdbot/lobster@2026.6.11`; `extensions/lobster/npm-shrinkwrap.json:15-31` records the tarball, integrity, and Node `>=22` requirement. The exact research checkouts are:
+The OpenClaw plugin package pins the embedded runtime exactly: `upstream_openclaw/extensions/lobster/package.json:1-12` declares `@openclaw/lobster@2026.7.1` and `@clawdbot/lobster@2026.6.11`; `upstream_openclaw/extensions/lobster/npm-shrinkwrap.json:15-31` records the tarball, integrity, and Node `>=22` requirement. The exact research checkouts are:
 
 - `Version_2/intermediate/upstream_openclaw` at the OpenClaw commit above.
 - `Version_2/intermediate/upstream_lobster` at the Lobster commit above.
@@ -176,9 +189,9 @@ Lobster substitutes it textually before `/bin/sh -lc` parses the command, so a
 value carrying a double quote escapes its own quotes and injects. Quoting
 cannot contain it, which is why the `arg_unquoted` rule does not cover this
 surface — `$VCOPS_*`/`$LOBSTER_ARG_*` are real environment variables the shell
-does not re-parse, so quoting is sufficient for *those*. Carry a step value
-into a command by binding it to a `VCOPS_`-namespaced `env:` entry and
-referencing that, quoted.
+does not re-parse, so double-quoting is sufficient for *those*. Carry a step
+value into a command by binding it to a `VCOPS_`-namespaced `env:` entry and
+referencing that, double-quoted.
 
 On the surfaces that do accept references, only `$step-id.approved` and a
 *fully qualified* nested path such as `$step-id.json.company.id` are permitted,
@@ -252,9 +265,9 @@ The exact flow statuses are:
 | `cancelled` | cancellation requested and active children settled |
 | `lost` | authoritative backing state disappeared |
 
-The source union is `upstream_openclaw/src/tasks/task-flow-registry.types.ts:14-37`; the public meanings are in `docs/automation/taskflow.md:45-56`.
+The source union is `upstream_openclaw/src/tasks/task-flow-registry.types.ts:14-37`; the public meanings are in `upstream_openclaw/docs/automation/taskflow.md:45-56`.
 
-Records live in `$OPENCLAW_STATE_DIR/state/openclaw.sqlite`, table `flow_runs`, alongside task records. The path resolver is `upstream_openclaw/src/state/openclaw-state-db.paths.ts:14-40`; SQLite row mapping is `src/tasks/task-flow-registry.store.sqlite.ts:23-113`. This is local OpenClaw operational state and must remain on a local durable filesystem.
+Records live in `$OPENCLAW_STATE_DIR/state/openclaw.sqlite`, table `flow_runs`, alongside task records. The path resolver is `upstream_openclaw/src/state/openclaw-state-db.paths.ts:14-40`; SQLite row mapping is `upstream_openclaw/src/tasks/task-flow-registry.store.sqlite.ts:23-113`. This is local OpenClaw operational state and must remain on a local durable filesystem.
 
 ### Revision discipline
 
@@ -270,13 +283,13 @@ The registry rejects a stale revision and returns the current record (`upstream_
 
 ### Cancellation
 
-Cancellation is sticky. `openclaw tasks flow cancel <lookup>` records cancel intent, cancels active linked children, refuses new managed child tasks, and finalizes `cancelled` when none remain. The persisted intent survives a gateway restart; maintenance can finish a cancellation that was waiting for children (`upstream_openclaw/docs/automation/taskflow.md:62-85`; `src/tasks/task-flow-registry.maintenance.ts:53-90,151-176`).
+Cancellation is sticky. `openclaw tasks flow cancel <lookup>` records cancel intent, cancels active linked children, refuses new managed child tasks, and finalizes `cancelled` when none remain. The persisted intent survives a gateway restart; maintenance can finish a cancellation that was waiting for children (`upstream_openclaw/docs/automation/taskflow.md:62-85`; `upstream_openclaw/src/tasks/task-flow-registry.maintenance.ts:53-90,151-176`).
 
 Never implement cancellation by deleting a flow row or by only changing Postgres. A business workflow cancellation and an OpenClaw flow cancellation are separate, correlated state transitions; both must be idempotent and auditable.
 
 ### Managed Lobster mode caveat
 
-OpenClaw can create a managed flow when a Lobster run includes `flowControllerId` and `flowGoal`, and resume it with `flowId` plus `flowExpectedRevision`. Approval maps to `waiting`, success/error to terminal mutations (`upstream_openclaw/docs/tools/lobster.md:298-307`; `extensions/lobster/src/lobster-taskflow.ts:109-158,164-288`).
+OpenClaw can create a managed flow when a Lobster run includes `flowControllerId` and `flowGoal`, and resume it with `flowId` plus `flowExpectedRevision`. Approval maps to `waiting`, success/error to terminal mutations (`upstream_openclaw/docs/tools/lobster.md:298-307`; `upstream_openclaw/extensions/lobster/src/lobster-taskflow.ts:109-158,164-288`).
 
 Version 3.0 **does not use managed Lobster/Task Flow mode**. The inspected adapter calls `taskFlow.finish` for every `ok: true` envelope other than `needs_approval`; that includes Lobster's `status: cancelled` (`upstream_openclaw/extensions/lobster/src/lobster-taskflow.ts:138-157`). The upstream tests cover success, waiting, error, and revision conflict but do not cover a denied/cancelled managed resume (`lobster-taskflow.test.ts:61-227`). Therefore a managed flow can report `succeeded` after a denied Lobster approval. The adapter also lacks the hard approver-identity binding required by this system. Managed mode remains prohibited until upstream changes or a separately maintained, source-audited guard both map denial to cancellation correctly and bind approval to the authorized identity and scope. Postgres business workflow state remains authoritative meanwhile.
 
@@ -310,7 +323,7 @@ openclaw backup create --output <backup-directory> --verify
 openclaw backup verify <archive.tar.gz> --json
 ```
 
-`tasks audit` includes Task Flow findings such as `restore_failed`, `stale_waiting`, `stale_blocked`, `cancel_stuck`, `missing_linked_tasks`, and `blocked_task_missing`. `tasks maintenance` previews or applies reconciliation and pruning (`upstream_openclaw/docs/cli/tasks.md:75-123`). Terminal flows are pruned after seven days when they have no active linked tasks (`src/tasks/task-flow-registry.maintenance.ts:17-50`).
+`tasks audit` includes Task Flow findings such as `restore_failed`, `stale_waiting`, `stale_blocked`, `cancel_stuck`, `missing_linked_tasks`, and `blocked_task_missing`. `tasks maintenance` previews or applies reconciliation and pruning (`upstream_openclaw/docs/cli/tasks.md:75-123`). Terminal flows are pruned after seven days when they have no active linked tasks (`upstream_openclaw/src/tasks/task-flow-registry.maintenance.ts:17-50`).
 
 `openclaw doctor` imports older `flows/registry.sqlite` and `tasks/runs.sqlite` sidecars into the shared database (`upstream_openclaw/docs/automation/tasks.md:306-320`). Run it as an upgrade/migration operation, retain its output, then run the audit commands again.
 

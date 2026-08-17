@@ -113,6 +113,16 @@ case "$DESTINATION_PARENT/$DESTINATION_NAME" in
     exit 1 ;;
 esac
 
+# Render before anything creates a container. The four file-backed Compose
+# secrets under config/runtime/secrets/ are written only by a lifecycle render
+# and are absent from a freshly exported package (git-ignored, and listed in
+# manifest.json excluded_runtime_files), so a new package directory reaches
+# backup.sh unrendered. backup.sh quiesces the gateway and CLI before its first
+# container-creating call, which then dies on a missing bind source — taking
+# production down with no recovery point. bootstrap.sh renders before its first
+# Compose call for the same reason. Keep this above MUTATION_STARTED.
+python3 scripts/render_channel_config.py "$ENV_FILE"
+
 # The update-mode backup also refuses when the live migration ledger is ahead of
 # the lock (a first attempt that applied migrations but never recorded the new
 # lock), because stamping the old version onto a new-schema dump produces a
@@ -141,13 +151,26 @@ python3 scripts/record_images.py --validate-applied-migrations \
 }
 rm -f "$LEDGER_SNAPSHOT"
 
+# backup.sh refuses when a `docker compose run` CLI one-off survives its quiesce
+# stop, because such a container keeps writing the state and quarantine volumes.
+# That refusal lands after the gateway is already stopped, so mirror it here
+# while nothing has been touched — same reason the ledger guard above is
+# mirrored. Only openclaw-cli is checked: the gateway is expected to be running
+# at this point, and openclaw-cli is otherwise only ever created with
+# `up --no-start`, so finding it running means a live turn.
+if compose --profile tools ps --all --status running --services | grep -Fxq openclaw-cli; then
+  echo "openclaw-cli is running: a 'docker compose run' CLI turn does not stop" >&2
+  echo "with its service and would keep writing the volumes this update backs up." >&2
+  echo "Let the turn finish, then re-run." >&2
+  exit 1
+fi
+
 # Hold one lifecycle lock from the quiesced old-state recovery point through the
 # new image/schema health checks. A failed update never restarts a mixed system.
 MUTATION_STARTED=1
 OPENCLAW_LIFECYCLE_LOCK_TOKEN="$LOCK_TOKEN" OPENCLAW_BACKUP_LEAVE_QUIESCED=1 \
   OPENCLAW_BACKUP_COMPATIBLE_LOCK=1 \
   ./scripts/backup.sh "$BACKUP_DESTINATION"
-python3 scripts/render_channel_config.py "$ENV_FILE"
 compose config --quiet
 compose pull postgres
 # Digest pulls (compose pull, BuildKit build bases) do not tag the pinned

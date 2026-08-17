@@ -40,6 +40,27 @@ ENV_FILE="$PACKAGE_DIR/.env"
 COMPOSE_FILE="$PACKAGE_DIR/docker-compose.yml"
 COMPOSE_PROJECT="openclaw-lead-research-v3"
 
+# The 07:00 default starts the scan an hour before the 08:00-19:00 Mon-Fri
+# window in workspaces/vc-chief/vc/notification_policy.md, so the digest is
+# ready at start of business. That window is policy the agent reasons against
+# (the channel renderer rebinds it to the operator's TZ); the gateway's cron
+# scheduler does not read that workspace document, so a job seeded below fires
+# on the schedule handed to `openclaw cron add`. With VC_SCAN_DELIVERY unset the
+# run is stamped --no-deliver below and nothing is dispatched at all; if you set
+# it, put VC_SCAN_CRON inside the window your own notification_policy.md states.
+#
+# Monday through Friday the default's successive fires sit 24 h apart, which is
+# exactly the `daily` cadence boundary in signal_source_is_due(): the interval
+# must have fully elapsed since the previous claim, and the claim stamps
+# last_scanned_at with clock_timestamp(), later than the now() that judged the
+# source due. So a source registered `--cadence daily` is skipped on the next
+# weekday unless run-to-run timing jitter starts the scan later than the
+# previous claim landed (the Friday-to-Monday gap is 72 h and clears it). Give
+# VC_SCAN_CRON a sub-daily schedule before registering a daily source: the
+# claim lands on the first fire more than 24 h after the previous one, so an
+# evenly spaced schedule of period P settles at the smallest multiple of P
+# strictly above 24 h -- 25 h for an hourly "0 * * * *", 36 h for a
+# twelve-hourly one. See CUSTOMIZATION.md and docs/RUNBOOK.md section 10.
 SCAN_CRON="${VC_SCAN_CRON:-0 7 * * 1-5}"
 SCAN_TZ="${VC_SCAN_TZ:-Europe/Berlin}"
 SCAN_DELIVERY="${VC_SCAN_DELIVERY:-}"

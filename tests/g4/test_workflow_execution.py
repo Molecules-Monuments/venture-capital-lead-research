@@ -79,6 +79,27 @@ def build_trusted_context(key_path, *, scopes, media_paths=(), sender="g4wf-send
     return f"{encoded}.{signature}"
 
 
+def is_approval_step(approval):
+    """Transcription of the pinned runtime's `isApprovalStep` predicate.
+
+    @clawdbot/lobster 2026.6.11, dist/src/workflows/file.js:1543-1550 pauses a
+    step for `true`, for a string whose trim is non-empty, and for a non-array
+    object; `false`, `0`, `1`, `null`, `""` and `[]` fall through to `return
+    false`. Keying this executor on the key's presence instead would model
+    `approval: 0` and `approval: null` as checkpoints that the real runtime
+    walks straight past. `Boolean({})` is true in JavaScript, so an empty
+    mapping counts. (tests/v3/test_workflow_approval_contract.py carries the
+    same transcription and asserts the runtime pin it was read from, so a
+    version bump fails that suite; re-read `isApprovalStep` against the new
+    release and update this copy with it.)
+    """
+    if approval is True:
+        return True
+    if isinstance(approval, str):
+        return bool(approval.strip())
+    return isinstance(approval, dict)
+
+
 class LobsterStepRunner:
     """Deterministic executor for the reviewed .lobster step contract."""
 
@@ -113,13 +134,22 @@ class LobsterStepRunner:
     def run(self):
         for step in self.document["steps"]:
             step_id = step["id"]
-            if "approval" in step:
+            if is_approval_step(step.get("approval")):
                 self.state[step_id] = {"approved": bool(self.approvals.get(step_id, False))}
                 continue
             condition = step.get("condition")
             if condition is not None and not self.resolve(condition):
                 self.state[step_id] = {"skipped": True}
                 continue
+            if "run" not in step:
+                # Without this the substitution below raises KeyError('run'),
+                # which names neither the step nor the reason it was not taken
+                # for a checkpoint.
+                raise LobsterStepError(
+                    f"step {step_id} has no `run:` command, and its approval "
+                    f"({step.get('approval')!r}) is not a spelling the pinned "
+                    "runtime pauses on (see is_approval_step above)"
+                )
             env = dict(self.env_base)
             for name, value in self.args.items():
                 env[f"LOBSTER_ARG_{name.upper()}"] = str(value)

@@ -337,6 +337,22 @@ cmp "$VALIDATION_DIR/LOCAL_ARTIFACTS.tsv" "$VALIDATION_DIR/database-artifacts.ts
 compose exec -T postgres dropdb --username openclaw_owner --force "$VALIDATION_DB"
 VALIDATION_DB=""
 
+# `compose stop <service>` below does not reach a container created by
+# `docker compose run`, which is how every CLI turn executes. openclaw-cli is
+# otherwise only ever created with `up --no-start`, so finding it running here
+# means a live turn is still writing the state and quarantine volumes this
+# restore is about to replace. Refuse before MUTATION_STARTED, while nothing has
+# been touched. The gateway is expected to be running at this point, so it is not
+# checked here. This lane performs no second, post-stop re-read: unlike backup.sh
+# it holds the lifecycle lock across a destructive replace, and a refusal after
+# the stop would leave the deployment down with nothing restored. A one-off that
+# starts after this point is not caught.
+if compose --profile tools ps --all --status running --services | grep -Fxq openclaw-cli; then
+  fail "openclaw-cli is running: a 'docker compose run' CLI turn does not stop
+with its service and would keep writing the volumes this restore replaces.
+Let the turn finish, then re-run."
+fi
+
 MUTATION_STARTED=1
 compose --profile tools stop openclaw-cli openclaw-gateway >/dev/null
 

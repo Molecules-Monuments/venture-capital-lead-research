@@ -180,9 +180,13 @@ acceptance.
 >   identified as undetectable by a static gate is now the assertion.
 > - The *scale* limbs of the thresholds proposed below were executed as gate D
 >   on the declared 100k-company/1m-fact reference dataset via
->   `scripts/run_retrieval_scale.py`. That gate asserts four things and only
->   those four: overall p95 at most 250 ms, fuzzy recall at least 0.90, fuzzy
->   precision@1 at least 0.90, and a mean candidate count of at least 1.5. (The
+>   `scripts/run_retrieval_scale.py`. That gate asserts four thresholds —
+>   overall p95 at most 250 ms, fuzzy recall at least 0.90, fuzzy precision@1 at
+>   least 0.90, and a mean candidate count of at least 1.5 — and fails the run
+>   when one of its 60 exact-domain cases does not resolve to the seeded
+>   company, resolves to a different company, or returns other than the seeded
+>   ten facts (`scripts/run_retrieval_scale.py:291-313`), which is where Gate
+>   D's exact-key recall and precision limbs are enforced at this scale. (The
 >   p95 ceiling is Gate D's; Gate I covers research budgets, whose adherence
 >   half stays BLOCKED.)
 > - The remaining limbs proposed below were **not adopted as executable
@@ -192,7 +196,8 @@ acceptance.
 > - **Alias recall is the exception, and it sits in between.** It *was* adopted:
 >   `01_PRECOMMITTED_EVALS.md` gate D commits "Alias recall on adjudicated
 >   fixtures: at least 95%". But no gate computes that percentage. `run_retrieval_scale.py`
->   seeds aliases and queries them, yet asserts only the four thresholds above;
+>   seeds aliases and queries them, yet expresses no recall rate — its numeric
+>   thresholds are the four above and its exact cases are pass/fail;
 >   G4's `test_helper_cli_database.py` proves alias *resolution* behaves
 >   correctly on specific adjudicated cases (a legacy upper-cased alias resolves
 >   to the existing company, a literal `%_` is not treated as a pattern) without

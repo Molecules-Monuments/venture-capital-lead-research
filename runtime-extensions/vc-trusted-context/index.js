@@ -5,7 +5,15 @@ import path from "node:path";
 
 const VERSION = 1;
 const TOKEN_TTL_SECONDS = 30 * 60;
-const CACHE_TTL_MS = 2 * 60 * 1000;
+// A capture waits for the agent turn that claims it, and on this deployment a
+// turn can be queued behind a long one: config/openclaw.json sets
+// stuckSessionAbortMs to 960000 (16 min). A window shorter than that budget
+// silently drops the capture — no trusted-context token, and no
+// unsupported-attachment refusal. A queued capture has to survive the whole
+// preceding turn plus the dispatch that follows it, so this is the abort budget
+// with margin, not equal to it: at exactly 960000 the boundary case is decided
+// by the `<=` in prune(), which is too fine a thread to hang the refusal on.
+const PENDING_TTL_MS = 20 * 60 * 1000;
 const MAX_CACHE_ENTRIES = 2048;
 const MAX_MEDIA_PATHS = 10;
 const MEDIA_ROOT = "/home/node/.openclaw/media/inbound";
@@ -38,7 +46,7 @@ function text(value, maximum = 1024) {
 
 function prune(now = Date.now()) {
   for (const [sessionKey, queue] of pending) {
-    const fresh = queue.filter((entry) => now - entry.capturedAt <= CACHE_TTL_MS);
+    const fresh = queue.filter((entry) => now - entry.capturedAt <= PENDING_TTL_MS);
     if (fresh.length === 0) pending.delete(sessionKey);
     else if (fresh.length !== queue.length) pending.set(sessionKey, fresh);
   }
@@ -50,10 +58,10 @@ function prune(now = Date.now()) {
   // A claim is what every hook in one run reads, and before_prompt_build runs
   // once per attempt rather than once per run, so claims cannot be consumed
   // destructively or a compaction retry would ship a prompt with no token.
-  // They age out on the capture clock instead.
-  for (const [runId, entry] of claimed) {
-    if (now - entry.claimedAt > CACHE_TTL_MS) claimed.delete(runId);
-  }
+  // Deliberately not age-pruned either, for the same reason blockedRuns is not:
+  // a claim is keyed by run id, so retaining it hands the same run the same
+  // binding it was first given, however long that run takes. Ageing it out made
+  // a retried prompt build lose its token. MAX_CACHE_ENTRIES below is the bound.
   while (claimed.size > MAX_CACHE_ENTRIES) {
     const oldest = claimed.keys().next().value;
     if (!oldest) break;
@@ -81,7 +89,7 @@ function claimCapture(sessionKey, runId) {
   if (!queue || queue.length === 0) return null;
   const capture = queue.shift();
   if (queue.length === 0) pending.delete(sessionKey);
-  claimed.set(runId, { claimedAt: Date.now(), capture });
+  claimed.set(runId, { capture });
   return capture;
 }
 
