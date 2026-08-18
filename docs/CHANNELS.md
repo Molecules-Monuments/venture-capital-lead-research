@@ -276,13 +276,22 @@ context* the plugin fetches from the Slack API around a thread reply — the
 thread starter and the thread replies loaded up to `thread.initialHistoryLimit`
 (unset here, so the plugin's own default of 20 applies) — and drops the ones
 whose author is not in `SLACK_ALLOWED_USER_IDS`, which this overlay uses for
-both the channel `users` list and the DM `allowFrom` list. Without the key the
+both the channel `users` list and the DM `allowFrom` list. One class of author
+is exempt: the pinned plugin's `isSlackThreadContextSenderAllowed` returns
+allowed for any message carrying a `bot_id`, without comparing it to the
+allowlist, so a thread starter or reply posted by another Slack app or an
+incoming webhook is injected regardless of `SLACK_ALLOWED_USER_IDS`. The
+overlay's `allowBots: false` only stops such a message *triggering* a turn; it
+does not govern what the thread-context builder injects. Treat other apps
+posting in an allowlisted channel as context contributors. Without the key the
 pinned plugin resolves the mode to `all` and passes that thread context through
 unfiltered. Note the boundary: the key does not reach the pending room-history
 window (`messages.groupChat.historyLimit`, unset here, harness default 50),
 which a shared history helper assembles with no visibility mode of its own.
 Because the thread starter now goes through the allowlist, re-run CH-05 and
-CH-07 after re-rendering the config.
+CH-07 after re-rendering the config, and include a thread reply posted by a
+second Slack app in the CH-05 matrix so the exemption above stays a measured
+fact rather than a claim.
 
 Add Slack-specific checks for token separation, exactly one Socket Mode
 connection, WSS reconnect, thread starter/reply behavior, file-only starters,
@@ -328,7 +337,23 @@ the mention-gated team/channel lane in CH-05 receives nothing.
 - `MSTEAMS_PUBLIC_WEBHOOK_URL` — the public HTTPS URL your reverse proxy
   serves, ending in `/api/messages`. Register exactly this URL as the bot
   resource's messaging endpoint, and install the Teams app package into the
-  tenant, or no activity ever reaches the gateway.
+  tenant, or no activity ever reaches the gateway. Record the **proxy's**
+  address here, not the loopback callback described at the top of this section:
+  the path is identical on both, which is what makes this field easy to get
+  wrong. Nothing reads the value at runtime, so `scripts/check_env.sh` is what
+  catches a mis-recorded one. It refuses a **fully written** loopback, private,
+  link-local, carrier-NAT, documentation, reserved, unspecified, or multicast
+  IPv4 or IPv6 literal, and refuses `localhost`, any `.localhost` or `.local`
+  name, and any single-label name — the last of which is also what rejects the
+  dotless integer and hexadecimal spellings of an address, `2130706433` and
+  `0x7f000001`. It does **not** classify the abbreviated dotted forms: `127.1`,
+  `10.1`, `192.168.1`, `172.16.1` and `0x7f.1` all contain a dot, so `ipaddress`
+  declines them (it requires four octets) and they are read as DNS names and
+  accepted — while `inet_aton`, and therefore curl and anything else resolving
+  through it, expands them to `127.0.0.1`, `10.0.0.1`, `192.168.0.1`,
+  `172.16.0.1` and `127.0.0.1`. A syntactically public name is accepted without
+  a lookup either way, so CH-01 stays the step that confirms the URL actually
+  reaches your proxy.
 
 The profile disables delegated auth, SSO, welcome/feedback cards, name
 matching, and config writes. DMs and groups use the same stable user allowlist;

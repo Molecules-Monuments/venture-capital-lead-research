@@ -51,9 +51,15 @@ The initial migration uses `CREATE ... IF NOT EXISTS` for controlled repeat appl
 - Unknown origin and evidence states remain explicit. They are never rewritten to verified values merely to satisfy a required field.
 - `workflow_requests` claims the canonical inbound/outbound outer
   payload before any company, lead, workflow-run, or extraction mutation.
-  `(workflow_id, idempotency_key)` is unique and append-only. A replay with any
-  different canonical argument—or a different inspected document SHA for
-  inbound—fails before the business mutation lane.
+  `(workflow_id, idempotency_key)` is unique and append-only. A replay that
+  differs in any argument the claim step records—or in the inspected document
+  SHA for inbound—fails before the business mutation lane. It is not the
+  binding for the whole argument set: `inbound-text-intake` forwards
+  `origin_subtype` to `create-lead` and not to the claim, so a replay differing
+  only in that argument passes the claim and is refused after it by
+  `leads.request_hash` as `idempotency_payload_mismatch`.
+  `tests/v3/test_workflow_claim_step_coverage.py` enumerates which arguments
+  each claim step forwards and fails if that set moves.
 
 ### Sources and artifacts
 
@@ -237,6 +243,16 @@ pending -> approved -> consumed
         -> rejected|revoked|expired
 ```
 
+`revoked` and `expired` are reachable in the status constraint and in the guard
+trigger, but 3.0 ships no lane that writes either. `decide_approval` accepts
+only `approved`/`rejected`, and expiry is enforced when a decision or a
+consumption is attempted: `decide_approval` refuses a request whose
+`expires_at` has passed, `consume_approval` refuses outside the issue/expiry
+window, and both leave `status` as it was. A lapsed request is therefore found
+by `expires_at`, not by `status` — which is what the partial index
+`approvals_pending_expiry_idx ON approvals (expires_at) WHERE status IN
+('pending', 'approved')` is for.
+
 Terminal decisions cannot reopen. The trigger prevents mutation of token, canonical scope, preview, action, target, and payload after creation. Approved/consumed states require the stable approver and approval channel; consumed requires a timestamp and governed transaction ID.
 
 `decide_approval(...)` locks a pending request, rejects an expired or repeated decision, records the stable approver/channel, and appends an audit event. A new row inserted by `openclaw_runtime` is constrained to start pending and unissued. The trusted owner can restore a previously backed-up historical state; it does not represent an agent/runtime authority.
@@ -311,7 +327,7 @@ act as evidence, permission, identity, scoring input, or approval.
 ## Entity resolution, aliases, and the source watchlist
 
 Seven tables carry concepts described elsewhere in this document and in the
-README but not previously named here. They complete the 42-table inventory:
+README but not previously named here:
 
 | Table | Role |
 |---|---|

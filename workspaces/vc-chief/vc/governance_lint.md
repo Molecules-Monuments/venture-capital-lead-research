@@ -15,7 +15,7 @@ The lint target is the explicit deployment bundle root. A zero-file scan is fail
   gate;
 - each `SKILL.md` has valid `---` frontmatter, canonical `name`, non-empty `description`, and Inputs/Evidence/Output sections;
 - resolver agent/skill/policy references exist and match configuration/allowlists;
-- scoring weights total 100, bands cover `[0,100]` with no gap/overlap, and missing weight is not redistributed. The specific boundary is **not** fixed here: check the band edges against the deployment's own reviewed `scoring-rubric.v3.json` and the CHECK in `migrations/007_scoring_readiness_gate.sql`, which must agree with each other. (82/100 and display 4.1 are the *shipped sample's* high-priority edge, not a requirement.);
+- scoring weights total 100, bands cover `[0,100]` with no gap/overlap, and missing weight is not redistributed. The specific boundary is **not** fixed here: check the band edges against the deployment's own reviewed `scoring-rubric.v3.json` and the CHECK in `migrations/007_scoring_readiness_gate.sql`, which must agree with each other. (`82/100` is the *shipped sample's* high-priority edge, not a requirement, and it is an edge on the unrounded `final_100` only — `display_5` rounds to a two-point window, so its `4.1` straddles this edge rather than marking it and no band edge can be read off a display value.);
 - approval policy requires stable identity, exact scope hash, expiry, single consumption, and atomic action;
 - notification policy distinguishes queue/hold/attempt/delivery and requires provider acknowledgement;
 - memory/state policy names Postgres, Task Flow SQLite, OpenClaw memory, and Lobster authority separately;

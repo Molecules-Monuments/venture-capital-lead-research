@@ -7,7 +7,7 @@ The three shipped eval JSONL (`routing-eval.jsonl`, `scoring-eval.jsonl`, `memo-
 Mandatory non-empty suites cover:
 
 1. exact 12-agent/26-skill resolver inventory and allowlists;
-2. score weights, every boundary (0, 49.999, 50, 65.999, 66, 81.999, 82, 100), exact display 4.1, overrides, and missing-data zero contribution;
+2. score weights, every boundary (0, 49.999, 50, 65.999, 66, 81.999, 82, 100), the display-window straddle (81.001 and 82.999 both display 4.1 while banding `research_deeper` and `high_priority`), overrides, and missing-data zero contribution;
 3. contradiction versus ordinary dated change, units/currency/period incompatibility, and `1.2m`/`900k` parsing;
 4. approval stable identity, exact scope, expiry, atomic single use, replay, revision, and rollback-safe retry;
 5. document path/symlink/MIME/macro/encryption/resource limits and page/sheet/cell provenance;

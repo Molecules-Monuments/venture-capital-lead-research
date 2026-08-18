@@ -343,9 +343,14 @@ class RuntimeProviderTests(unittest.TestCase):
                         "TELEGRAM_ALLOWED_GROUP_ID": "-1001234567890",
                     }.items():
                         body = replace_line(body, key, value)
-                heartbeat = self.render(body)["agents"]["defaults"]["heartbeat"]
+                # .get(), not [], on both hops: the message below explains the
+                # consequence of the key being absent, but indexing raised
+                # KeyError first, so the one failure mode it was written for
+                # never reached it.
+                defaults = self.render(body)["agents"]["defaults"]
+                heartbeat = defaults.get("heartbeat") or {}
                 self.assertEqual(
-                    heartbeat["every"], "0m",
+                    heartbeat.get("every"), "0m",
                     "agents.defaults.heartbeat.every must stay '0m'; any other "
                     "value (or removing the key) restores the harness default of "
                     "an autonomous vc-chief turn every 30 minutes",
@@ -615,15 +620,25 @@ console.log(JSON.stringify({{
 
     def test_plugin_survives_a_turn_longer_than_the_stuck_session_budget(self) -> None:
         # A capture waits for the run that claims it, and a run can sit behind a
-        # long one. config/openclaw.json allows a turn up to stuckSessionAbortMs
-        # (960 s) and the reference host measures a 331 s first turn, so a
-        # capture window shorter than that budget silently drops the token — and
-        # with it the unsupported-attachment refusal. A claim must likewise
-        # outlive the run that owns it, because before_prompt_build runs once per
-        # attempt. The clock is driven explicitly rather than by sleeping.
+        # long one. config/openclaw.json allows a turn up to stuckSessionAbortMs,
+        # and the reference host measures a 331 s first turn, so a capture window
+        # shorter than that budget silently drops the token — and with it the
+        # unsupported-attachment refusal. A claim must likewise outlive the run
+        # that owns it, because before_prompt_build runs once per attempt. The
+        # clock is driven explicitly rather than by sleeping.
+        #
+        # The advance is READ FROM the budget, not hardcoded below it. This test
+        # previously drove 900 s against a 960 s budget, so a capture window set
+        # anywhere in 900_001..960_000 ms passed it while still dropping tokens
+        # inside the turn length the configuration permits — the test could not
+        # fail for the reason it names. Driving one millisecond past the budget
+        # means any window shorter than the configured maximum turn fails here,
+        # and raising the budget in config/openclaw.json raises this with it.
         dm_key = "agent:vc-chief:slack:direct:u12345678"
         deck = "/home/node/.openclaw/media/inbound/deck---550e8400-e29b-41d4-a716-446655440000.pdf"
         macro = "/home/node/.openclaw/media/inbound/book---550e8400-e29b-41d4-a716-446655440001.xlsm"
+        shipped = json.loads((ROOT / "config/openclaw.json").read_text(encoding="utf-8"))
+        stuck_session_abort_ms = shipped["diagnostics"]["stuckSessionAbortMs"]
         with tempfile.TemporaryDirectory(prefix="trusted-plugin-clock-") as raw:
             key_path = Path(raw) / "key"
             key_path.write_bytes(b"k" * 64)
@@ -640,19 +655,20 @@ const agentCtx = (runId) => ({{runId, senderId: 'U1', sessionKey: {json.dumps(dm
 hooks.message_received({{messageId: 'm1', senderId: 'U1', sessionKey: {json.dumps(dm_key)}, metadata: {{mediaPaths: [{json.dumps(deck)}]}}}}, ctxFor('m1'));
 hooks.message_received({{messageId: 'm2', senderId: 'U1', sessionKey: {json.dumps(dm_key)}, metadata: {{mediaPaths: [{json.dumps(macro)}]}}}}, ctxFor('m2'));
 
-// The first run starts 900 s after its message was captured: inside the
-// stuckSessionAbortMs budget, far outside the old 120 s window.
-clock += 900_000;
+// The first run starts one millisecond past the whole stuckSessionAbortMs
+// budget after its message was captured: the longest turn the shipped
+// configuration permits, so any capture window shorter than that fails here.
+clock += {stuck_session_abort_ms} + 1;
 const late = hooks.before_prompt_build({{}}, agentCtx('run-1'));
 // The queued macro message, captured at the same time, must still block its own
 // run. before_prompt_build claims the capture and registers the block, which is
 // the order the runtime drives these hooks in.
 hooks.before_prompt_build({{}}, agentCtx('run-2'));
 const queuedBlocked = hooks.before_agent_run({{}}, agentCtx('run-2')) ?? null;
-// run-1 is then retried another 900 s later, after a compaction. Its capture is
-// long past the pending window by now, so only a claim that is *not* age-pruned
-// can still answer.
-clock += 900_000;
+// run-1 is then retried a further whole budget later, after a compaction. Its
+// capture is long past the pending window by now, so only a claim that is *not*
+// age-pruned can still answer.
+clock += {stuck_session_abort_ms} + 1;
 const lateRetry = hooks.before_prompt_build({{}}, agentCtx('run-1'));
 Date.now = realNow;
 console.log(JSON.stringify({{
@@ -678,15 +694,18 @@ console.log(JSON.stringify({{
 
         self.assertIsNotNone(
             rendered["late"],
-            "a run dispatched 900 s after its message got no trusted-context token; "
-            "the pending capture window is shorter than stuckSessionAbortMs",
+            "a run dispatched one whole stuckSessionAbortMs budget "
+            f"({stuck_session_abort_ms} ms) after its message got no trusted-context "
+            "token; the pending capture window is shorter than the longest turn "
+            "config/openclaw.json permits",
         )
         late = payload(rendered["late"])
         self.assertEqual("m1", late["event_id"])
         self.assertEqual([deck], late["media_paths"])
         self.assertIsNotNone(
             rendered["lateRetry"],
-            "a retried prompt build 900 s after the first attempt lost its token; "
+            "a retried prompt build one whole stuckSessionAbortMs budget "
+            f"({stuck_session_abort_ms} ms) after the first attempt lost its token; "
             "the claim must outlive the run it is keyed to",
         )
         self.assertEqual("m1", payload(rendered["lateRetry"])["event_id"])

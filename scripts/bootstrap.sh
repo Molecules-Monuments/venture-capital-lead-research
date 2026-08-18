@@ -22,10 +22,15 @@ compose() {
 
 cleanup() {
   status="$?"
-  trap - EXIT HUP INT TERM
+  trap - EXIT HUP INT QUIT TERM
   if [ "$status" -ne 0 ] && [ "$MUTATION_STARTED" -eq 1 ]; then
     compose --profile tools stop openclaw-cli openclaw-gateway >/dev/null 2>&1 || true
-    echo "Bootstrap failed after service mutation; state consumers remain stopped." >&2
+    # Worded for the whole window the flag guards, which opens at the runtime-role
+    # rotation. Claiming a completed mutation would be wrong for a rotation that
+    # refused before touching a service; saying nothing would be worse, since the
+    # consumers are stopped either way and docs/RUNBOOK.md §9 is what tells the
+    # operator how to get back.
+    echo "Bootstrap failed at or after the runtime-role rotation; openclaw-gateway and openclaw-cli are stopped. Fix the reported cause and re-run ./scripts/bootstrap.sh (docs/RUNBOOK.md §9)." >&2
   fi
   if [ "$LOCK_OWNED" -eq 1 ]; then
     rm -f "$LOCK_DIR/owner"
@@ -34,7 +39,7 @@ cleanup() {
   exit "$status"
 }
 trap cleanup EXIT
-trap 'exit 1' HUP INT TERM
+trap 'exit 1' HUP INT QUIT TERM
 
 cd "$PACKAGE_DIR"
 ./scripts/check_env.sh "$ENV_FILE"
@@ -67,10 +72,67 @@ for image_variable in OPENCLAW_IMAGE POSTGRES_IMAGE; do
   docker tag "$pinned_image" "${pinned_image%%@*}"
 done
 compose build --pull openclaw-gateway
+# MUTATION_STARTED is armed BEFORE the rotation, never after it. The rotation is
+# the mutating command -- it stops both consumers, force-recreates postgres,
+# migrates, and recreates the gateway -- and `trap '...' HUP INT QUIT TERM` runs
+# between commands, so a signal delivered while the rotation is running is
+# handled with whatever value the flag had before it. Armed on the following
+# line instead, a SIGTERM during the rotation left the gateway and CLI stopped
+# by the rotation's own cleanup (which prints nothing) while this script's
+# cleanup skipped its branch entirely: measured, the operator got "Terminated"
+# and no statement at all that the deployment was down. The same window also
+# covers the one-line gap after a *successful* rotation, where a signal would
+# leave a gateway serving traffic from a bootstrap that never reached
+# record_images.py.
+#
+# A crash-left rotation lock is a state docs/OPERATIONS.md documents as an
+# expected leftover ("can outlive an interrupted bootstrap or update"), but
+# rotate_runtime_role.sh only discovers it below -- after MUTATION_STARTED has
+# armed the handler that leaves consumers stopped. Measured under dash: without
+# this check, a lock left by an earlier crash made a refusal that had touched
+# nothing print "openclaw-gateway and openclaw-cli are stopped" and run the
+# cleanup's compose stop against a healthy deployment. Mirror the check here,
+# while production is still running, exactly as update.sh does; CLAUDE.md
+# instructs re-running this script on an already-bootstrapped deployment, so
+# this is a live path and not first-install-only. The lifecycle-lock check above
+# does not cover it: an operator who cleared only that lock lands here.
+ROTATION_LOCK_DIR="/tmp/openclaw-lead-research-v3-rotation.lock"
+# The remedy pointer below names 'First install', not 'Secrets'. The whole
+# stale-lock recovery procedure -- confirm no rotation process is active, then
+# remove the directory with `rm -rf` because it is not empty (it holds
+# deployment.env, a verbatim copy of .env) -- sits in the rotate_runtime_role.sh
+# paragraph under `## First install`. If the paragraph moves, move this citation
+# with it.
+if [ -e "$ROTATION_LOCK_DIR" ]; then
+  echo "a database-secret rotation is running or left a stale lock: $ROTATION_LOCK_DIR" >&2
+  echo "resolve it before bootstrapping; nothing has been changed. docs/OPERATIONS.md," >&2
+  echo "'First install', documents the crash-left case: confirm no rotation is" >&2
+  echo "active, then remove the whole directory ('rm -rf', not 'rmdir')." >&2
+  exit 1
+fi
+
+# Arming here does mean a pre-mutation refusal inside rotate_runtime_role.sh
+# also runs the cleanup below, stopping both consumers for a refusal that
+# changed nothing. This script has already run every validation step the
+# rotation repeats (check_env.sh, check_customization.py,
+# render_channel_config.py, compose config) above, and the one crash state
+# docs/OPERATIONS.md documents as an expected leftover -- a stale rotation lock
+# -- is refused by the mirror immediately above, while production is still
+# running. What can still refuse in this window is losing the race for that lock
+# between the mirror and the rotation's own `mkdir`, and the rotation's private
+# .env snapshot. Neither can be checked any earlier, and both are genuinely
+# rare. The cleanup message is worded for both cases rather than claiming a
+# mutation that may not have happened.
 MUTATION_STARTED=1
 OPENCLAW_LIFECYCLE_LOCK_TOKEN="$LOCK_TOKEN" ./scripts/rotate_runtime_role.sh
-compose exec -T openclaw-gateway \
-  /workspaces/vc-chief/vc/bin/agent/vcops db-check >/dev/null
+# vcops emits its envelope -- success and failure alike -- on stdout, so
+# >/dev/null discarded the only description of a failed database check.
+if ! DB_CHECK_REPORT="$(compose exec -T openclaw-gateway \
+  /workspaces/vc-chief/vc/bin/agent/vcops db-check)"; then
+  printf '%s\n' "$DB_CHECK_REPORT" >&2
+  echo "database check failed after reconciliation." >&2
+  exit 1
+fi
 python3 scripts/record_images.py
 compose ps
 MUTATION_STARTED=0

@@ -358,7 +358,9 @@ def validate_channel_selection(values: dict[str, str]) -> list[str]:
                 )
             elif values[key].lower() == NIL_GUID:
                 errors.append(f"{key} must not be the all-zero GUID")
-        users = _comma_list(values["MSTEAMS_ALLOWED_USER_IDS"], "MSTEAMS_ALLOWED_USER_IDS", errors)
+        users = _comma_list(
+            values["MSTEAMS_ALLOWED_USER_IDS"], "MSTEAMS_ALLOWED_USER_IDS", errors, fold=True
+        )
         if any(not MSTEAMS_GUID_RE.fullmatch(item) for item in users):
             errors.append(
                 "MSTEAMS_ALLOWED_USER_IDS must contain directory object GUIDs in 8-4-4-4-12 "
@@ -374,7 +376,20 @@ def validate_channel_selection(values: dict[str, str]) -> list[str]:
         if not conversation_id.fullmatch(values["MSTEAMS_ALLOWED_CHANNEL_ID"]):
             errors.append("MSTEAMS_ALLOWED_CHANNEL_ID must be a stable Teams conversation ID")
         webhook = values["MSTEAMS_PUBLIC_WEBHOOK_URL"]
-        if not _valid_custom_base_url(webhook) or urlsplit(webhook).path != "/api/messages":
+        if (
+            not _valid_custom_base_url(webhook)
+            or urlsplit(webhook).path != "/api/messages"
+            # Nothing reads this value at runtime, so this check is where a
+            # mis-recorded callback gets caught. Without the host-class test it
+            # accepted https://127.0.0.1:3978/api/messages and
+            # https://192.168.1.10/api/messages — precisely the confusion the
+            # Teams section invites, since the callback really is /api/messages
+            # on a loopback-published port and it is the *proxy's* public URL
+            # that belongs here. An operator who recorded the loopback form got
+            # a PASS from every gate and first learned otherwise at CH-01, when
+            # Teams delivered nothing.
+            or not _publicly_routable_host(urlsplit(webhook).hostname or "")
+        ):
             errors.append(
                 "MSTEAMS_PUBLIC_WEBHOOK_URL must be a credential-free public HTTPS "
                 "URL ending in /api/messages"
@@ -407,14 +422,27 @@ def validate_channel_selection(values: dict[str, str]) -> list[str]:
     return errors
 
 
-def _comma_list(value: str, name: str, errors: list[str]) -> list[str]:
+def _comma_list(value: str, name: str, errors: list[str], *, fold: bool = False) -> list[str]:
     items = value.split(",") if value else []
     if not items or any(not item for item in items):
         errors.append(f"{name} must be a comma-separated list without empty entries")
         return []
     if len(items) > 100:
         errors.append(f"{name} exceeds the 100-user deployment limit")
-    if len(set(items)) != len(items):
+    # `fold` exists for the one list whose grammar admits two spellings of the
+    # same principal: Entra object IDs are GUIDs, whose equality is
+    # case-insensitive, and MSTEAMS_GUID_RE deliberately accepts either hex
+    # case. A byte-exact set therefore let one principal occupy two of the 100
+    # allowlist slots — the Azure portal and Graph render object IDs lowercase
+    # while several PowerShell/AD export paths render them uppercase, so two
+    # admins collecting IDs from different tools produce exactly that list, and
+    # every gate passed it. Only the duplicate test folds; the items returned to
+    # the caller, and so the value the renderer writes into the runtime config,
+    # are untouched. The other three profiles need no folding: Slack IDs are
+    # [UW][A-Z0-9]{8,} and Discord/Telegram IDs are numeric, so no case variant
+    # of one of their IDs is a valid ID at all.
+    distinct = {item.lower() for item in items} if fold else set(items)
+    if len(distinct) != len(items):
         errors.append(f"{name} contains duplicate stable IDs")
     return items
 
@@ -457,6 +485,35 @@ def _valid_ollama_origin(value: str) -> bool:
         # A single-label hostname may name an explicitly attached Compose/LAN host.
         return "." not in hostname and bool(re.fullmatch(r"[a-z0-9][a-z0-9-]{0,62}", hostname))
     return address.is_private or address.is_link_local
+
+
+def _publicly_routable_host(hostname: str) -> bool:
+    """Reject host forms that cannot be reachable from the public internet.
+
+    Roughly the counterpart of `_valid_ollama_origin`, which exists to accept
+    the private/local host classes this one refuses.  It decides what is
+    decidable offline: an IP literal is classified by `ipaddress`, and a name is
+    refused when its form guarantees a local answer (`localhost`, anything under
+    the RFC-6761 `.localhost` tree, mDNS `.local`, or a single-label name that
+    only a search domain or a Compose alias can resolve).  A syntactically
+    public DNS name is accepted without a lookup: whether it actually resolves
+    to the operator's reverse proxy is a commissioning fact, confirmed at CH-01.
+    """
+    if not hostname:
+        return False
+    host = hostname.rstrip(".").lower()
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError:
+        if host == "localhost" or host.endswith((".localhost", ".local")):
+            return False
+        return "." in host
+    # is_global is False for loopback, RFC1918, link-local, CGNAT (100.64/10),
+    # the RFC-5737/3849 documentation ranges, unspecified, and reserved space,
+    # identically on 3.9.6, the deployed 3.11.2 floor, and 3.14.5.  Multicast is
+    # excluded separately: 224.0.0.1 reports is_global True but can never be a
+    # bot messaging endpoint.
+    return address.is_global and not address.is_multicast
 
 
 def _valid_custom_base_url(value: str) -> bool:

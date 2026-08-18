@@ -1,8 +1,8 @@
-{"id":"minimum","score":0.0,"expected":"pass"}
-{"id":"below-watch","score":2.4999,"expected":"pass"}
-{"id":"watch-boundary","score":2.5,"expected":"watch"}
-{"id":"below-research","score":3.2999,"expected":"watch"}
-{"id":"research-boundary","score":3.3,"expected":"research_deeper"}
-{"id":"below-high-priority","score":4.0999,"expected":"research_deeper"}
-{"id":"exact-4-1","score":4.1,"expected":"high_priority"}
-{"id":"maximum","score":5.0,"expected":"high_priority"}
+{"id":"minimum","final_100":0,"expected":"pass"}
+{"id":"below-watch","final_100":49.999,"expected":"pass"}
+{"id":"watch-lower-bound","final_100":50,"expected":"watch"}
+{"id":"below-research","final_100":65.999,"expected":"watch"}
+{"id":"research-lower-bound","final_100":66,"expected":"research_deeper"}
+{"id":"below-high-priority","final_100":81.999,"expected":"research_deeper"}
+{"id":"high-priority-lower-bound","final_100":82,"expected":"high_priority"}
+{"id":"maximum","final_100":100,"expected":"high_priority"}

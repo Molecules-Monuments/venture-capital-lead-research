@@ -115,7 +115,15 @@ def unique_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
 
 
 def load_strict_json(path: Path) -> dict[str, Any]:
-    value = json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=unique_object)
+    # Prefix the path the way the shape error below already does. This helper
+    # reads three different files, and neither json's decode error nor
+    # unique_object's duplicate-key error carries one, so a hand-edited
+    # config/connectors.json typo and a broken config/openclaw.json produced
+    # byte-identical FAIL envelopes naming only a column offset.
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=unique_object)
+    except (json.JSONDecodeError, ValueError) as exc:
+        raise ValueError(f"{path}: {exc}") from exc
     if not isinstance(value, dict):
         raise ValueError(f"{path}: root must be an object")
     return value
@@ -525,6 +533,21 @@ def main() -> int:
         if lifecycle_render:
             SECRETS_DIR.mkdir(parents=True, exist_ok=True)
             os.chmod(SECRETS_DIR, 0o700)
+            # Sweep crash-left fragments of an earlier render. write_atomic unlinks
+            # its temp file on any exception, but a SIGKILL (host OOM killer,
+            # power loss) leaves it: measured 2 leftovers in 120 kills, one of
+            # which held a live POSTGRES_PASSWORD. Nothing else removed them, and
+            # a stray file under config/runtime/secrets/ is not on
+            # verify_release.py's exact RUNTIME_ALLOWED list, so the next
+            # `--pristine` -- the check docs/RUNBOOK.md §3 says to prefer always --
+            # reported the deployment as tampered, naming a path the operator
+            # never created. Cleaning here rather than widening RUNTIME_ALLOWED
+            # keeps the gate's report honest and does not leave a secret fragment
+            # sitting in the tree tolerated.
+            for stale in SECRETS_DIR.glob(".openclaw.*.tmp"):
+                stale.unlink(missing_ok=True)
+            for stale in output.parent.glob(".openclaw.*.tmp"):
+                stale.unlink(missing_ok=True)
             for secret_name, env_key in sorted(SECRET_FILES.items()):
                 secret_path = SECRETS_DIR / secret_name
                 write_atomic(secret_path, values[env_key].encode("utf-8"))

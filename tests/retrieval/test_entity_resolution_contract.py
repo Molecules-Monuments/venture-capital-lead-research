@@ -91,7 +91,37 @@ class EntityResolutionContractTests(unittest.TestCase):
         self.assertIn("company_domains_active_hostname_uidx", sql)
         self.assertIn("entity_resolution_runs_request_uidx", sql)
         self.assertIn("prevent_domain_history_mutation", sql)
-        self.assertIn("lower(normalize(btrim(name), NFKC))", sql)
+        # Assert the ORDER, not the literal. This line previously pinned
+        # `lower(normalize(btrim(name), NFKC))` -- the defective spelling -- so the
+        # test actively held the defect in place: btrim with no character argument
+        # strips only U+0020, and NFKC then maps U+00A0/U+3000 onto U+0020, so
+        # trimming first let normalisation reintroduce edge whitespace and the
+        # derived value failed company_aliases' own
+        # `btrim(normalized_alias) = normalized_alias` CHECK, aborting the whole
+        # migration. Pinning the requirement instead of the string means neither
+        # order can be reinstated silently.
+        self.assertTrue(
+            "lower(btrim(normalize(name, NFKC)))" in sql,
+            "migration 006's company_aliases backfill must derive "
+            "normalized_alias as lower(btrim(normalize(name, NFKC))) -- "
+            "normalise first, then trim",
+        )
+        self.assertFalse(
+            "normalize(btrim(name)" in sql,
+            "migration 006 trims before it normalises: NFKC then reintroduces "
+            "edge whitespace (U+00A0, U+3000 -> U+0020) and the derived "
+            "normalized_alias fails its own CHECK, aborting the upgrade for any "
+            "company whose name carries one. Normalise first, then trim.",
+        )
+        # assertTrue, not assertIn: `sql` is the whole ~11 KB migration, and
+        # assertIn renders its second argument in full, so the one useful
+        # sentence arrived at the end of a screen of escaped SQL. The two
+        # assertions above already avoid that; this one did not.
+        self.assertTrue(
+            "WHERE btrim(normalize(name, NFKC)) <> ''" in sql,
+            "migration 006 must skip names that normalise to nothing; an empty "
+            "normalized_alias fails the CHECK's `<> ''` half",
+        )
 
     def test_fuzzy_candidates_use_review_only_indexed_prefilter(self) -> None:
         sql = FUZZY_MIGRATION.read_text(encoding="utf-8")

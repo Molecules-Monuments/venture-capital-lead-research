@@ -166,12 +166,23 @@ def seed_reference_data(owner_url: str) -> dict[str, float]:
                FROM generate_series(1, %s) AS generated(i)""",
             (COMPANY_COUNT,),
         )
+        # normalize() BEFORE btrim(), the same order migration 006's backfill
+        # uses. btrim() with no character argument strips only U+0020, while
+        # NFKC maps U+00A0 and U+3000 onto U+0020 -- so trimming first lets
+        # normalisation reintroduce edge whitespace and the derived value fails
+        # company_aliases' own `btrim(normalized_alias) = normalized_alias`
+        # CHECK. This seed carried the trim-first spelling after 006 was
+        # corrected. It never aborted, because the benchmark's own names are
+        # ASCII ('Scale Company 000001'), which is the worse failure: the scale
+        # gate's corpus would have been derived by a normalisation rule the
+        # deployed migration no longer performs, so the retrieval figures would
+        # not have been measured over production's data.
         cur.execute(
             """INSERT INTO company_aliases
                  (company_id, alias_kind, alias_value, normalized_alias,
                   status, confidentiality, confidence, created_by)
                SELECT id, 'canonical_name', name,
-                      lower(normalize(btrim(name), NFKC)),
+                      lower(btrim(normalize(name, NFKC))),
                       'active', 'internal', 1.000, 'scale-benchmark'
                FROM companies"""
         )
@@ -341,6 +352,14 @@ def run_benchmark(runtime_url: str, cluster_targets: dict[int, int]) -> dict[str
     precision_at_1 = fuzzy_top1_hits / FUZZY_CASES
     mean_candidates = fuzzy_candidate_total / FUZZY_CASES
     return {
+        # Cases whose target the resolver actually returned first: the exact
+        # cases that completed (each one raises above on a miss, so reaching
+        # here means all of them resolved their domain key) plus the fuzzy cases
+        # that ranked the true target at position 1. This is the per-case tally
+        # main() reports; `thresholds_met` below is a verdict, not a count, and
+        # conflating the two is what made the emitted `passed`/`failed` pair
+        # incapable of expressing 150/160.
+        "resolved_cases": len(exact_latencies) + fuzzy_top1_hits,
         "exact": {
             "cases": len(exact_latencies),
             "p50_ms": round(statistics.median(exact_latencies), 3),
@@ -366,7 +385,11 @@ def run_benchmark(runtime_url: str, cluster_targets: dict[int, int]) -> dict[str
             "minimum_fuzzy_precision_at_1": MIN_FUZZY_PRECISION_AT_1,
             "minimum_mean_candidates": MIN_MEAN_CANDIDATES,
         },
-        "passed": (
+        # Named `thresholds_met`, not `passed`, because it sat one dictionary
+        # away from the report's integer `passed` counter and was assigned to
+        # it: the four frozen thresholds are a release verdict over the whole
+        # run, never a count of cases.
+        "thresholds_met": (
             percentile(all_latencies, 0.95) <= MAX_P95_MS
             and recall >= MIN_FUZZY_RECALL
             and precision_at_1 >= MIN_FUZZY_PRECISION_AT_1
@@ -388,8 +411,14 @@ def main() -> int:
             "distractors_per_cluster": DISTRACTORS_PER_CLUSTER,
         },
         "cases": EXACT_CASES + FUZZY_CASES,
+        # passed/failed are per-case counts over `cases`, as in run_g6_image.py
+        # -- not a restatement of `result`. Until the benchmark returns, no case
+        # has resolved, so every one of them counts as unresolved; an aborted
+        # run therefore reports 0/160 rather than the old 0 passed / 1 failed,
+        # which did not sum to `cases` and invited the same conflation that made
+        # a completed run unable to report anything but 160/160 or 0/160.
         "passed": 0,
-        "failed": 1,
+        "failed": EXACT_CASES + FUZZY_CASES,
         "skipped": 0,
         "blocked": 0,
         "command_or_method": "python3 scripts/run_retrieval_scale.py",
@@ -403,11 +432,17 @@ def main() -> int:
             runtime_url = owner_url.replace("user=postgres", "user=openclaw_runtime")
             benchmark = run_benchmark(runtime_url, cluster_targets)
             plans = explain_plans(runtime_url, cluster_query_name(50))
+            resolved = benchmark["resolved_cases"]
             report.update(
                 {
-                    "result": "PASS" if benchmark["passed"] else "FAIL",
-                    "passed": report["cases"] if benchmark["passed"] else 0,
-                    "failed": 0 if benchmark["passed"] else 1,
+                    # `result` stays governed by the four frozen thresholds; the
+                    # counters report what the run measured. They can disagree
+                    # on purpose: the thresholds admit up to ten fuzzy misses,
+                    # so a legitimately passing run can read 150/160, which the
+                    # old `report["cases"] if <bool> else 0` could never say.
+                    "result": "PASS" if benchmark["thresholds_met"] else "FAIL",
+                    "passed": resolved,
+                    "failed": report["cases"] - resolved,
                     "seed_duration_seconds": {
                         key: round(value, 3) for key, value in seed_timings.items()
                     },
@@ -415,7 +450,7 @@ def main() -> int:
                     "query_plans": plans,
                 }
             )
-            if not benchmark["passed"]:
+            if not benchmark["thresholds_met"]:
                 report["failures"].append("one or more frozen retrieval thresholds missed")
     except Exception as exc:
         report.update({"result": "FAIL"})

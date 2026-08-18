@@ -7,6 +7,7 @@ import io
 import json
 import os
 import re
+import shlex
 import shutil
 import stat
 import subprocess
@@ -141,6 +142,56 @@ def shipped_shell_scripts() -> list[Path]:
     return _verify_offline.shell_paths()
 
 
+# The four fatal signals every shipped cleanup handler must cover. A handler
+# that omits one is simply not run when that signal arrives: measured under
+# Debian dash, `trap cleanup EXIT HUP INT TERM` + SIGQUIT exits 131 with the
+# handler never entered, while the same trap naming QUIT does run it. EXIT is
+# deliberately not in this set -- it is not a signal, and a `trap ... EXIT`
+# alone is a legitimate shape as long as the fatal four are armed somewhere.
+FATAL_TRAP_SIGNALS = frozenset({"HUP", "INT", "QUIT", "TERM"})
+
+# Shipped scripts that install a `trap` today. A floor, not an inventory: a new
+# script may add one and the assertions below govern it, but a script that
+# LOSES its handler stops cleaning up after itself silently, and this names it.
+TRAP_BEARING_SCRIPTS = (
+    "migrations/000_roles.sh",
+    "scripts/backup.sh",
+    "scripts/bootstrap.sh",
+    "scripts/migrate.sh",
+    "scripts/restore.sh",
+    "scripts/rotate_runtime_role.sh",
+    "scripts/update.sh",
+)
+
+
+def trap_commands(path: Path) -> list[tuple[int, str, str, frozenset[str]]]:
+    """Each line-initial `trap` command in a shipped shell script.
+
+    Returns (line number, line, action word, signal names). The action is `-`
+    for a disarm and the handler otherwise; signal names are upper-cased with
+    any `SIG` prefix removed so `TERM` and `SIGTERM` compare equal.
+
+    Line-initial is the only form the package uses; a `trap` written after a
+    `;` on a shared line would not be seen here, so keep them on their own
+    line, as every shipped script does today.
+    """
+    found: list[tuple[int, str, str, frozenset[str]]] = []
+    for number, raw in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+        stripped = raw.strip()
+        if not re.match(r"^trap\s", stripped):
+            continue
+        try:
+            words = shlex.split(stripped, comments=True)
+        except ValueError:
+            # An unbalanced quote is a shell syntax error the `sh -n` step
+            # already reports; fall back so this check still names the line.
+            words = stripped.split()
+        action = words[1] if len(words) > 1 else ""
+        signals = frozenset(word.upper().removeprefix("SIG") for word in words[2:])
+        found.append((number, stripped, action, signals))
+    return found
+
+
 def shell_bearing_non_shebang_files() -> list[Path]:
     """Shipped files that run shell without carrying a shebang of their own.
 
@@ -151,9 +202,127 @@ def shell_bearing_non_shebang_files() -> list[Path]:
     command block and carries two CMD-SHELL healthchecks, and every
     Dockerfile.openclaw `RUN` line runs under the base image's `/bin/sh`, which
     is dash. Neither can be fed to the shell parser, but both are covered by
-    the count backstop below, which parses nothing.
+    the pinned line inventory below, which parses nothing.
     """
     return [PACKAGE / "docker-compose.yml", PACKAGE / "Dockerfile.openclaw"]
+
+
+# The exact backslash-bearing lines in shipped shell, pinned as a SET rather
+# than a count. A count is defeated by any net-zero edit: adding a mangling
+# `echo` while deleting a reviewed `printf` in the same file leaves the total
+# unchanged, which is precisely the evasion this backstop exists to stop.
+# Identity fails on both halves of that edit and names them.
+#
+# When a legitimate change moves an entry, read the new line first and confirm
+# the backslash is either a reviewed printf FORMAT or sits inside a `%s`
+# argument, then regenerate this block in the same commit.
+BACKSLASH_BEARING_LINES: dict[str, tuple[str, ...]] = {
+    'migrations/000_roles.sh': (
+        '# PostgreSQL documents \\password as the non-cleartext password-change path.',
+        'printf \'%s\\n%s\\n\' "$runtime_password" "$runtime_password" \\',
+        "--command '\\password openclaw_runtime'",
+        'printf \'%s\\n%s\\n\' "$owner_password" "$owner_password" \\',
+        "--command '\\password openclaw_owner'",
+        "sed -E 's/^([[:space:]]*host[a-z]*[[:space:]].*[[:space:]])trust[[:space:]]*$/\\1scram-sha-256/' \\",
+        'printf \'127.0.0.1:5432:openclaw:openclaw_runtime:%s\\n\' "$runtime_password" > "$runtime_passfile"',
+        'printf \'127.0.0.1:5432:openclaw:openclaw_owner:%s\\n\' "$owner_password" > "$owner_passfile"',
+        'printf \'127.0.0.1:5432:openclaw:openclaw_runtime:%s\\n\' "$invalid_password" > "$invalid_passfile"',
+        'printf \'127.0.0.1:5432:openclaw:openclaw_owner:%s\\n\' "$invalid_password" >> "$invalid_passfile"',
+    ),
+    'scripts/backup.sh': (
+        'tab="$(printf \'\\t\')"',
+        'printf \'%s\\n\' "$CHECK_ENV_REPORT" >&2',
+        'printf \'%s\\n\' "$LOCK_TOKEN" >"$LOCK_DIR/owner"',
+        "printf '%s\\n' '\\set ON_ERROR_STOP on'",
+        'printf \'%s\\n\' "SELECT (to_regclass(\'public.schema_migrations\') IS NOT NULL) AS ledger_exists \\\\gset"',
+        "printf '%s\\n' '\\if :ledger_exists'",
+        "printf '%s\\n' 'SELECT version,name,checksum_sha256 FROM schema_migrations ORDER BY version;'",
+        "printf '%s\\n' '\\endif'",
+        '--tuples-only --no-align --field-separator="$(printf \'\\t\')" \\',
+        'BACKUP_PACKAGE_VERSION="$(tr -d \'\\r\\n\' < "$PACKAGE_DIR/VERSION")"',
+        '*\\\\*) inbox_reject="$entry (backslash in path)" ; break ;;',
+        'if printf \'%s\\n\' "$running_services" | grep -Fxq openclaw-gateway; then',
+        'printf \'%s\\n\' "package inbox holds an entry a recovery archive cannot represent: $inbox_reject" >&2',
+        'if printf \'%s\\n\' "$still_running" | grep -Fxq "$service"; then',
+        '--command "SELECT count(*) FROM evidence_artifacts WHERE storage_tier IN (\'workspace_file\',\'quarantine\') AND (storage_uri IS NULL OR storage_uri ~ E\'[\\\\t\\\\r\\\\n]\')")"',
+        'tab="$(printf \'\\t\')"',
+        'printf \'%s\\n\' "$BACKUP_PACKAGE_VERSION" >"$STAGING/VERSION"',
+        'printf \'%s\\n\' "$DB_CHECK_REPORT" >&2',
+    ),
+    'scripts/bootstrap.sh': (
+        'printf \'%s\\n\' "$LOCK_TOKEN" >"$LOCK_DIR/owner"',
+        'printf \'%s\\n\' "$DB_CHECK_REPORT" >&2',
+    ),
+    'scripts/migrate.sh': (
+        'tab="$(printf \'\\t\')"',
+        'printf \'%s\\t%s\\t%s\\n\' "$version" "$name" "$checksum" >>"$EXPECTED_LEDGER"',
+        "printf '%s\\n' '\\set ON_ERROR_STOP on'",
+        "printf '%s\\n' 'BEGIN;'",
+        "printf '%s\\n' 'SELECT pg_advisory_xact_lock(2026071801::bigint) \\g /dev/null'",
+        "printf '%s\\n' '\\set ledger_exists false'",
+        'printf \'%s\\n\' "SELECT (to_regclass(\'public.schema_migrations\') IS NOT NULL) AS ledger_exists \\\\gset"',
+        "printf '%s\\n' '\\if :ledger_exists'",
+        "printf '%s\\n' 'SELECT version,name,checksum_sha256 FROM schema_migrations ORDER BY version;'",
+        "printf '%s\\n' '\\endif'",
+        "printf '%s\\n' 'COMMIT;'",
+        'expected_row="$(printf \'%s\\t%s\\t%s\' "$stored_version" "$stored_name" "$stored_checksum")"',
+        "printf '%s\\n' 'BEGIN;'",
+        "printf '%s\\n' 'SELECT pg_advisory_xact_lock(2026071801::bigint);'",
+        "printf '%s\\n' '\\set ledger_exists false'",
+        "printf '%s\\n' '\\set migration_applied false'",
+        'printf \'%s\\n\' "SELECT (to_regclass(\'public.schema_migrations\') IS NOT NULL) AS ledger_exists \\\\gset"',
+        "printf '%s\\n' '\\if :ledger_exists'",
+        'printf \'%s\\n\' "SELECT EXISTS (SELECT 1 FROM schema_migrations WHERE version = :\'version\') AS migration_applied \\\\gset"',
+        'printf \'%s\\n\' "SELECT (NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version = :\'version\') OR EXISTS (SELECT 1 FROM schema_migrations WHERE version = :\'version\' AND name = :\'name\' AND checksum_sha256 = :\'checksum\')) AS migration_valid \\\\gset"',
+        "printf '%s\\n' '\\if :migration_valid'",
+        "printf '%s\\n' '\\else'",
+        'printf \'%s\\n\' "\\\\warn \'migration checksum/name mismatch for \' :\'name\'"',
+        'printf \'%s\\n\' "DO \\$migration_guard\\$ BEGIN RAISE EXCEPTION \'migration checksum/name mismatch\'; END \\$migration_guard\\$;"',
+        "printf '%s\\n' '\\endif'",
+        "printf '%s\\n' '\\endif'",
+        "printf '%s\\n' '\\if :migration_applied'",
+        "printf '%s\\n' '\\else'",
+        "printf '\\n'",
+        'printf \'%s\\n\' "SELECT register_schema_migration(:\'version\', :\'name\', :\'checksum\');"',
+        "printf '%s\\n' '\\endif'",
+        "printf '%s\\n' 'COMMIT;'",
+    ),
+    'scripts/restore.sh': (
+        '--command "SELECT count(*) FROM evidence_artifacts WHERE storage_tier IN (\'workspace_file\',\'quarantine\') AND (storage_uri IS NULL OR storage_uri ~ E\'[\\\\t\\\\r\\\\n]\')")"',
+        'tab="$(printf \'\\t\')"',
+        'tab="$(printf \'\\t\')"',
+        '\\**) member="${member#\\*}" ;;',
+        'printf \'%s\\n\' "$CHECK_ENV_REPORT" >&2',
+        'printf \'%s\\n\' "$LOCK_TOKEN" >"$LOCK_DIR/owner"',
+        'if [ "$(tr -d \'\\r\\n\' < "$VALIDATION_DIR/VERSION")" != "$(tr -d \'\\r\\n\' < "$PACKAGE_DIR/VERSION")" ]; then',
+        'if grep -Eq \'^(openclaw\\.json|exec-approvals\\.(json|sock))$\' "$VALIDATION_DIR/state.list"; then',
+        'if printf \'%s\\n\' "$running_services" | grep -Fxq openclaw-cli; then',
+    ),
+    'scripts/rotate_runtime_role.sh': (
+        'printf \'%s\\n\' "$LIFECYCLE_LOCK_TOKEN" >"$LIFECYCLE_LOCK_DIR/owner"',
+    ),
+    'scripts/update.sh': (
+        'printf \'%s\\n\' "$LOCK_TOKEN" >"$LOCK_DIR/owner"',
+        "printf '%s\\n' '\\set ON_ERROR_STOP on'",
+        'printf \'%s\\n\' "SELECT (to_regclass(\'public.schema_migrations\') IS NOT NULL) AS ledger_exists \\\\gset"',
+        "printf '%s\\n' '\\if :ledger_exists'",
+        "printf '%s\\n' 'SELECT version,name,checksum_sha256 FROM schema_migrations ORDER BY version;'",
+        "printf '%s\\n' '\\endif'",
+        '--tuples-only --no-align --field-separator="$(printf \'\\t\')" \\',
+        'if printf \'%s\\n\' "$running_services" | grep -Fxq openclaw-cli; then',
+        # Reviewed: this is the backslash CLASS PATTERN of the inbox guard, not an
+        # escape in a message. It is `*\\*)` in the script, matching a literal
+        # backslash in an inbox-relative path, and it is character-identical to
+        # backup.sh's entry above because update.sh mirrors that guard verbatim.
+        '*\\\\*) inbox_reject="$entry (backslash in path)" ; break ;;',
+        'printf \'%s\\n\' "package inbox holds an entry a recovery archive cannot represent: $inbox_reject" >&2',
+        'printf \'%s\\n\' "$DB_CHECK_REPORT" >&2',
+    ),
+    'Dockerfile.openclaw': (
+        '#   { printf \'deb [check-valid-until=no] https://snapshot.debian.org/archive/debian/%s/ bookworm main\\n\' "$SNAPSHOT"',
+        '#     printf \'deb [check-valid-until=no] https://snapshot.debian.org/archive/debian-security/%s/ bookworm-security main\\n\' "$SNAPSHOT"',
+    ),
+}
 
 
 class RecoveryLifecycleContractTests(unittest.TestCase):
@@ -257,67 +426,52 @@ class RecoveryLifecycleContractTests(unittest.TestCase):
     def test_backslash_bearing_shell_lines_are_a_pinned_inventory(self) -> None:
         """The evasion-proof backstop for the dash-escape class.
 
-        Four successive versions of the semantic guard above were each
-        bypassed by a spelling nobody had tried — a printf FORMAT in double
-        quotes, an `echo` after `then`, a format held in a variable. Any
-        detector that tries to understand shell will keep losing that race.
+        Four successive versions of the semantic guard were each bypassed by a
+        spelling nobody had tried — a printf FORMAT in double quotes, an `echo`
+        after `then`, a format held in a variable. Any detector that tries to
+        understand shell keeps losing that race.
 
-        This check does not parse shell at all. Every dash-escape defect must
-        put a backslash *somewhere* in a shipped script — including the
-        assignment line of a variable format — so pinning the count of
-        backslash-bearing lines per file makes any new one fail regardless of
-        how it is spelled. Line continuations are excluded: they are
-        ubiquitous, carry no escape, and would swamp the signal.
+        This check parses no shell. Every dash-escape defect must put a backslash
+        somewhere in a shipped script, so pinning those lines catches a new one
+        however it is spelled. Line continuations are excluded: ubiquitous, carry
+        no escape, and would swamp the signal.
 
-        When a legitimate change moves a count, read the new line first and
-        confirm the backslash is either a reviewed printf format or sits in a
-        `%s` argument, then update the number here in the same commit.
+        The pin is the SET of lines, not their count. A count is defeated by any
+        net-zero edit — add a mangling `echo`, delete a reviewed `printf` in the
+        same file, total unchanged — which is exactly the evasion this exists to
+        stop. Comparing identity fails on both halves and names them.
         """
-        expected = {
-            "migrations/000_roles.sh": 10,
-            # 13 pre-existing, plus the `printf '%s\n' "$still_running"` line in
-            # the post-stop quiesce verification. The backslash sits in a
-            # single-quoted FORMAT and the value travels through `%s`, which is
-            # the reviewed pattern already used ten lines above it; re-checked
-            # under Debian dash.
-            "scripts/backup.sh": 14,
-            "scripts/bootstrap.sh": 1,
-            "scripts/migrate.sh": 32,
-            "scripts/restore.sh": 7,
-            "scripts/rotate_runtime_role.sh": 1,
-            # 1 pre-existing, plus the six-line ledger-snapshot block the
-            # fifteenth pass mirrored from backup.sh so the schema-ahead guard
-            # runs before MUTATION_STARTED arms the consumer-stopping handler.
-            # Each is byte-identical to its reviewed backup.sh original and was
-            # re-checked under Debian dash: the psql metacommands arrive as
-            # `\set`, `\gset`, `\if`, `\endif`, and the separator as one tab.
-            "scripts/update.sh": 7,
-            # Not shebang-bearing, so invisible to the printf/echo scanner, but
-            # both run dash in the deployment: compose's state-init entrypoint
-            # and every Dockerfile RUN line. docker-compose.yml measures 0 and
-            # therefore contributes no key — the instant a backslash appears
-            # there, `measured` gains a key `expected` lacks and this fails.
-            # Dockerfile.openclaw's two are the RECOVERY comment's
-            # snapshot.debian.org printf formats, where \n must expand.
-            "Dockerfile.openclaw": 2,
-        }
-        measured = {}
+        measured: dict[str, tuple[str, ...]] = {}
         for path in shipped_shell_scripts() + shell_bearing_non_shebang_files():
-            count = 0
+            found = []
             for line in path.read_text(encoding="utf-8").splitlines():
                 stripped = line.rstrip()
                 body_text = stripped[:-1] if stripped.endswith("\\") else stripped
                 if "\\" in body_text:
-                    count += 1
-            if count:
-                measured[path.relative_to(PACKAGE).as_posix()] = count
+                    found.append(stripped.strip())
+            if found:
+                measured[path.relative_to(PACKAGE).as_posix()] = tuple(found)
+
         self.assertEqual(
-            measured, expected,
-            "the inventory of backslash-bearing lines in shipped shell moved. "
-            "Every dash-escape defect leaves a backslash somewhere, so review "
-            "each changed line before updating this pin: the backslash must be "
-            "a reviewed printf format or sit inside a %s argument.",
+            set(measured), set(BACKSLASH_BEARING_LINES),
+            "the set of shipped files carrying backslashes moved: "
+            f"gone {sorted(set(BACKSLASH_BEARING_LINES) - set(measured))}, "
+            f"new {sorted(set(measured) - set(BACKSLASH_BEARING_LINES))}",
         )
+        for relative, pinned in sorted(BACKSLASH_BEARING_LINES.items()):
+            with self.subTest(file=relative):
+                current = measured[relative]
+                added = [line for line in current if line not in pinned]
+                removed = [line for line in pinned if line not in current]
+                self.assertEqual(
+                    (added, removed), ([], []),
+                    f"{relative}: the backslash-bearing lines moved.\n"
+                    f"  new: {added}\n  gone: {removed}\n"
+                    "Review each new line before regenerating this pin: the "
+                    "backslash must be a reviewed printf format or sit inside a "
+                    "%s argument. dash expands escapes in `echo` arguments, so an "
+                    "`echo` here is the defect class this guard exists for.",
+                )
 
     def test_all_touched_scripts_pin_compose_file_and_project(self) -> None:
         for name in (
@@ -1025,6 +1179,272 @@ class RecoveryLifecycleContractTests(unittest.TestCase):
                     payload.unlink()
                     root.rmdir()
 
+    def pristine_fixture(self, package: Path) -> Path:
+        """A minimal declared package: the real verifier plus one declared file.
+
+        Same shape the two tests above build inline. Returns the path of the
+        copied verifier, which is what `--pristine` must be run from so it
+        resolves PACKAGE to the throwaway tree rather than to this repository.
+        """
+        scripts = package / "scripts"
+        scripts.mkdir()
+        verifier_path = scripts / "verify_release.py"
+        shutil.copy2(SCRIPTS / "verify_release.py", verifier_path)
+        declared = package / "declared.txt"
+        declared.write_text("reviewed\n", encoding="utf-8")
+        files = [
+            {
+                "path": path.relative_to(package).as_posix(),
+                "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+                "size": path.stat().st_size,
+                "executable": bool(path.stat().st_mode & stat.S_IXUSR),
+            }
+            for path in (verifier_path, declared)
+        ]
+        (package / "manifest.json").write_text(
+            json.dumps(
+                {
+                    "manifest_version": 1,
+                    "package_version": "3.0.0",
+                    "excluded_review_directories": EXCLUDED_REVIEW_DIRECTORIES,
+                    "file_count": len(files),
+                    "files": files,
+                }
+            ),
+            encoding="utf-8",
+        )
+        return verifier_path
+
+    def test_pristine_ignores_git_metadata_whatever_its_file_type(self) -> None:
+        """`.git` is version-control metadata as a directory AND as a file.
+
+        `git worktree add` and a submodule checkout both write `.git` as a
+        regular file holding `gitdir: ...`. The eighteenth pass replaced this
+        verifier's rglob loop -- whose `.git` rule matched by path, so it caught
+        both shapes -- with an os.walk that prunes `.git` only out of the
+        DIRECTORY list, so the file shape fell through and was reported as an
+        undeclared file. build_release_manifest.py excludes `.git` by path part
+        and kept passing, and a disagreement between those two checkers is the
+        tamper signal docs/RUNBOOK.md §9 sends the operator to read.
+        """
+        with tempfile.TemporaryDirectory(prefix="g7-git-metadata-") as temporary:
+            package = Path(temporary)
+            verifier_path = self.pristine_fixture(package)
+
+            def run_pristine() -> subprocess.CompletedProcess[str]:
+                return subprocess.run(
+                    [sys.executable, "-B", str(verifier_path), "--pristine"],
+                    text=True,
+                    capture_output=True,
+                    timeout=30,
+                )
+
+            self.assertEqual(0, run_pristine().returncode)
+
+            metadata = package / ".git"
+            metadata.write_text("gitdir: /elsewhere/.git/worktrees/audit\n", encoding="utf-8")
+            as_file = run_pristine()
+            self.assertEqual(
+                0, as_file.returncode,
+                "a `.git` regular file (git worktree / submodule checkout) was "
+                f"reported as package content: {as_file.stdout or as_file.stderr}",
+            )
+            metadata.unlink()
+
+            objects = package / ".git/objects"
+            objects.mkdir(parents=True)
+            (objects / "loose").write_bytes(b"object")
+            (package / ".git/HEAD").write_text("ref: refs/heads/main\n", encoding="utf-8")
+            as_directory = run_pristine()
+            self.assertEqual(
+                0, as_directory.returncode,
+                "a `.git` directory was reported as package content: "
+                f"{as_directory.stdout or as_directory.stderr}",
+            )
+
+    def test_pristine_reports_an_unenumerable_directory_only_where_it_hides_something(self) -> None:
+        """A directory the verifier cannot read is a finding -- except where it
+        could not have reported anything inside it anyway.
+
+        rglob swallowed the PermissionError it hit while descending, so an
+        undeclared payload inside a mode-000 directory was invisible here, to
+        build_release_manifest.py --check and to `git status` at once; the
+        os.walk rewrite makes that a finding. But the first version of the new
+        error callback recorded every unreadable path unconditionally, including
+        ones under `_internal` (never declared) and inside `inbox`/`quarantine`
+        (operator payload, deliberately tolerated) -- so a deployment doing its
+        job failed its own integrity gate for a subtree whose contents this gate
+        never reports, and `--check` went on passing.
+        """
+        # Never skipTest here: verify_offline.py scores a suite FAIL the moment
+        # any test in it skips, so a guard would turn a root-owned run of the
+        # gate into a red g7. Mode 000 does not deny root, so under root the
+        # fixture proves the undeclared-payload path instead; `denied` below
+        # records which of the two it actually exercised.
+        with tempfile.TemporaryDirectory(prefix="g7-unreadable-") as temporary:
+            package = Path(temporary)
+            verifier_path = self.pristine_fixture(package)
+
+            def run_pristine() -> subprocess.CompletedProcess[str]:
+                return subprocess.run(
+                    [sys.executable, "-B", str(verifier_path), "--pristine"],
+                    text=True,
+                    capture_output=True,
+                    timeout=30,
+                )
+
+            self.assertEqual(0, run_pristine().returncode)
+
+            # Two syscalls can fail, and only one of them reaches os.walk's
+            # onerror. Mode 0o000 (and 0o111, searchable but not readable) fails
+            # the directory ENUMERATION, so onerror fires. Mode 0o444/0o644 --
+            # what `chmod a-x` and `chmod -R 644` produce -- is readable but not
+            # SEARCHABLE: os.walk raises nothing and hands the names back in
+            # `filenames`, and the loop's own lstat fails instead. Round 1
+            # classified the first shape and not the second, so --pristine went
+            # on failing on tolerated roots for every directory an operator had
+            # left non-executable. Both shapes are rows here.
+            for parent, tolerated in (
+                ("_internal", True),
+                ("inbox", True),
+                ("quarantine", True),
+                ("scripts", False),
+            ):
+                for mode in (0o000, 0o111, 0o444, 0o644):
+                    with self.subTest(parent=parent, tolerated=tolerated, mode=oct(mode)):
+                        locked = package / parent / "locked"
+                        locked.mkdir(parents=True, exist_ok=True)
+                        (locked / "payload").write_text("undeclared\n", encoding="utf-8")
+                        locked.chmod(mode)
+                        try:
+                            done = run_pristine()
+                        finally:
+                            locked.chmod(0o755)
+                        if tolerated:
+                            self.assertEqual(
+                                0, done.returncode,
+                                f"an unreadable directory under {parent}/ at mode "
+                                f"{oct(mode)} was reported, but nothing there can "
+                                f"enter the declared inventory, so it hides nothing "
+                                f"this gate would have named: "
+                                f"{done.stdout or done.stderr}",
+                            )
+                        else:
+                            self.assertNotEqual(
+                                0, done.returncode,
+                                f"an unreadable directory under {parent}/ at mode "
+                                f"{oct(mode)} passed, so an undeclared payload "
+                                f"inside it is invisible to every integrity signal "
+                                f"at once: {done.stdout or done.stderr}",
+                            )
+                            # Which path is named depends on which syscall failed,
+                            # and mode bits do not deny root at all -- under root
+                            # the payload is simply an undeclared file. All three
+                            # shapes name the offending directory, which is what
+                            # the operator needs; asserting the exact sentence
+                            # would pin the shape rather than the property.
+                            self.assertIn(
+                                f"{parent}/locked", done.stdout,
+                                f"the failure at mode {oct(mode)} did not name "
+                                f"`{parent}/locked`, so the operator cannot act on "
+                                f"it: {done.stdout or done.stderr}",
+                            )
+                        shutil.rmtree(locked)
+
+    def both_checkers_fixture(self, package: Path) -> tuple[Path, Path]:
+        """A minimal declared package carrying BOTH integrity checkers.
+
+        The manifest is generated by the shipped builder instead of hand-written
+        as `pristine_fixture` does: `build_release_manifest.py --check` compares
+        its own header fields as well as the file list, so a hand-written
+        manifest differs in the header and `--check` would fail on every row for
+        a reason that has nothing to do with permissions.
+        """
+        scripts = package / "scripts"
+        scripts.mkdir()
+        for name in ("verify_release.py", "build_release_manifest.py"):
+            shutil.copy2(SCRIPTS / name, scripts / name)
+        (package / "declared.txt").write_text("reviewed\n", encoding="utf-8")
+        built = subprocess.run(
+            [sys.executable, "-B", str(scripts / "build_release_manifest.py")],
+            text=True, capture_output=True, timeout=60,
+        )
+        self.assertEqual(
+            0, built.returncode,
+            f"the fixture's baseline manifest build failed: {built.stdout}{built.stderr}",
+        )
+        return scripts / "verify_release.py", scripts / "build_release_manifest.py"
+
+    def test_both_integrity_checkers_tolerate_exactly_the_same_unreadable_paths(self) -> None:
+        """The two checkers must agree, because a disagreement IS the tamper signal.
+
+        docs/RUNBOOK.md §9 sends the operator to `--pristine` when they suspect
+        tampering, and one checker passing while the other fails is what that
+        section teaches them to distrust. Each script decides tolerance in its own
+        copy of the same rule, so nothing but this test binds the two copies.
+
+        Before the eighteenth pass's round-3 repair the disagreement was real and
+        measured on an export: with a directory under `inbox/` at mode 0o444,
+        `verify_release.py --pristine` exited 1 with "cannot inspect package path
+        inbox/locked/doc.pdf" while `build_release_manifest.py --check` exited 0.
+        In the other direction, `build_release_manifest.py`'s own tolerance was
+        exercised by NOTHING: deleting its classification left the whole offline
+        gate green while making every manifest re-pin -- the step CLAUDE.md
+        requires after any declared-file change -- impossible.
+
+        Asserted as equality of outcome rather than as two independent
+        expectations, so the test fails when they diverge in either direction.
+        """
+        # Never skipTest: verify_offline.py scores any skip as a suite failure.
+        # Mode bits do not deny root, so under root every row exercises the
+        # readable-undeclared-payload path instead; the agreement property is the
+        # subject either way, and it holds for both shapes.
+        with tempfile.TemporaryDirectory(prefix="g7-two-checkers-") as temporary:
+            package = Path(temporary)
+            verifier, builder = self.both_checkers_fixture(package)
+
+            def rc(script: Path, *args: str) -> int:
+                return subprocess.run(
+                    [sys.executable, "-B", str(script), *args],
+                    text=True, capture_output=True, timeout=60,
+                ).returncode
+
+            self.assertEqual(0, rc(verifier, "--pristine"), "baseline --pristine must pass")
+            self.assertEqual(0, rc(builder, "--check"), "baseline --check must pass")
+
+            for parent, tolerated in (
+                ("_internal", True),
+                ("inbox", True),
+                ("quarantine", True),
+                ("scripts", False),
+            ):
+                for mode in (0o000, 0o111, 0o444, 0o644):
+                    with self.subTest(parent=parent, tolerated=tolerated, mode=oct(mode)):
+                        locked = package / parent / "locked"
+                        locked.mkdir(parents=True, exist_ok=True)
+                        (locked / "payload.sh").write_text("undeclared\n", encoding="utf-8")
+                        locked.chmod(mode)
+                        try:
+                            verified = rc(verifier, "--pristine")
+                            checked = rc(builder, "--check")
+                        finally:
+                            locked.chmod(0o755)
+                            shutil.rmtree(locked)
+                        self.assertEqual(
+                            verified == 0, checked == 0,
+                            f"the two integrity checkers disagree about "
+                            f"{parent}/locked at mode {oct(mode)}: "
+                            f"verify_release --pristine returned {verified}, "
+                            f"build_release_manifest --check returned {checked}. "
+                            f"That disagreement is exactly what docs/RUNBOOK.md §9 "
+                            f"tells the operator to read as tampering.",
+                        )
+                        self.assertEqual(
+                            tolerated, verified == 0,
+                            f"{parent}/locked at mode {oct(mode)} should be "
+                            f"{'tolerated' if tolerated else 'refused'} and was not",
+                        )
+
     def test_deployment_lock_binds_release_and_migrations(self) -> None:
         recorder = body("record_images.py")
         for contract_field in (
@@ -1452,7 +1872,7 @@ class RecoveryLifecycleContractTests(unittest.TestCase):
                 )
 
     def test_every_mutation_flag_is_armed_before_the_command_it_guards(self) -> None:
-        # `trap '...' HUP INT TERM` runs between commands, so a signal delivered
+        # `trap '...' HUP INT QUIT TERM` runs between commands, so a signal delivered
         # during the guarded command is handled with the flag still at its old
         # value. A flag armed on the line after its command therefore leaves the
         # cleanup handler blind: measured on backup.sh, one SIGTERM during
@@ -1469,12 +1889,37 @@ class RecoveryLifecycleContractTests(unittest.TestCase):
                 "QUIESCED=1",
                 "compose --profile tools stop openclaw-cli openclaw-gateway >/dev/null\n",
             ),
+            "bootstrap.sh": (
+                "MUTATION_STARTED=1",
+                'OPENCLAW_LIFECYCLE_LOCK_TOKEN="$LOCK_TOKEN" ./scripts/rotate_runtime_role.sh',
+            ),
             "restore.sh": (
                 "MUTATION_STARTED=1",
                 "compose --profile tools stop openclaw-cli openclaw-gateway >/dev/null\n",
             ),
             "update.sh": ("MUTATION_STARTED=1", './scripts/backup.sh "$BACKUP_DESTINATION"'),
         }
+        # The map above is a hand-written world, and a hand-written world is how
+        # this test came to be named "every mutation flag" while covering three of
+        # the four scripts that arm one. bootstrap.sh was the omission: it arms
+        # MUTATION_STARTED and guards the runtime-role rotation with it, and
+        # moving its flag to the wrong side of the rotation -- the exact defect
+        # its own comment forbids, and a state this wave reached once -- left all
+        # of g7 green. Derive the world from the shipped scripts and require an
+        # entry for every member, so the next script to grow a flag cannot be
+        # silently excluded the way bootstrap.sh was.
+        arming = {
+            path.name
+            for path in shipped_shell_scripts()
+            if any(flag in path.read_text(encoding="utf-8")
+                   for flag in ("MUTATION_STARTED=1", "QUIESCED=1"))
+        }
+        self.assertEqual(
+            arming, set(guarded),
+            "every shipped script that arms a mutation flag needs an entry here: "
+            f"unlisted={sorted(arming - set(guarded))}, "
+            f"listed-but-no-longer-arming={sorted(set(guarded) - arming)}",
+        )
         for name, (flag, command) in guarded.items():
             with self.subTest(script=name):
                 script = body(name)
@@ -1493,6 +1938,238 @@ class RecoveryLifecycleContractTests(unittest.TestCase):
                     f"command is handled with the flag still unset, so cleanup skips "
                     f"the branch that would report or undo the half-finished state",
                 )
+
+    def test_the_two_inbox_guards_refuse_exactly_the_same_classes(self) -> None:
+        """backup.sh and update.sh each carry a copy of the inbox guard. Pin them together.
+
+        update.sh reaches backup.sh's guard only AFTER arming MUTATION_STARTED, so
+        mirroring the check in one place is not enough: a refusal that lands there
+        stops openclaw-cli and openclaw-gateway and points the operator at a
+        pre-update recovery point backup.sh refused before writing. update.sh
+        therefore carries its own copy ahead of its quiesce, and both scripts say
+        in prose that the two class lists must stay identical.
+
+        They drifted. Measured under Debian dash on fixture inboxes, before the
+        eighteenth pass's round-3 repair: update.sh carried three of backup.sh's
+        five classes, so a backslash-named or hard-linked inbox entry was ACCEPTED
+        pre-quiesce and refused only afterwards. The same copy matched the
+        ABSOLUTE entry rather than the inbox-relative path, which is the spelling
+        backup.sh's own comment warns against -- a package installed under a
+        directory whose own name carries a control character had every clean inbox
+        refused, also measured.
+
+        A duplicated list cannot enforce itself and a comment saying "keep these
+        identical" is not a check. Extracting a shared sourced helper was
+        considered and rejected: it puts a new file into manifest.json and into
+        `shipped_shell_scripts()`, and gives two lifecycle scripts a
+        missing-file failure mode. This test is the enforcement instead. Both
+        sides are derived from the scripts, so the test holds no third copy of
+        the class list that could drift on its own.
+        """
+        def guard(name: str) -> tuple[frozenset[str], frozenset[str], bool, bool]:
+            text = body(name)
+            block = re.search(
+                r'inbox_relative="\$\{entry#"\$PACKAGE_INBOX"/\}"\s*\n'
+                r'(?:\s*#[^\n]*\n)*'
+                r'\s*case "\$inbox_relative" in\n(.*?)\n\s*esac',
+                text, re.S,
+            )
+            self.assertIsNotNone(
+                block,
+                f"{name}: could not find the inbox guard's `case` over the "
+                f"inbox-relative path. Either the guard was removed, or it went "
+                f"back to matching the absolute `$entry` -- the spelling that "
+                f"refuses every run on a package installed under a directory "
+                f"whose own name carries one of these characters.",
+            )
+            assert block is not None
+            patterns = frozenset(
+                re.findall(r'^\s*(\*[^)]*\))\s*inbox_reject=', block.group(1), re.M)
+            )
+            reasons = frozenset(
+                re.findall(r'inbox_reject="\$entry \(([^)]*)\)"', text)
+            )
+            hardlink = bool(re.search(
+                r'find "\$PACKAGE_INBOX" -mindepth 1 -type f -links \+1', text
+            ))
+            refuses = "inbox holds an entry a recovery archive cannot represent" in text
+            return patterns, reasons, hardlink, refuses
+
+        authority = guard("backup.sh")
+        mirror = guard("update.sh")
+        self.assertEqual(
+            authority[0], mirror[0],
+            "backup.sh and update.sh must refuse the same `case` patterns on the "
+            f"inbox-relative path. backup.sh has {sorted(authority[0])}, "
+            f"update.sh has {sorted(mirror[0])}. A class present in only one copy "
+            f"is refused on the wrong side of update.sh's quiesce.",
+        )
+        self.assertEqual(
+            authority[1], mirror[1],
+            "backup.sh and update.sh must refuse the same inbox entry classes. "
+            f"backup.sh refuses {sorted(authority[1])}, update.sh refuses "
+            f"{sorted(mirror[1])}.",
+        )
+        self.assertTrue(
+            authority[2] and mirror[2],
+            "both scripts must carry the `-links +1` hard-link scan: a hard-linked "
+            "regular file passes every per-entry test, but tar emits the second "
+            "name as a link member and validate_recovery_archive.py then refuses "
+            "the whole archive. backup.sh has it: "
+            f"{authority[2]}; update.sh has it: {mirror[2]}",
+        )
+        self.assertTrue(authority[3] and mirror[3], "both guards must refuse, not just classify")
+        update = body("update.sh")
+        self.assertLess(
+            update.index("inbox holds an entry"), update.index("MUTATION_STARTED=1\n"),
+            "update.sh must refuse an unarchivable inbox entry BEFORE arming "
+            "MUTATION_STARTED. Refusing afterwards runs the cleanup that stops "
+            "both consumers, for an entry that could have been named while the "
+            "gateway was still serving.",
+        )
+
+    def test_every_caller_of_the_rotation_checks_its_lock_before_arming(self) -> None:
+        """A refusal that touched nothing must not stop a healthy deployment.
+
+        rotate_runtime_role.sh acquires /tmp/openclaw-lead-research-v3-rotation.lock
+        as its first act in that lane, and a crash-left lock is a state
+        docs/OPERATIONS.md documents as an expected leftover -- it says the copy
+        "can outlive an interrupted bootstrap or update". At that point the
+        rotation has changed nothing and its own cleanup stops nothing, because
+        ROTATION_STARTED is still 0. But its CALLERS arm their mutation flag
+        before invoking it (deliberately: `trap ... HUP INT QUIT TERM` runs
+        between commands, so a signal during the rotation must be handled with
+        the flag already set), so the caller's cleanup runs
+        `compose --profile tools stop openclaw-cli openclaw-gateway`.
+
+        Measured under Debian dash with a stub rotation refusing at lock
+        acquisition: without a pre-check, bootstrap.sh printed "openclaw-gateway
+        and openclaw-cli are stopped" and ran that stop against a deployment
+        nothing had touched. update.sh gained the pre-check in this wave;
+        bootstrap.sh did not, and reached the identical refusal through the
+        identical call. Both now carry it, and CLAUDE.md instructs re-running
+        bootstrap.sh on an already-bootstrapped deployment, so this is a live
+        path rather than first-install-only.
+
+        The caller set is derived, so a third caller cannot be added without
+        either carrying the check or failing here.
+        """
+        callers = sorted(
+            path.name
+            for path in shipped_shell_scripts()
+            if "./scripts/rotate_runtime_role.sh" in path.read_text(encoding="utf-8")
+            and "MUTATION_STARTED=1" in path.read_text(encoding="utf-8")
+        )
+        self.assertEqual(
+            ["bootstrap.sh", "update.sh"], callers,
+            "the set of scripts that arm a mutation flag and then invoke the "
+            "runtime-role rotation has changed; a new one needs the same "
+            "pre-check, and one that stopped doing so needs this list updated",
+        )
+        for name in callers:
+            with self.subTest(script=name):
+                script = body(name)
+                # assertTrue, not assertIn: assertIn appends an untruncated repr
+                # of the container, and these scripts are 10-25 KB. The script text
+                # is not what a reader needs to see.
+                self.assertTrue(
+                    'ROTATION_LOCK_DIR="/tmp/openclaw-lead-research-v3-rotation.lock"'
+                    in script,
+                    f"{name} invokes the rotation after arming a mutation flag, so "
+                    f"it must refuse a crash-left rotation lock itself, while "
+                    f"production is still running",
+                )
+                self.assertLess(
+                    script.index("ROTATION_LOCK_DIR="),
+                    script.index("MUTATION_STARTED=1\n"),
+                    f"{name} checks the rotation lock after arming its mutation "
+                    f"flag, which is the same failure as not checking it: the "
+                    f"cleanup stops both consumers for a refusal that changed "
+                    f"nothing",
+                )
+                self.assertLess(
+                    script.index("ROTATION_LOCK_DIR="),
+                    script.index("./scripts/rotate_runtime_role.sh"),
+                    f"{name} must check the lock before invoking the rotation",
+                )
+                self.assertTrue(
+                    "nothing has been changed" in script,
+                    f"{name}'s rotation-lock refusal must tell the operator "
+                    f"nothing was changed; the cleanup message they would "
+                    f"otherwise see says the opposite",
+                )
+
+    def test_every_shipped_trap_names_the_whole_fatal_signal_set(self) -> None:
+        """Enumerate the signal sets instead of reviewing twelve trap lines by eye.
+
+        A handler that omits a signal is not run when that signal arrives.
+        Measured under Debian dash: `trap cleanup EXIT HUP INT TERM` plus
+        SIGQUIT exits 131 with the handler never entered, while the same trap
+        naming QUIT runs it. The eighteenth pass added QUIT to all twelve trap
+        lines in scripts/ and missed `migrations/000_roles.sh`, whose handler is
+        the one that erases the three mode-0600 /dev/shm files holding the
+        openclaw_runtime and openclaw_owner passwords -- so a SIGQUIT during the
+        credential proof left both passwords in cleartext in the container's
+        /dev/shm. Nothing in the package enumerated the sets, so nothing caught
+        it; reviewing them by eye is exactly what failed.
+
+        Three rules, each of which that omission breaks:
+          1. no trap line may name a proper non-empty subset of the fatal four;
+          2. a script that installs any trap must arm all four somewhere;
+          3. a `trap -` disarm must name exactly what that script armed, so an
+             arm and its disarm cannot drift apart.
+        """
+        measured: dict[str, list[tuple[int, str, str, frozenset[str]]]] = {}
+        for path in shipped_shell_scripts():
+            commands = trap_commands(path)
+            if commands:
+                measured[path.relative_to(PACKAGE).as_posix()] = commands
+
+        missing = [name for name in TRAP_BEARING_SCRIPTS if name not in measured]
+        self.assertEqual(
+            [], missing,
+            f"these shipped scripts no longer install any trap: {missing}. A "
+            f"script that loses its handler stops cleaning up its staging, its "
+            f"lock or its credential files on interrupt. If a handler was "
+            f"deliberately removed, drop the path from TRAP_BEARING_SCRIPTS in "
+            f"the same commit and say why.",
+        )
+
+        for relative, commands in sorted(measured.items()):
+            with self.subTest(script=relative):
+                armed: set[str] = set()
+                installs = 0
+                for number, line, action, signals in commands:
+                    fatal = signals & FATAL_TRAP_SIGNALS
+                    self.assertIn(
+                        fatal, (frozenset(), FATAL_TRAP_SIGNALS),
+                        f"{relative}:{number}: `{line}` names only "
+                        f"{sorted(fatal)} of {sorted(FATAL_TRAP_SIGNALS)}. dash "
+                        f"does not run a handler for a signal it was not armed "
+                        f"for, so the omitted signal leaks whatever this handler "
+                        f"cleans up.",
+                    )
+                    if action != "-":
+                        installs += 1
+                        armed |= signals
+                if installs:
+                    self.assertEqual(
+                        FATAL_TRAP_SIGNALS, armed & FATAL_TRAP_SIGNALS,
+                        f"{relative} installs a trap but never arms "
+                        f"{sorted(FATAL_TRAP_SIGNALS - armed)}; a signal it does "
+                        f"not name kills the script with its handler unrun.",
+                    )
+                for number, line, action, signals in commands:
+                    if action != "-":
+                        continue
+                    self.assertEqual(
+                        armed, signals,
+                        f"{relative}:{number}: `{line}` disarms {sorted(signals)} "
+                        f"but the script arms {sorted(armed)}. A disarm that "
+                        f"misses a signal leaves the handler live while cleanup "
+                        f"runs; one that names an extra signal is a sign the two "
+                        f"halves were edited apart.",
+                    )
 
     def test_rotation_seeds_approval_state_before_no_dependency_gateway_start(self) -> None:
         script = body("rotate_runtime_role.sh")

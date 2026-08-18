@@ -81,23 +81,30 @@ recommendation intervals.
 
 ## Complete recommendation intervals
 
-| Unrounded final score | Display equivalent | Outcome |
-|---:|---:|---|
-| `0 <= score < 50` | `0.0 <= display < 2.5` | `pass` |
-| `50 <= score < 66` | `2.5 <= display < 3.3` | `watch` |
-| `66 <= score < 82` | `3.3 <= display < 4.1` | `research_deeper` |
-| `82 <= score <= 100` | `4.1 <= display <= 5.0` | `high_priority` |
+| Unrounded final score | Outcome |
+|---:|---|
+| `0 <= score < 50` | `pass` |
+| `50 <= score < 66` | `watch` |
+| `66 <= score < 82` | `research_deeper` |
+| `82 <= score <= 100` | `high_priority` |
 
-Exact `display_5 = 4.1` (equivalently `final_100 = 82`) is `high_priority`.
+In interval notation the same four bands are `[0, 50)`, `[50, 66)`, `[66, 82)`
+and `[82, 100]` on unrounded `final_100`: contiguous over `[0, 100]` with no gap
+and no overlap, and exactly what `scoring-rubric.v3.json` encodes as
+`recommendation_intervals`. There is deliberately no display-scale equivalent.
 
-Machine-readable display intervals:
-
-| Interval | Outcome |
-|---|---|
-| `[0.0, 2.5)` | `pass` |
-| `[2.5, 3.3)` | `watch` |
-| `[3.3, 4.1)` | `research_deeper` |
-| `[4.1, 5.0]` | `high_priority` |
+The helper decides the recommendation from unrounded `final_100`, and
+`display_5` is not a second spelling of it. `display_5` rounds `final_100 / 20`
+to one decimal, so each display value covers a two-point window of `final_100`,
+and the window straddles a band edge rather than starting at it. `final_100` is
+carried to three decimals, and `display_5 = 4.1` is produced by every value from
+`81.001` to `82.999` — of which `81.001`–`81.999` band `research_deeper` and
+`82.000`–`82.999` band `high_priority`. `81.000` displays `4.0` and `83.000`
+displays `4.2`, so the window is open at both ends; the asymmetry is
+round-half-to-even on the exact ties `4.05` and `4.15`. The same half-step
+offset sits on the other two edges — `final_100 = 49.900` displays `2.5` but
+bands `pass`, and `65.900` displays `3.3` but bands `watch`. Never read a
+recommendation off a display value.
 
 Overrides and readiness gates:
 

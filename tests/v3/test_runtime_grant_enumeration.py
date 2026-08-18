@@ -25,17 +25,31 @@ ROOT = Path(__file__).resolve().parents[2]
 SCHEMA = (ROOT / "docs/SCHEMA.sql").read_text(encoding="utf-8")
 DATA_MODEL = (ROOT / "docs/DATA_MODEL.md").read_text(encoding="utf-8")
 
-# The seven append-only history tables DATA_MODEL.md names: migration 004
-# revokes UPDATE on the first five, 017 completes the contract for the last
-# two, so the runtime must hold exactly SELECT+INSERT on each.
-HISTORY_TABLES = {
-    "facts",
-    "fact_sources",
-    "document_facts",
-    "compiled_truth_facts",
-    "evaluation_criteria",
-    "contradiction_facts",
-    "trajectory_points",
+# The append-only history tables, DERIVED from the same statements
+# DATA_MODEL.md cites rather than copied from its prose. A hardcoded list is
+# a second source of truth: an eighth table revoked in a later migration
+# would pass a suite whose whole purpose is to enumerate them, and the
+# document's "all seven" would go stale with nothing to catch it.
+def _history_tables() -> set[str]:
+    revoked: set[str] = set()
+    for path in sorted((ROOT / "migrations").glob("*.sql")):
+        for match in re.finditer(
+            r"REVOKE\s+UPDATE\s+ON\s+(?:TABLE\s+)?([\w\s,.]+?)\s+FROM\s+openclaw_runtime",
+            path.read_text(encoding="utf-8"), re.S | re.I,
+        ):
+            for name in match.group(1).split(","):
+                cleaned = name.strip().split(".")[-1]
+                if cleaned:
+                    revoked.add(cleaned)
+    return revoked
+
+
+HISTORY_TABLES = _history_tables()
+
+NUMBER_WORDS = {
+    1: "one", 2: "two", 3: "three", 4: "four", 5: "five", 6: "six",
+    7: "seven", 8: "eight", 9: "nine", 10: "ten", 11: "eleven", 12: "twelve",
+    13: "thirteen", 14: "fourteen", 15: "fifteen",
 }
 
 
@@ -200,6 +214,56 @@ class RuntimeGrantEnumerationTests(unittest.TestCase):
             "REVOKE half in the migration that creates the function.",
         )
 
+    def test_data_model_security_definer_counts_match_the_schema(self):
+        """DATA_MODEL.md's SECURITY DEFINER counts must equal what the schema yields.
+
+        Compares three documented number-words against sets derived here: `the
+        twelve non-trigger `SECURITY DEFINER` functions`, and its `eight created
+        in `001`` / `four created after `002`` split, against a scan of
+        docs/SCHEMA.sql and of the migrations that create each one. All three were
+        unbound, so a thirteenth definer left the document asserting a number
+        nothing measured. The history-table count is bound by
+        test_history_tables_are_select_insert_only, which derives the same word.
+        """
+        words = NUMBER_WORDS
+        document = DATA_MODEL
+
+        blocks = re.split(r"(?=^CREATE FUNCTION public\.)", SCHEMA, flags=re.M)
+        definers = [
+            match.group(1)
+            for block in blocks
+            if (match := re.match(r"CREATE FUNCTION public\.(\w+)\(", block))
+            and "SECURITY DEFINER" in block[:2000]
+        ]
+        self.assertTrue(
+            f"the {words[len(definers)]} non-trigger `SECURITY DEFINER` functions"
+            in document,
+            f"docs/DATA_MODEL.md does not state {len(definers)} non-trigger "
+            f"SECURITY DEFINER functions; docs/SCHEMA.sql defines {sorted(definers)}",
+        )
+
+        # The document also splits that total by the migration that created each
+        # one. Derive the split so the two halves cannot drift apart from the sum.
+        created_in_001 = set()
+        for path in sorted((ROOT / "migrations").glob("*.sql")):
+            body = path.read_text(encoding="utf-8")
+            for block in re.split(r"(?=CREATE (?:OR REPLACE )?FUNCTION )", body):
+                match = re.match(r"CREATE (?:OR REPLACE )?FUNCTION\s+(?:public\.)?(\w+)\(", block)
+                if match and "SECURITY DEFINER" in block[:2000] and path.name.startswith("001"):
+                    created_in_001.add(match.group(1))
+        early = len(created_in_001 & set(definers))
+        late = len(definers) - early
+        self.assertTrue(
+            f"The {words[early]} created in `001`" in document,
+            f"docs/DATA_MODEL.md does not say {words[early]} SECURITY DEFINER "
+            f"functions were created in 001; the migrations define {early}",
+        )
+        self.assertTrue(
+            f"The {words[late]} created after `002`" in document,
+            f"docs/DATA_MODEL.md does not say {words[late]} SECURITY DEFINER "
+            f"functions were created after 002; the migrations define {late}",
+        )
+
     def test_no_table_grants_delete_or_truncate(self):
         """docs/DATA_MODEL.md states the runtime "grants no `DELETE`, `TRUNCATE`"."""
         offenders = sorted(
@@ -268,10 +332,20 @@ class RuntimeGrantEnumerationTests(unittest.TestCase):
                     f"docs/DATA_MODEL.md states the runtime holds SELECT/INSERT "
                     f"but no UPDATE on {table}",
                 )
-        # The prose names these seven as a closed set; keep it that way.
-        self.assertIn("all seven of those history tables", DATA_MODEL)
+        # The prose names these as a closed set; keep it that way. The count
+        # word is DERIVED, not pinned: a hardcoded "seven" here would fail a
+        # document correctly updated to "eight" while passing a stale one.
+        expected = f"all {NUMBER_WORDS[len(HISTORY_TABLES)]} of those history tables"
+        self.assertTrue(
+            expected in DATA_MODEL,
+            f"docs/DATA_MODEL.md does not contain {expected!r}; the REVOKE "
+            f"UPDATE statements yield {len(HISTORY_TABLES)}: {sorted(HISTORY_TABLES)}",
+        )
         for table in sorted(HISTORY_TABLES):
-            self.assertIn(f"`{table}`", DATA_MODEL)
+            self.assertTrue(
+                f"`{table}`" in DATA_MODEL,
+                f"docs/DATA_MODEL.md never names the append-only table {table}",
+            )
 
 
 if __name__ == "__main__":

@@ -6,6 +6,8 @@ import io
 import json
 import os
 import re
+import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -22,6 +24,20 @@ assert SPEC is not None and SPEC.loader is not None
 check_env = importlib.util.module_from_spec(SPEC)
 sys.modules[SPEC.name] = check_env
 SPEC.loader.exec_module(check_env)
+
+# The renderer is loaded too because it, not check_env, is the dispatch site for
+# the channel allowlists: `main` calls `materialize_sentinels` on the shipped
+# profile and that is what reaches config/runtime/openclaw.json. A test that
+# exercised only check_env's helper would leave the bytes the runtime actually
+# receives unasserted. `scripts` must be importable first: the renderer resolves
+# `check_env` as a sibling module at exec time.
+sys.path.insert(0, str(PACKAGE / "scripts"))
+RENDER_SPEC = importlib.util.spec_from_file_location(
+    "render_channel_config_contract", PACKAGE / "scripts/render_channel_config.py"
+)
+assert RENDER_SPEC is not None and RENDER_SPEC.loader is not None
+render_channel_config = importlib.util.module_from_spec(RENDER_SPEC)
+RENDER_SPEC.loader.exec_module(render_channel_config)
 
 
 class EnvironmentFileSecurityTests(unittest.TestCase):
@@ -479,6 +495,151 @@ class LifecycleScriptContractTests(unittest.TestCase):
                     f"{name} renders/deploys config without validating the customization profile",
                 )
 
+    def test_integrity_gates_fail_on_a_subtree_they_cannot_enumerate(self) -> None:
+        """A directory the gates cannot read must be a finding, not a silent gap.
+
+        `Path.rglob` swallows the `PermissionError` it hits while descending, so
+        before the eighteenth pass an undeclared payload inside a mode-000
+        directory was invisible to `verify_release.py --pristine`, to
+        `build_release_manifest.py --check` and to `git status` simultaneously —
+        all three reported clean. `--pristine` is the tamper signal
+        `docs/RUNBOOK.md` §9 sends the operator to read, so a blind spot there is
+        the one failure this gate exists to prevent.
+
+        Runs the two shipped scripts as subprocesses against a throwaway copy of
+        a minimal declared tree, so it asserts the operator-visible exit status
+        and message rather than an internal call. Asserts that each names the
+        offending path: a bare non-zero exit would also be produced by an
+        unrelated failure.
+
+        Two directory modes, because two different syscalls fail. Mode 0o000 fails
+        the ENUMERATION, which reaches `os.walk`'s onerror. Mode 0o444/0o644 —
+        what `chmod a-x` and `chmod -R 644` produce — is readable but not
+        SEARCHABLE: `os.walk` raises nothing and hands the names back in
+        `filenames`, and the per-entry stat fails instead. That is a distinct
+        member of the partition, not a repetition of the first, and it was the
+        member nothing covered: measured before the eighteenth pass's round-3
+        repair, an undeclared payload inside a mode-0o444 subdirectory left
+        `build_release_manifest.py --check` at exit 0 while `--pristine` exited 1,
+        and with a DECLARED directory at that mode the write path exited 0
+        reporting "Manifest written: 321 files" having silently dropped all ten
+        declared `docs/*` files from the release inventory.
+
+        Scope, so this test is not over-credited: the fixture is a minimal tree
+        with no `_internal/`, `inbox/` or `quarantine/`, so the REFUSING branch is
+        the only one it can take. The tolerating branch — the rule that an
+        unreadable path under those roots is the operator's business rather than
+        tampering — is covered by
+        `tests/g7/test_recovery_lifecycle.py::test_both_integrity_checkers_tolerate_exactly_the_same_unreadable_paths`,
+        which drives both scripts over every (root, mode) pair. Deleting either
+        script's tolerance predicate leaves THIS test green; that was measured.
+        """
+        scripts = PACKAGE / "scripts"
+        with tempfile.TemporaryDirectory(prefix="v3-unreadable-") as raw:
+            fake = Path(raw) / "pkg"
+            (fake / "scripts").mkdir(parents=True)
+            for name in ("verify_release.py", "build_release_manifest.py"):
+                (fake / "scripts" / name).write_bytes((scripts / name).read_bytes())
+            declared = fake / "declared.txt"
+            declared.write_text("declared\n", encoding="utf-8")
+            # Build the manifest while everything is readable, so the only
+            # difference in the failing runs below is the unreadable directory.
+            built = subprocess.run(
+                [sys.executable, "-B", str(fake / "scripts/build_release_manifest.py")],
+                capture_output=True, text=True, timeout=120,
+            )
+            self.assertEqual(
+                built.returncode, 0,
+                f"baseline manifest build failed: {built.stdout}{built.stderr}",
+            )
+            baseline = subprocess.run(
+                [sys.executable, "-B", str(fake / "scripts/verify_release.py"), "--pristine"],
+                capture_output=True, text=True, timeout=120,
+            )
+            self.assertEqual(
+                baseline.returncode, 0,
+                f"baseline --pristine did not pass: {baseline.stdout}{baseline.stderr}",
+            )
+
+            hidden = fake / "hidden"
+            hidden.mkdir()
+            (hidden / "payload").write_text("undeclared\n", encoding="utf-8")
+            for mode in (0o000, 0o444, 0o644):
+                hidden.chmod(mode)
+                try:
+                    for name, arguments in (
+                        ("verify_release.py", ["--pristine"]),
+                        ("build_release_manifest.py", ["--check"]),
+                        ("build_release_manifest.py", []),
+                    ):
+                        with self.subTest(script=name, arguments=arguments, mode=oct(mode)):
+                            done = subprocess.run(
+                                [sys.executable, "-B", str(fake / "scripts" / name), *arguments],
+                                capture_output=True, text=True, timeout=120,
+                            )
+                            output = done.stdout + done.stderr
+                            self.assertNotEqual(
+                                done.returncode, 0,
+                                f"{name} {' '.join(arguments)} reported success at "
+                                f"mode {oct(mode)} over a directory it could not "
+                                f"read: {output}",
+                            )
+                            self.assertIn(
+                                "hidden", output,
+                                f"{name} {' '.join(arguments)} failed at mode "
+                                f"{oct(mode)} without naming the unreadable path, so "
+                                f"the operator cannot act on it: {output}",
+                            )
+                finally:
+                    hidden.chmod(0o755)
+            shutil.rmtree(hidden)
+
+            # The declared-file case the mode-0o000 rows cannot express. An exit
+            # status alone would not have caught this: the defect was a SUCCESSFUL
+            # exit with a silently reduced inventory, so assert on the inventory.
+            declared_dir = fake / "reviewed"
+            declared_dir.mkdir()
+            for index in range(3):
+                (declared_dir / f"policy{index}.md").write_text(
+                    f"reviewed {index}\n", encoding="utf-8"
+                )
+            rebuilt = subprocess.run(
+                [sys.executable, "-B", str(fake / "scripts/build_release_manifest.py")],
+                capture_output=True, text=True, timeout=120,
+            )
+            self.assertEqual(
+                rebuilt.returncode, 0,
+                f"could not re-pin with the declared subdirectory present: "
+                f"{rebuilt.stdout}{rebuilt.stderr}",
+            )
+            manifest = fake / "manifest.json"
+            before = json.loads(manifest.read_text(encoding="utf-8"))
+            self.assertEqual(
+                3, sum(1 for entry in before["files"] if entry["path"].startswith("reviewed/")),
+                "the fixture's declared subdirectory is not in the manifest",
+            )
+            declared_dir.chmod(0o444)
+            try:
+                written = subprocess.run(
+                    [sys.executable, "-B", str(fake / "scripts/build_release_manifest.py")],
+                    capture_output=True, text=True, timeout=120,
+                )
+            finally:
+                declared_dir.chmod(0o755)
+            after = json.loads(manifest.read_text(encoding="utf-8"))
+            self.assertNotEqual(
+                written.returncode, 0,
+                f"the manifest builder reported success over a declared directory it "
+                f"could not read: {written.stdout}{written.stderr}",
+            )
+            self.assertEqual(
+                before["files"], after["files"],
+                "the manifest was rewritten over a declared directory the builder "
+                "could not read. A successful exit with a reduced inventory is the "
+                "defect: a later --pristine then agrees with a manifest that never "
+                "saw those files (docs/RUNBOOK.md §9).",
+            )
+
     def test_no_lifecycle_path_can_shed_bytecode_into_the_pristine_package(self) -> None:
         """`verify_release.py --pristine` rejects undeclared caches by design, so any
         packaged script that byte-compiles a module into the tree makes a working
@@ -730,6 +891,140 @@ class TeamsIdentifierValidationTests(unittest.TestCase):
             self.teams_env(MSTEAMS_ALLOWED_USER_IDS="alice@contoso.com")
         )
         self.assertTrue(any("8-4-4-4-12" in error for error in errors), errors)
+
+    @staticmethod
+    def distinct_object_ids(count: int) -> str:
+        """`count` GUIDs that are distinct in any case folding."""
+        return ",".join(f"{index:08x}-0000-4000-8000-0000{index:08x}" for index in range(1, count + 1))
+
+    def test_two_case_spellings_of_one_object_id_are_one_principal(self) -> None:
+        # Entra object IDs are GUIDs, whose equality is case-insensitive, and
+        # MSTEAMS_GUID_RE accepts either hex case. A byte-exact duplicate test
+        # therefore let one principal occupy two of the 100 allowlist slots when
+        # two admins collected IDs from tools that render them differently.
+        errors = check_env.validate_channel_selection(
+            self.teams_env(
+                MSTEAMS_ALLOWED_USER_IDS="bbbbbbbb-cccc-dddd-eeee-ffffffffffff,"
+                "BBBBBBBB-CCCC-DDDD-EEEE-FFFFFFFFFFFF"
+            )
+        )
+        self.assertTrue(
+            any("duplicate stable IDs" in error for error in errors),
+            f"case-variant object IDs were accepted as two principals: {errors}",
+        )
+
+    def test_the_allowlist_boundary_is_a_hundred_distinct_principals(self) -> None:
+        # The fold must not cost a slot: a full, genuinely distinct allowlist
+        # still validates, and the limit still bites at the first entry past it.
+        self.assertEqual(
+            [],
+            check_env.validate_channel_selection(
+                self.teams_env(MSTEAMS_ALLOWED_USER_IDS=self.distinct_object_ids(100))
+            ),
+        )
+        errors = check_env.validate_channel_selection(
+            self.teams_env(MSTEAMS_ALLOWED_USER_IDS=self.distinct_object_ids(101))
+        )
+        self.assertTrue(
+            any("100-user deployment limit" in error for error in errors),
+            f"a 101-entry allowlist was accepted: {errors}",
+        )
+
+    def test_the_folded_comparison_does_not_rewrite_the_returned_ids(self) -> None:
+        # Only the duplicate comparison folds. The items handed back feed
+        # check_env's own MSTEAMS_GUID_RE and all-zero-GUID shape checks, both of
+        # which are case-insensitive, so a fold applied to the returned list
+        # would be invisible there — which is exactly why it has to be asserted
+        # here rather than inferred from a passing validation.
+        errors: list[str] = []
+        self.assertEqual(
+            ["BBBBBBBB-CCCC-DDDD-EEEE-FFFFFFFFFFFF", "29f1c4de-9a1b-4d0e-8f2a-11bb22cc33dd"],
+            check_env._comma_list(
+                "BBBBBBBB-CCCC-DDDD-EEEE-FFFFFFFFFFFF,29f1c4de-9a1b-4d0e-8f2a-11bb22cc33dd",
+                "MSTEAMS_ALLOWED_USER_IDS",
+                errors,
+                fold=True,
+            ),
+        )
+        self.assertEqual([], errors)
+
+    def test_the_rendered_teams_allowlist_carries_the_recorded_case(self) -> None:
+        # The dispatch site, not the helper. check_env._comma_list's return value
+        # never reaches the runtime config: render_channel_config splits
+        # MSTEAMS_ALLOWED_USER_IDS itself out of LIST_SENTINELS, so a case
+        # rewrite introduced anywhere on the render path would leave the
+        # validator's own tests green while the deployed allowlist held a
+        # spelling no admin recorded. Drive the shipped profile through the same
+        # call main() makes, so this pins the file the operator actually gets.
+        uppercase = "BBBBBBBB-CCCC-DDDD-EEEE-FFFFFFFFFFFF"
+        lowercase = "29f1c4de-9a1b-4d0e-8f2a-11bb22cc33dd"
+        env = self.teams_env(MSTEAMS_ALLOWED_USER_IDS=f"{uppercase},{lowercase}")
+        env["VC_CHANNEL_MEDIA_MAX_MB"] = "8"
+        overlay = render_channel_config.load_strict_json(
+            PACKAGE / "config" / render_channel_config.PROFILE_FILES["msteams"]
+        )
+        rendered = render_channel_config.materialize_sentinels(overlay, env)
+        msteams = rendered["channels"]["msteams"]
+        for key in ("allowFrom", "groupAllowFrom"):
+            with self.subTest(field=key):
+                self.assertEqual([uppercase, lowercase], msteams[key])
+
+    def test_the_public_webhook_url_must_name_a_publicly_routable_host(self) -> None:
+        # Nothing reads this value at runtime, so this check is where a
+        # mis-recorded callback is caught. The bot really does serve
+        # /api/messages on a loopback-published port, so the loopback and RFC1918
+        # spellings are the mistake an operator actually makes; both used to PASS
+        # every gate and first showed up at CH-01 as silent non-delivery.
+        for label, url in (
+            ("loopback", "https://127.0.0.1:3978/api/messages"),
+            ("RFC1918", "https://192.168.1.10/api/messages"),
+        ):
+            with self.subTest(case=label):
+                errors = check_env.validate_channel_selection(
+                    self.teams_env(MSTEAMS_PUBLIC_WEBHOOK_URL=url)
+                )
+                self.assertTrue(
+                    any("public HTTPS" in error for error in errors),
+                    f"a {label} callback URL was accepted: {errors}",
+                )
+        self.assertEqual(
+            [],
+            check_env.validate_channel_selection(
+                self.teams_env(MSTEAMS_PUBLIC_WEBHOOK_URL="https://teams.example.org/api/messages")
+            ),
+        )
+
+    def test_a_private_dns_name_is_deliberate_residue_of_the_host_class_check(self) -> None:
+        # The check decides what is decidable offline: a fully written IP literal
+        # is classified by `ipaddress`, and a name is refused only when its form
+        # guarantees a local answer. A multi-label *non-numeric* DNS name is
+        # indistinguishable from a public one without a lookup, so it passes here
+        # and is confirmed at CH-01 instead. Pinned so that the gap is a recorded
+        # decision rather than an assumption about what this validator covers.
+        #
+        # The residue is only that. It is deliberately worded as "non-numeric"
+        # because the dotted short forms `inet_aton` accepts — `127.1`,
+        # `192.168.1`, `10.1` — are *not* covered by this test. They ARE a
+        # recorded decision: docs/CHANNELS.md states that they are accepted and
+        # names CH-01 as the step that catches them, instead of the unqualified
+        # universal it used to assert. The code is deliberately unchanged --
+        # altering the runtime classification needs its own evidence -- so:
+        # `ipaddress.ip_address` requires four octets, so they fall into the name
+        # branch on the bare `"." in host` and are accepted, while any client
+        # that resolves through `inet_aton` (curl among them) expands them to
+        # 127.0.0.1 / 192.168.0.1 / 10.0.0.1 — measured with
+        # `socket.inet_ntoa(socket.inet_aton(host))`, and the exact addresses the
+        # two rejected cases above exist to refuse.
+        # Closing it in code needs `_publicly_routable_host` in
+        # scripts/check_env.py to expand an all-numeric-or-hex-label host through
+        # `inet_aton` before the DNS branch; until it does, do not read this test
+        # as covering numeric hosts, and do not let docs/CHANNELS.md say it does.
+        self.assertEqual(
+            [],
+            check_env.validate_channel_selection(
+                self.teams_env(MSTEAMS_PUBLIC_WEBHOOK_URL="https://teams.internal.corp/api/messages")
+            ),
+        )
 
 
 if __name__ == "__main__":

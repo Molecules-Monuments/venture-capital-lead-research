@@ -26,13 +26,13 @@ compose() {
 
 cleanup() {
   status="$?"
-  trap - EXIT HUP INT TERM
+  trap - EXIT HUP INT QUIT TERM
   [ -z "$EXPECTED_LEDGER" ] || rm -f "$EXPECTED_LEDGER"
   [ -z "$ACTUAL_LEDGER" ] || rm -f "$ACTUAL_LEDGER"
   exit "$status"
 }
 trap cleanup EXIT
-trap 'exit 1' HUP INT TERM
+trap 'exit 1' HUP INT QUIT TERM
 
 sha256_file() {
   if command -v sha256sum >/dev/null 2>&1; then

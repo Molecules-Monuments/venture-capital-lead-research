@@ -7,6 +7,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import stat
 import sys
 from pathlib import Path
@@ -41,6 +42,36 @@ REVIEW_ONLY_ROOTS = {"_internal"}
 # their tracked .gitkeep, stay declared; only the operator's own files inside
 # them are tolerated.
 OPERATOR_DATA_ROOTS = {"inbox", "quarantine"}
+
+
+def tolerated_unreadable(relative: str) -> bool:
+    """Whether a package path this gate cannot read hides anything it would name.
+
+    Nothing under `_internal/` enters the declared inventory and --pristine never
+    reports its contents; `inbox/` and `quarantine/` below their own root hold
+    operator payload that is never declared. An unreadable path in either place
+    therefore hides nothing this gate would have reported, so refusing on it
+    costs the tolerance docs/RUNBOOK.md §9 documents: a deployment doing its job
+    (operator payload under `inbox/`, with a directory there not readable by the
+    invoking user) failed its own integrity gate while
+    `build_release_manifest.py --check` went on passing — the two-checker
+    disagreement that reads as tampering.
+
+    There is one predicate because there are two syscalls that can fail. os.walk's
+    onerror fires for a directory it cannot ENUMERATE (mode 0000); a directory
+    that is readable but not SEARCHABLE (mode 0444, 0644, `chmod a-x`) raises
+    nothing there and fails in the loop's own lstat instead. The first was
+    classified and the second was not, so --pristine still failed on tolerated
+    roots for the second shape. Both callers now ask this function.
+
+    build_release_manifest.tolerated() applies the same rule to the same roots,
+    and tests/g7/test_recovery_lifecycle.py runs both scripts over the same
+    fixture for every (root, directory mode) pair so the two cannot drift.
+    """
+    root = relative.split("/", 1)[0]
+    if root in REVIEW_ONLY_ROOTS:
+        return True
+    return root in OPERATOR_DATA_ROOTS and relative != root
 
 
 def unique_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
@@ -121,41 +152,82 @@ def main() -> int:
 
     if args.pristine:
         actual: set[str] = set()
-        for path in PACKAGE.rglob("*"):
-            relative = path.relative_to(PACKAGE).as_posix()
-            if relative == "manifest.json":
-                continue
-            # Version-control metadata is not part of the deployable package.
-            if relative == ".git" or relative.startswith(".git/"):
-                continue
+
+        # os.walk with onerror, never Path.rglob: rglob silently swallows the
+        # PermissionError it hits while descending, so a subtree this verifier
+        # cannot read simply never appeared in the inventory and --pristine
+        # reported PASS over it. An undeclared executable inside a mode-000
+        # directory was invisible to this gate, to build_release_manifest.py
+        # --check and to `git status` at the same time, which is precisely the
+        # tamper signal docs/RUNBOOK.md §9 sends the operator here to read. A
+        # directory this gate cannot enumerate is now a finding in its own right.
+        def unreadable(exc: OSError) -> None:
             try:
-                info = path.lstat()
-            except OSError as exc:
-                errors.append(f"cannot inspect package path {relative}: {exc}")
-                continue
-            if relative in RUNTIME_ALLOWED:
-                if not stat.S_ISREG(info.st_mode) or stat.S_ISLNK(info.st_mode):
-                    errors.append(f"invalid runtime path type: {relative}")
-                continue
-            root = relative.split("/", 1)[0]
-            if root in REVIEW_ONLY_ROOTS:
-                if relative != root:
+                where = Path(exc.filename).relative_to(PACKAGE).as_posix()
+            except (TypeError, ValueError):
+                errors.append(f"cannot inspect package path {exc.filename}: {exc}")
+                return
+            if tolerated_unreadable(where):
+                return
+            errors.append(f"cannot inspect package path {where}: {exc}")
+
+        for directory, subdirectories, filenames in os.walk(PACKAGE, onerror=unreadable):
+            base = Path(directory)
+            # Version-control metadata is not part of the deployable package, so
+            # prune it rather than walking it and discarding every entry.
+            if base == PACKAGE and ".git" in subdirectories:
+                subdirectories.remove(".git")
+            for name in list(subdirectories) + filenames:
+                path = base / name
+                relative = path.relative_to(PACKAGE).as_posix()
+                if relative == "manifest.json":
                     continue
-                if not stat.S_ISDIR(info.st_mode) or stat.S_ISLNK(info.st_mode):
-                    errors.append(f"invalid review-only root type: {relative}")
-                continue
-            if root in OPERATOR_DATA_ROOTS and relative != root and relative not in declared:
-                # Operator-supplied payload, not a package file. A symlink here
-                # would still be a real finding: the gateway follows it out of
-                # the intended directory, so keep rejecting those.
-                if stat.S_ISLNK(info.st_mode):
-                    errors.append(f"symlink in operator data directory: {relative}")
-                continue
-            if stat.S_ISDIR(info.st_mode) and not stat.S_ISLNK(info.st_mode):
-                continue
-            # Every undeclared regular file, symlink, FIFO, socket, device, cache,
-            # or editor/OS artifact makes a pristine package fail.
-            actual.add(relative)
+                # `.git` is version-control metadata whatever its file type. The
+                # prune above only removes it from the DIRECTORY list, and a
+                # `git worktree` or submodule checkout writes `.git` as a regular
+                # FILE — which os.walk hands back in `filenames`, so --pristine
+                # reported it as an undeclared file while
+                # build_release_manifest.py --check (whose EXCLUDED_PARTS matches
+                # by path part, not by type) still passed. That two-checker
+                # disagreement is the tamper signal docs/RUNBOOK.md §9 sends the
+                # operator to read, raised here by an ordinary checkout layout.
+                if relative == ".git" or relative.startswith(".git/"):
+                    continue
+                try:
+                    info = path.lstat()
+                except OSError as exc:
+                    # Same question the onerror callback asks, because this is
+                    # the other syscall that can fail: a directory that is
+                    # readable but not searchable hands its names back through
+                    # os.walk without error and fails here instead. Classifying
+                    # in only one of the two places is what left --pristine
+                    # failing on tolerated roots at mode 0444/0644.
+                    if not tolerated_unreadable(relative):
+                        errors.append(f"cannot inspect package path {relative}: {exc}")
+                    continue
+                if relative in RUNTIME_ALLOWED:
+                    if not stat.S_ISREG(info.st_mode) or stat.S_ISLNK(info.st_mode):
+                        errors.append(f"invalid runtime path type: {relative}")
+                    continue
+                root = relative.split("/", 1)[0]
+                if root in REVIEW_ONLY_ROOTS:
+                    if relative != root:
+                        continue
+                    if not stat.S_ISDIR(info.st_mode) or stat.S_ISLNK(info.st_mode):
+                        errors.append(f"invalid review-only root type: {relative}")
+                    continue
+                if root in OPERATOR_DATA_ROOTS and relative != root and relative not in declared:
+                    # Operator-supplied payload, not a package file. A symlink here
+                    # would still be a real finding: the gateway follows it out of
+                    # the intended directory, so keep rejecting those.
+                    if stat.S_ISLNK(info.st_mode):
+                        errors.append(f"symlink in operator data directory: {relative}")
+                    continue
+                if stat.S_ISDIR(info.st_mode) and not stat.S_ISLNK(info.st_mode):
+                    continue
+                # Every undeclared regular file, symlink, FIFO, socket, device, cache,
+                # or editor/OS artifact makes a pristine package fail.
+                actual.add(relative)
         unexpected = sorted(actual - declared)
         if unexpected:
             errors.append(f"unexpected files: {unexpected}")

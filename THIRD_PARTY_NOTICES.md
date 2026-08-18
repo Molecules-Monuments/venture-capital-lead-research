@@ -97,12 +97,52 @@ The derived image also inherits the base the pinned OpenClaw image is built on
 — `docker.io/library/node:24-bookworm-slim`, recorded in that image's own
 `org.opencontainers.image.base.name`/`.base.digest` labels — plus the Debian
 packages `Dockerfile.openclaw` installs. That base contributes **Node.js
-24.16.0** with npm, corepack, yarn and pnpm, installed from upstream tarballs
-into `/usr/local` rather than from apt, so they appear in neither Python
-lockfile, neither npm lockfile, nor `dpkg`; their required notices (Node.js MIT
-plus the bundled OpenSSL, ICU, V8, c-ares, llhttp and zlib notices) ship only as
-`/usr/local/LICENSE` inside the built image, and a redistributor must preserve
-that file. The Debian layer beneath it is **not** permissive-only: it
+24.16.0** with npm 11.13.0, corepack 0.35.0 and yarn 1.22.22, installed from
+upstream tarballs rather than from apt; pnpm is not in the base and arrives
+with the build (third bullet). None of them appear in either Python
+lockfile, either npm lockfile, or `dpkg`, and their notices are not gathered
+into one file. Measured in the built image `openclaw-lead-research:3.0.0`,
+with the pinned base (`node@sha256:242549cd…`) measured separately because
+the two do not agree everywhere:
+
+- Node.js, npm and corepack unpack into `/usr/local`, and their own notices —
+  Node.js MIT plus the bundled OpenSSL, ICU, V8, c-ares, llhttp and zlib texts,
+  npm's own section including its Artistic-2.0 text, and corepack's — are
+  aggregated in `/usr/local/LICENSE`. That aggregate is the only match within
+  two levels of `/usr/local` (`find /usr/local -maxdepth 2 -iname
+  'LICEN[SC]E*'`), which is not the same claim as its being the only licence
+  file under `/usr/local`. Dropping the depth limit,
+  `find /usr/local -iname 'LICEN[SC]E*' | wc -l` returns **172** in the built
+  image: the aggregate, 148 under `/usr/local/lib/node_modules/npm`, 22 under
+  `/usr/local/share/corepack`, and corepack's own
+  `/usr/local/lib/node_modules/corepack/LICENSE.md`. The pinned base returns
+  **150** for the same command — it has no `/usr/local/share/corepack` at all,
+  which is the third bullet's subject. npm's and corepack's standalone copies
+  duplicate text the aggregate already carries; the other 169 are npm's bundled
+  dependencies and that vendored pnpm tree. Do not assume the aggregate stands
+  in for them — `grep -ci yallist` and `grep -ci sigstore` against
+  `/usr/local/LICENSE` both return `0`.
+- **yarn 1.22.22** (BSD-2-Clause) is unpacked into `/opt/yarn-v1.22.22`, 5.2 MB
+  outside `/usr/local`, and carries its own `LICENSE` there. This one *is*
+  identical in the pinned base. `/usr/local/LICENSE` does not cover it:
+  `grep -ci yarn /usr/local/LICENSE` returns `0`.
+- **pnpm 11.2.2** (MIT) is not in the pinned base — `command -v pnpm` there
+  finds nothing. The build materialises it through corepack into
+  `/usr/local/share/corepack/v1/pnpm/11.2.2`, where `pnpm --version` answers
+  `11.2.2` under `docker run --network none`, so the bytes are in the built
+  image rather than fetched on first use. Its own `LICENSE` and the
+  licence files of its bundled dependencies under `dist/node_modules/` are the
+  22 files that tree contributes. `grep -ci pnpm /usr/local/LICENSE` also
+  returns `0`.
+
+A redistributor who preserves `/usr/local/LICENSE` alone therefore ships yarn,
+pnpm, and npm's bundled dependencies with no notice. Preserve the licence files
+under `/opt/yarn-v1.22.22`, `/usr/local/lib/node_modules`, and
+`/usr/local/share/corepack` as well, and re-run the commands above —
+unbounded, not depth-limited — whenever the base image pin or the build moves:
+the layout and the counts are properties of those, not guarantees of this
+document.
+The Debian layer beneath it is **not** permissive-only: it
 contains substantial GPL/LGPL material — `poppler-utils` is GPL-2/GPL-3, and
 the majority of the shipped Debian packages declare a GPL, LGPL, or MPL
 licence. Redistributing the built image therefore carries copyleft source-offer

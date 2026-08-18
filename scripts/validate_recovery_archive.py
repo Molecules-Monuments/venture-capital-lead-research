@@ -21,6 +21,33 @@ DEFAULT_MAX_ENTRIES = 100_000
 DEFAULT_MAX_MEMBER_BYTES = 2 * 1024 * 1024 * 1024
 DEFAULT_MAX_TOTAL_BYTES = 20 * 1024 * 1024 * 1024
 DEFAULT_MAX_RATIO = 500
+# DELIBERATELY NOT VERIFIED HERE: gzip's CRC32/ISIZE trailer.
+#
+# `tarfile` stops at the tar end-of-archive marker and reads exactly
+# `member.size` bytes per member, so gzip never validates its own trailer and a
+# recovery point that was already corrupt when backup.sh first read it back
+# passes this validator. That is a real residual gap, recorded rather than
+# papered over -- and it is deliberately left open, because the eighteenth audit
+# pass got the fix wrong three times running:
+#
+#   1. draining the reader tarfile had been using read live member bytes on any
+#      multi-member archive and rejected every genuine backup. A live update
+#      drill caught it only after it had stopped production.
+#   2. re-reading from offset 0 with a bound of `member payload + 1 MiB` ignored
+#      tar's 512-byte header and padding per entry, so it rejected any real
+#      archive past roughly a thousand entries.
+#   3. the regression test's positive control was a single-member archive, so it
+#      could not see either of the above.
+#
+# The compensating controls are real and were measured: restore.sh verifies every
+# member's SHA-256 against the HMAC-authenticated SHA256SUMS *before* this
+# validator opens anything, so a recovery point corrupted after it was written
+# cannot reach a restore. Only a born-corrupt archive slips through, which is why
+# the finding was adversarially downgraded to minor.
+#
+# If this is ever closed, the bound must be derived from the tar framing the
+# headers already describe (offset_data + 512-rounded size), never from the
+# payload total, and the regression test must use a MULTI-MEMBER archive.
 MAX_PATH_BYTES = 4_096
 MAX_SEGMENT_BYTES = 255
 
@@ -33,7 +60,7 @@ def normalized_name(raw: str) -> str:
     if not raw or raw.startswith("/") or "\\" in raw:
         raise ArchiveError(f"unsafe archive path: {raw!r}")
     if any(ord(character) < 32 or ord(character) == 127 for character in raw):
-        raise ArchiveError("archive paths must not contain control characters")
+        raise ArchiveError(f"archive paths must not contain control characters: {raw!r}")
     parts: list[str] = []
     for part in raw.split("/"):
         if part in {"", "."}:
@@ -198,6 +225,7 @@ def main() -> int:
                         f"insufficient staging space: need {total + reserve} bytes, have {free}"
                     )
                 extract_members(archive, members, args.destination)
+
         if args.list_file is not None:
             # Same surrogateescape round-trip as normalized_name: without it a
             # member name carrying non-UTF-8 bytes validates in backup mode and

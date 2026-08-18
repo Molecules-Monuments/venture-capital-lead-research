@@ -1077,41 +1077,117 @@ record. Autonomous transcript review remains disabled.
 - **Credential exposure:** set the affected channel to `none`, stop consumers,
   rotate the credential, inspect audit/provider logs, and rerun its live matrix.
 - **Role reconciliation failed** (`openclaw_runtime role restrictions did not
-  reconcile`, or any `rotate_runtime_role.sh` failure *after* the consumer stop
-  it prints): the script has already stopped the gateway and CLI, and both
-  database passwords in `.env` may now differ from what Postgres holds. A
-  failure in the script's validation phase — either lock acquisition,
-  `check_env.sh`, `check_customization.py`, `render_channel_config.py`, or
-  `compose config --quiet` — exits before anything is stopped and before any
-  password changes; correct what it reported and re-run. The `compose … ps`
-  listing below is the authority on which case you are in. Do not re-run the
-  script blindly. Confirm
-  Postgres is up (`docker compose -f docker-compose.yml -p
-  openclaw-lead-research-v3 --env-file .env ps`), then check which credentials
-  actually work by connecting as each role from the Postgres container
-  **over TCP**:
+  reconcile`, or any `rotate_runtime_role.sh` failure): **this is a recoverable
+  state and the remedy is to re-run the script, not to restore.** Read the four
+  phases below to find out what the failed run had already done. Whether the
+  consumers are still up separates phase 4 from the three before it — the
+  script's own output names which command failed — so list them first:
 
   ```sh
   docker compose -f docker-compose.yml -p openclaw-lead-research-v3 --env-file .env \
-    exec -e PGPASSWORD="<the password from .env>" postgres \
-    psql -h 127.0.0.1 -U openclaw_owner -d openclaw -tAc 'select 1'
+    --profile tools ps --all
   ```
 
-  The `-h 127.0.0.1` is load-bearing and this test is worthless without it. The
-  pinned image's generated `pg_hba.conf` begins `local all all trust`, so a
-  connection over the container's Unix socket — which is what plain
-  `psql -U openclaw_owner` uses — succeeds with **any** password, including a
-  wrong one. Only the `host` rules carry `scram-sha-256`
-  (`POSTGRES_HOST_AUTH_METHOD` and `--auth-host` in `docker-compose.yml` set
-  them), so TCP is the only path that actually tests the credential. A correct
-  password returns `1`; a wrong one fails with
-  `FATAL:  password authentication failed for user "openclaw_owner"`.
+  Both flags are load-bearing. `--all` because a bare `ps` omits stopped
+  containers, which makes a consumer this script stopped indistinguishable from
+  one that was never created — both render as an empty listing. `--profile
+  tools` because `openclaw-cli` is profile-gated and is otherwise not listed at
+  all; `scripts/update.sh`, `scripts/backup.sh`, and `scripts/restore.sh` use
+  the same pair for the same reason. A `postgres` row in state `running` is also
+  the "Postgres is up" confirmation the re-run below needs.
 
-  If `.env` is ahead of the database, the owner password in `.env` is the one to
-  correct. Once a working owner credential is in `.env`, re-run the script — it
-  is idempotent. Only if neither credential authenticates over TCP should you
-  restore from the last verified recovery point (§5.4); the database is the
-  authoritative state and the gateway is stateless against it.
+  The four phases below describe a **direct** `./scripts/rotate_runtime_role.sh`
+  run. `scripts/bootstrap.sh` and `scripts/update.sh` both call it, and both arm
+  their own mutation flag *before* the call — deliberately, because
+  `trap ... HUP INT QUIT TERM` runs between commands, so a signal arriving during
+  the rotation must be handled with the flag already set. A refusal *inside* the
+  rotation during phases 1–3 therefore runs the **caller's** cleanup, which stops
+  `openclaw-gateway` and the `openclaw-cli` container and prints that it has done
+  so — even though the rotation itself changed nothing, and its own cleanup would
+  have stopped nothing. Both callers pre-check
+  `/tmp/openclaw-lead-research-v3-rotation.lock` before arming, so the one crash
+  state `docs/OPERATIONS.md` documents as an expected leftover now refuses while
+  production is still running; what remains in that window is losing the race for
+  that lock, and the rotation's own private `.env` snapshot. **If the message you
+  saw came from `bootstrap.sh` or `update.sh` and says the consumers are stopped,
+  believe it over the phase text below**, and bring the gateway back after
+  correcting the cause:
+
+  ```sh
+  docker compose -f docker-compose.yml -p openclaw-lead-research-v3 --env-file .env \
+    up -d --wait --force-recreate --no-deps openclaw-gateway
+  ```
+
+  `openclaw-cli` needs nothing: it is profile-gated and runs as a one-off under
+  `docker compose run`, so "stopped" is its normal state between turns.
+
+  1. **Lock acquisition, `check_env.sh`, or `check_customization.py`** — nothing
+     has been touched. Correct what it reported and re-run.
+  2. **`render_channel_config.py`** — nothing has been written either. The
+     renderer writes `config/runtime/secrets/` as the last thing it does, after
+     every validation has passed, so a render that fails a check reports `FAIL`
+     having left that directory alone: the four files still hold the values of
+     the last render that *succeeded*, which need not be what `.env` now says.
+     (The one exception is a render that fails while writing — an `OSError` from
+     the filesystem — which can leave the four mixed; that error names the path
+     it failed on.) Correct and re-run.
+  3. **`compose config --quiet`** — the render did succeed, because
+     `scripts/rotate_runtime_role.sh` renders before it validates the Compose
+     configuration, so the four files under `config/runtime/secrets/` now hold
+     the `.env` values. In this phase and in phase 2 no database password has
+     changed, and a **direct** rotation has stopped no consumer — read the caller
+     note above if you reached this through `bootstrap.sh` or `update.sh`.
+     Correct and re-run.
+  4. **At or after the consumer stop the script prints** — the gateway and CLI
+     are stopped, and the database passwords may now be mid-rotation.
+     `migrations/000_roles.sh` sets `openclaw_runtime` to `NOLOGIN`, installs
+     both passwords in two further `psql` invocations, and restores `LOGIN` only
+     at the end; a failure anywhere in that window leaves the runtime role
+     unable to log in with a password that is nevertheless correct.
+
+  In every one of those phases the fix is the same, because **the reconciler does
+  not need the database's current passwords.** Every credential-changing
+  statement in `migrations/000_roles.sh` connects over the container's Unix
+  socket, which the pinned image's generated `pg_hba.conf` trusts, so the script
+  installs whatever `.env` holds regardless of what Postgres currently stores.
+  Confirm Postgres is up, confirm `.env` holds the passwords you intend to
+  deploy, and re-run `./scripts/rotate_runtime_role.sh`; it is idempotent.
+
+  If you want to know which credential is live before re-running, probe each role
+  from the Postgres container **over TCP**. `.env` holds two database passwords:
+  `POSTGRES_PASSWORD` is the `openclaw_owner` password and `OPENCLAW_DB_PASSWORD`
+  is the `openclaw_runtime` one.
+
+  ```sh
+  docker compose -f docker-compose.yml -p openclaw-lead-research-v3 --env-file .env \
+    exec postgres psql -h 127.0.0.1 -U openclaw_owner -d openclaw -W -tAc 'select 1'
+  ```
+
+  `-W` makes `psql` prompt. Do not pass the password with `-e PGPASSWORD=…`: that
+  puts a live credential into the host `docker compose` argv, where any local user
+  can read it with `ps`, and into your shell history — during a credential
+  incident. `migrations/000_roles.sh` refuses to do this for the same reason
+  ("Passwords live briefly in mode-0600 files and never enter argv or exports").
+  Repeat the command with `-U openclaw_runtime` to probe the runtime role.
+
+  The `-h 127.0.0.1` is load-bearing and this test is worthless without it. The
+  generated `pg_hba.conf` begins `local all all trust`, so a connection over the
+  container's Unix socket — which is what plain `psql -U openclaw_owner` uses —
+  succeeds with **any** password, including a wrong one. Only the `host` rules
+  carry `scram-sha-256` (`POSTGRES_HOST_AUTH_METHOD` and `--auth-host` in
+  `docker-compose.yml` set them), so TCP is the only path that tests the
+  credential. The probe has three outcomes, not two:
+
+  | Output | Meaning |
+  | --- | --- |
+  | `1` | this credential is live |
+  | `FATAL:  password authentication failed for user "<role>"` | `.env` and the database disagree for that role |
+  | `FATAL:  role "openclaw_runtime" is not permitted to log in` | the run aborted inside the `NOLOGIN` window (phase 4). The password may be correct. Re-run the script. |
+
+  Restoring from a recovery point (§5.4) is **not** part of this procedure. It is
+  warranted only if the database itself is unrecoverable — a corrupt cluster or a
+  lost volume — which the probes above do not diagnose and which no credential
+  mismatch implies.
 - **Database/auth anomaly:** stop gateway and CLI, preserve evidence, run the
   locked role reconciler, and do not restore traffic until both positive and
   negative authentication proofs pass.
@@ -1214,9 +1290,13 @@ record. Autonomous transcript review remains disabled.
   requires for `VC_MODEL_TIMEOUT_SECONDS` in Ollama mode — so at the defaults
   the package mandated a per-call budget the runtime would never grant.
   Measured on a
-  CPU-only host: a legitimate 481 s cold prefill was aborted at 392 s with
-  `AbortError: agent run aborted: code=OPENCLAW_DIRECT_ABORT`, a message that
-  names neither the provider nor the prefill. `config/openclaw.json` therefore
+  CPU-only host: a legitimate 481 s cold prefill was aborted at 392 s. Do not
+  grep for a sentence: the harness sets the error's name, message and code as
+  three separate `Error` properties and never composes them into one line, so
+  the token to search the gateway log for is the code `OPENCLAW_DIRECT_ABORT`.
+  The watchdog's own line begins `stuck session recovery: ` and carries
+  `action=abort_embedded_run`. Neither surface names the provider or the
+  prefill, so the abort reads like a flake. `config/openclaw.json` therefore
   sets `diagnostics.stuckSessionWarnMs: 300000` and
   `diagnostics.stuckSessionAbortMs: 960000`, above the 900 s maximum the
   validator allows for the per-call timeout. **The shipped abort therefore
@@ -1395,7 +1475,7 @@ which is never published into the `bookworm main` suite, so a main-only
 snapshot cannot satisfy it however recent it is.
 
 ```sh
-SNAPSHOT=20260816T000000Z   # the date the reviewed image was built
+SNAPSHOT=20260818T000000Z   # the date the reviewed image was built
 rm -f /etc/apt/sources.list.d/debian.sources
 { printf 'deb [check-valid-until=no] https://snapshot.debian.org/archive/debian/%s/ bookworm main\n' "$SNAPSHOT"
   printf 'deb [check-valid-until=no] https://snapshot.debian.org/archive/debian-security/%s/ bookworm-security main\n' "$SNAPSHOT"
@@ -1404,7 +1484,7 @@ rm -f /etc/apt/sources.list.d/debian.sources
 
 (add it inside the build, or bake it into a local Dockerfile overlay). The
 timestamp must be at or after the date the reviewed image was built —
-`docs/V3_RELEASE_EVIDENCE.md` records **2026-08-16** — not merely at or after
+`docs/V3_RELEASE_EVIDENCE.md` records **2026-08-18** — not merely at or after
 the last pin change, which is an earlier and different date. The gap is a
 security revision: with `debian.sources` removed, `20260805T000000Z` resolves
 `libnss3` to `2:3.87.1-1+deb12u3` while the reviewed image carries

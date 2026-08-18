@@ -36,6 +36,24 @@ tests pass (see the banner above):
   startup never prune, so a quiescent deployment needs the on-demand cleanup
   command for `pruneAfter` to take effect) and
   `logging.maxFileBytes` (log rotation). Tune these keys to the periods above.
+
+  **Put that cleanup on the operator's weekly list — nothing in the package
+  runs it for you.** `scripts/schedule_jobs.sh` seeds `vc-source-scan` and
+  `vc-heartbeat` only, and the optional `cron` opt-in adds neither this command
+  nor a schedule for it, so a deployment (or a single per-agent store) that
+  goes quiet retains transcripts past `pruneAfter` until someone runs:
+
+  ```sh
+  docker compose -f docker-compose.yml -p openclaw-lead-research-v3 --env-file .env \
+    exec openclaw-gateway openclaw sessions cleanup --all-agents --dry-run
+  docker compose -f docker-compose.yml -p openclaw-lead-research-v3 --env-file .env \
+    exec openclaw-gateway openclaw sessions cleanup --all-agents
+  ```
+
+  `--all-agents` is load-bearing: without it the command maintains only the
+  configured default agent's store, and the other agents' transcripts age past
+  the configured period unnoticed. Run the `--dry-run` form first — it prints
+  what would be pruned without writing.
   (The generated-media `media.ttlHours` sweep is intentionally not enabled: it
   prunes empty directories including the workflow inbound-media root. Inbound
   document snapshots are product data, retained by the product operation below.)
