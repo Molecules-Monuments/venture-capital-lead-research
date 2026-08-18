@@ -245,24 +245,39 @@ class SemanticContractTests(unittest.TestCase):
             if Decimal(str(interval["minimum"])) > 0
         ]
         self.assertTrue(edges, "the rubric declares no interior band edge")
+
+        # Each edge must really BE an edge — that keeps the derivation honest.
         for edge in edges:
             below = (edge - quantum).quantize(quantum)
             with self.subTest(edge=str(edge)):
-                self.assertEqual(
-                    display_of(below), display_of(edge),
-                    f"the band edge at final_100={edge} falls on a display-value "
-                    f"boundary rather than inside one: {below} displays "
-                    f"{display_of(below)} and {edge} displays {display_of(edge)}. "
-                    f"If that ever becomes true of every edge, a display-to-band "
-                    f"table would be writable and the rubric's 'deliberately no "
-                    f"display-scale equivalent' would need revisiting.",
-                )
                 self.assertNotEqual(
                     self.helper._recommendation_for_score(below, rubric),
                     self.helper._recommendation_for_score(edge, rubric),
                     f"final_100={below} and {edge} band identically, so "
                     f"{edge} is not a band edge and this check is testing nothing",
                 )
+
+        # The straddle is asserted as a DISJUNCTION, not of every edge. Requiring
+        # it of every edge is a stronger claim than the rubric makes and than the
+        # arithmetic supports: `display_5` rounds to one decimal with
+        # ROUND_HALF_EVEN, so an edge E straddles only when E/20 does not land on a
+        # .x5 boundary. Of the 99 integer edges an operator could choose, 25 — every
+        # E congruent to 3 mod 4 — do not straddle. The rubric is
+        # `sample_only_must_customize` and CUSTOMIZATION.md tells operators to
+        # change these bands, so the universal form failed the offline gate on a
+        # documented customisation path (measured: edges 51/67/83 and 55/70/85 both
+        # went red). What actually matters is that a display-to-band table cannot
+        # be written, and ONE straddling edge is enough to make it impossible.
+        straddling = [e for e in edges if display_of((e - quantum).quantize(quantum)) == display_of(e)]
+        self.assertTrue(
+            straddling,
+            "no band edge is straddled by a display value, so every display value "
+            "maps to exactly one recommendation and a display-to-band table WOULD "
+            "be writable. The rubric says there is 'deliberately no display-scale "
+            f"equivalent'; with edges {[str(e) for e in edges]} that claim no "
+            "longer holds and the rubric, tests/g3/README.md and eval_fixtures.md "
+            "all need revisiting together.",
+        )
 
     def test_the_reviewed_boundary_fixture_is_on_the_unrounded_scale(self):
         """The hash-pinned boundary fixture must not carry display-scale values.

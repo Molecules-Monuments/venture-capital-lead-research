@@ -1447,7 +1447,25 @@ def quarantine_document(raw_path: str | Path, error: VcopsError) -> dict[str, An
         # branches of this function.
         return {"materialized": False, "reason": "exceeds_quarantine_byte_limit"}
     digest = hashlib.sha256(payload).hexdigest()
-    copy_name = f"{digest}{path.suffix.lower()}"
+    # The suffix is caller-controlled. bounded_input_path() validates traversal,
+    # symlinks, regularity and size, but NOT the characters in the name, so a
+    # rejected `deck.p\\df` would carry a backslash into this content-addressed
+    # copy name. scripts/validate_recovery_archive.py refuses any archive member
+    # whose name holds a backslash or a control character, and backup.sh tars the
+    # whole quarantine volume — so a single malformed extension would poison that
+    # volume permanently, and every later backup and update would then fail AFTER
+    # the quiesce, with production stopped and no recovery point written. The
+    # inbox guard cannot help: the copy outlives the inbox file that caused it.
+    # Drop only the two character classes the validator refuses; the copy is
+    # addressed by digest and the original name is preserved in the metadata
+    # below. Length is deliberately NOT touched here: an over-long suffix already
+    # has a typed outcome (the 255-byte write fails and returns
+    # quarantine_write_failed, which docs/RUNBOOK.md documents), and that is a
+    # clean rejection rather than a poisoned volume.
+    suffix = path.suffix.lower()
+    if "\\" in suffix or any(ord(character) < 32 or ord(character) == 127 for character in suffix):
+        suffix = ""
+    copy_name = f"{digest}{suffix}"
     # Quarantine names are content-addressed, so re-rejecting the same bytes
     # lands on a copy an earlier rejection already published and recorded. Note
     # whether it is already there: the marker-failure branch below may only

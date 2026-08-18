@@ -49,6 +49,13 @@ OPERATOR_DATA_ROOTS = {"inbox", "quarantine"}
 # 330, exit 0), after which `verify_release.py --pristine` PASSED over the
 # reduced inventory because the file it would have missed was no longer declared.
 OPERATOR_DATA_DECLARED_NAME = ".gitkeep"
+# The complete set of declared paths inside the operator roots. Written as paths,
+# not as a basename rule: a `.gitkeep` an operator brings in with a checkout is
+# THEIRS, and treating it as a package file is what made the two integrity
+# checkers disagree.
+DECLARED_OPERATOR_PLACEHOLDERS = frozenset(
+    f"{root}/{OPERATOR_DATA_DECLARED_NAME}" for root in OPERATOR_DATA_ROOTS
+)
 
 
 def tolerated(relative: str) -> bool:
@@ -73,9 +80,15 @@ def tolerated(relative: str) -> bool:
         return True
     if root not in OPERATOR_DATA_ROOTS or relative == root:
         return False
-    # A DECLARED file is a package file wherever it lives. Tolerating it here
-    # would let the write path below omit it and still exit 0.
-    return relative.rsplit("/", 1)[-1] != OPERATOR_DATA_DECLARED_NAME
+    # The declared placeholder is `<root>/.gitkeep` and nothing else. Deciding by
+    # BASENAME instead made this script refuse any `.gitkeep` at any depth, while
+    # verify_release.py decided by manifest membership and tolerated the same
+    # path — so an operator dropping a repo checkout into `inbox/` (one that
+    # carries its own `.gitkeep`) made the two checkers disagree, which
+    # docs/RUNBOOK.md §9 tells them to read as tampering. Measured on 06b307a.
+    # inventory() below declares exactly these two paths, so the two scripts now
+    # partition the same world.
+    return relative not in DECLARED_OPERATOR_PLACEHOLDERS
 
 
 def walk_package() -> list[tuple[Path, os.stat_result]]:
@@ -172,7 +185,7 @@ def inventory() -> list[dict[str, Any]]:
             or path.name == ".DS_Store"
             or (
                 relative.split("/", 1)[0] in OPERATOR_DATA_ROOTS
-                and path.name != OPERATOR_DATA_DECLARED_NAME
+                and relative not in DECLARED_OPERATOR_PLACEHOLDERS
             )
         ):
             continue

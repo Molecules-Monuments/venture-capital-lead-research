@@ -2196,6 +2196,151 @@ class RecoveryLifecycleContractTests(unittest.TestCase):
             "gateway was still serving.",
         )
 
+    def test_both_inbox_guards_refuse_every_class_when_actually_executed(self) -> None:
+        """Run the guards. Parity alone cannot see a symmetric mistake.
+
+        `test_the_two_inbox_guards_refuse_exactly_the_same_classes` compares the
+        two copies to each other, so an edit applied to BOTH is invisible to it.
+        Measured: deleting the control-character probe from both scripts, and
+        separately neutering the symlink test in both with `&& false`, each left
+        every offline suite green while reopening the escape that stops production
+        after the quiesce.
+
+        So execute the shipped block. Each guard is lifted verbatim, given a
+        fixture inbox, and run under the gate host's `/bin/sh`; the dash matrix in
+        the release evidence covers the other shell. A refusal must name its class
+        and say nothing has been stopped; a legal inbox must be accepted, because
+        a guard that over-refuses blocks every backup and every update on that
+        deployment.
+        """
+        def guard_source(name: str, remedy: str) -> str:
+            """The guard verbatim, INCLUDING the `fi` that closes its reporter.
+
+            `code_lines()` above stops one line earlier because it only compares
+            the two copies to each other and the omission is symmetric. Executing
+            the block needs the terminator, or `sh` reports "unexpected end of
+            file" and the run says nothing about the guard.
+            """
+            text = body(name)
+            start = text.index('inbox_reject=""')
+            cursor = text.index(remedy)
+            for _ in range(3):                    # remedy line, `exit 1`, `fi`
+                cursor = text.index("\n", cursor) + 1
+            return text[start:cursor]
+
+        guards = {
+            "backup.sh": guard_source("backup.sh", "remove or relocate it before backing up"),
+            "update.sh": guard_source("update.sh", "remove or relocate it before updating"),
+        }
+        for name, source in guards.items():
+            self.assertIn("[[:cntrl:]]", source, f"{name}: the guard lost its control-character probe")
+            self.assertIn("-links +1", source, f"{name}: the guard lost its hard-link scan")
+
+        # (label, builder, must_refuse, expected fragment of the reason)
+        def plant_clean(inbox: Path) -> None:
+            (inbox / "deck.pdf").write_text("x\n", encoding="utf-8")
+            (inbox / "two words.pdf").write_text("x\n", encoding="utf-8")
+            (inbox / "M\u00fcller.pdf").write_text("x\n", encoding="utf-8")
+            (inbox / "\u65e5\u672c\u8a9e.pdf").write_text("x\n", encoding="utf-8")
+            nested = inbox / "sub"
+            nested.mkdir()
+            (nested / "deck.pdf").write_text("x\n", encoding="utf-8")
+
+        def plant_empty(inbox: Path) -> None:
+            return None
+
+        def plant_control(inbox: Path) -> None:
+            (inbox / "a\x01b.pdf").write_text("x\n", encoding="utf-8")
+
+        def plant_leading_newline(inbox: Path) -> None:
+            (inbox / "\nscripts").symlink_to(inbox.parent / "VERSION")
+
+        def plant_embedded_newline(inbox: Path) -> None:
+            (inbox / "Q3 pitch\ndeck.pdf").write_text("x\n", encoding="utf-8")
+
+        def plant_backslash(inbox: Path) -> None:
+            (inbox / "back\\slash.pdf").write_text("x\n", encoding="utf-8")
+
+        def plant_symlink(inbox: Path) -> None:
+            (inbox / "link.pdf").symlink_to(inbox.parent / "VERSION")
+
+        def plant_fifo(inbox: Path) -> None:
+            os.mkfifo(inbox / "pipe")
+
+        def plant_hardlink(inbox: Path) -> None:
+            first = inbox / "orig.pdf"
+            first.write_text("x\n", encoding="utf-8")
+            os.link(first, inbox / "second.pdf")
+
+        cases = (
+            ("a clean inbox", plant_clean, False, ""),
+            ("an empty inbox", plant_empty, False, ""),
+            ("a control character", plant_control, True, "control character"),
+            ("a leading newline", plant_leading_newline, True, "control character"),
+            ("an embedded newline", plant_embedded_newline, True, "control character"),
+            ("a backslash", plant_backslash, True, "backslash in path"),
+            ("a symlink", plant_symlink, True, "symlink"),
+            ("a fifo", plant_fifo, True, "not a regular file or directory"),
+            ("a hard link", plant_hardlink, True, "hard link"),
+        )
+
+        for name, source in sorted(guards.items()):
+            for label, plant, must_refuse, expected in cases:
+                with self.subTest(script=name, case=label):
+                    with tempfile.TemporaryDirectory(prefix="g7-guard-exec-") as raw:
+                        package = Path(raw)
+                        # A `scripts` directory and a VERSION file, so a fragment
+                        # of a split name can resolve against the package the way
+                        # it does on a real deployment.
+                        (package / "scripts").mkdir()
+                        (package / "VERSION").write_text("3.0.0\n", encoding="utf-8")
+                        inbox = package / "inbox"
+                        inbox.mkdir()
+                        plant(inbox)
+                        runner = package / "guard.sh"
+                        runner.write_text(
+                            "#!/bin/sh\nset -eu\n"
+                            f'PACKAGE_INBOX="{inbox}"\n'
+                            f"{source}"
+                            'echo "GUARD ACCEPTED"\n',
+                            encoding="utf-8",
+                        )
+                        done = subprocess.run(
+                            ["/bin/sh", str(runner)],
+                            cwd=package, text=True, capture_output=True, timeout=60,
+                        )
+                        output = done.stdout + done.stderr
+                        if must_refuse:
+                            self.assertNotEqual(
+                                0, done.returncode,
+                                f"{name} ACCEPTED {label}. That entry reaches "
+                                f"validate_recovery_archive.py, which refuses it "
+                                f"after the quiesce with production stopped and no "
+                                f"recovery point written: {output}",
+                            )
+                            self.assertIn(
+                                "a recovery archive cannot represent", output,
+                                f"{name} refused {label} without the operator-facing "
+                                f"message: {output}",
+                            )
+                            self.assertIn(
+                                expected, output,
+                                f"{name} refused {label} but named the wrong class; "
+                                f"the operator is sent after the wrong entry: {output}",
+                            )
+                            self.assertIn(
+                                "nothing has been stopped", output,
+                                f"{name} refused {label} without telling the operator "
+                                f"the deployment is untouched: {output}",
+                            )
+                        else:
+                            self.assertEqual(
+                                0, done.returncode,
+                                f"{name} REFUSED {label}. A guard that over-refuses "
+                                f"blocks every backup and every update on that "
+                                f"deployment: {output}",
+                            )
+
     def test_every_caller_of_the_rotation_checks_its_lock_before_arming(self) -> None:
         """A refusal that touched nothing must not stop a healthy deployment.
 
@@ -2315,23 +2460,33 @@ class RecoveryLifecycleContractTests(unittest.TestCase):
         `STAGING_GUARD=1 ; trap 'rm -rf "$STAGING"' HUP INT` into backup.sh left
         all of g7 green.
         """
-        offenders = []
+        # Pin the enumerable world, do not widen a detector. The first version of
+        # this check listed the lead-in characters it knew about (`;`, `&`, `|`,
+        # `do`, `then`, `else`) and so missed `{`, `(` and `)`: a trap wrapped in
+        # a function body — `stage_guard() { trap '...' HUP INT ; }` — passed
+        # `sh -n` and `dash -n` and left all seven offline suites green while being
+        # invisible to trap_commands(). Counting instead makes the world closed:
+        # every `trap` word in the shipped text must be one trap_commands() sees.
+        word = re.compile(r"(?<![\w./-])trap(?=\s)")
+        mismatched = []
         for path in shipped_shell_scripts():
-            for number, line in enumerate(
-                path.read_text(encoding="utf-8").split("\n"), 1
-            ):
-                stripped = line.strip()
-                if stripped.startswith(("#", "trap ")):
-                    continue
-                # A `trap` that is not the first word of its line: after a `;`,
-                # after `&&`/`||`, or inside a compound command.
-                if re.search(r"(?:^|[;&|]|\bdo\b|\bthen\b|\belse\b)\s*trap\s", stripped):
-                    offenders.append(f"{path.name}:{number}: {stripped[:70]}")
+            code = "\n".join(
+                line for line in path.read_text(encoding="utf-8").split("\n")
+                if not line.strip().startswith("#")
+            )
+            written = len(word.findall(code))
+            seen = len(trap_commands(path))
+            if written != seen:
+                mismatched.append(
+                    f"{path.name}: {written} `trap` word(s) in the script, "
+                    f"{seen} seen by trap_commands()"
+                )
         self.assertEqual(
-            [], offenders,
-            "a `trap` is not the first word of its line, so trap_commands() does "
-            "not see it and every assertion built on that inventory silently "
-            "skips it. Put each trap on its own line: " + "; ".join(offenders),
+            [], mismatched,
+            "a `trap` in a shipped script is not visible to trap_commands(), which "
+            "reads line-initial `trap` only — so every assertion built on that "
+            "inventory, including the fatal-signal-set check, silently skips it. "
+            "Put each trap on its own line, as the first word: " + "; ".join(mismatched),
         )
 
     def test_every_shipped_trap_names_the_whole_fatal_signal_set(self) -> None:

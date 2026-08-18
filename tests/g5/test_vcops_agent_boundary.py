@@ -211,14 +211,39 @@ class AgentVcopsBoundaryTests(unittest.TestCase):
         self.assertEqual(2, returncode)
         self.assertEqual("invalid_evidence_id", payload["error"]["code"])
 
-        depth = 200_000
+        # 20_000 nested brackets is 40 KB in one argv element. Linux caps a
+        # SINGLE argument at MAX_ARG_STRLEN = 32 * PAGE_SIZE = 131_072 bytes on
+        # the usual 4 KB page, independently of `getconf ARG_MAX`, and exceeding
+        # it raises OSError(errno 7) out of execve before the process starts.
+        # The previous 200_000 (400 KB) therefore made this suite -- and so
+        # `verify_offline.py` -- impossible to pass on any Linux host, including
+        # the Debian host the gate certifies. Eighteen audit passes ran on macOS,
+        # which has no per-argument cap, and never saw it. Measured in
+        # python:3.11-slim: 130_000 bytes succeeds, 140_000 raises errno 7; and
+        # json.loads still raises RecursionError at every depth from 1_000 up, so
+        # the property under test is unchanged.
+        depth = 20_000
         returncode, payload = self.invoke_agent([
             "evaluation-preview",
             "--criteria", "[" * depth + "]" * depth,
             "--decision-context", "{}",
         ])
         self.assertEqual(2, returncode)
-        self.assertEqual("invalid_json", payload["error"]["code"])
+        # Either typed rejection satisfies the property this test is named for,
+        # and which one fires depends on the interpreter. No depth makes it
+        # uniform: CPython 3.14 parses 65_000-deep JSON that 3.11 rejects with
+        # RecursionError, while a depth deep enough to exhaust 3.14's budget
+        # (200_000) needs a 400 KB argv element, which Linux refuses outright
+        # (MAX_ARG_STRLEN). So on the deployed 3.11 floor this exercises the
+        # RecursionError handler in vcops's JSON helper — the one that stops it
+        # escaping as internal_error/exit 3 — and on a newer developer
+        # interpreter it exercises the not-an-object branch. Both are typed, both
+        # exit 2, and neither is a traceback, which is the contract.
+        self.assertIn(
+            payload["error"]["code"], {"invalid_json", "invalid_json_type"},
+            f"deeply nested agent JSON produced {payload['error']['code']!r}; the "
+            f"contract is a typed rejection, not an internal error",
+        )
 
     def test_operator_decision_lanes_reject_non_ascii_principals(self) -> None:
         """approval-decide and proposal-decide share one authority contract.
