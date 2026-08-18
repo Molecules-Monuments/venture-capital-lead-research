@@ -184,9 +184,23 @@ console.log(JSON.stringify(output));
                     target = package / relative
                     self.assertTrue(target.is_file(), f"{relative} is not a file")
                     original = target.read_bytes()
-                    # Invalid UTF-8 mid-file: the read decodes, not the parse, so
-                    # this exercises UnicodeDecodeError rather than a syntax error.
-                    target.write_bytes(original[:10] + b"\xff\xfe" + original[10:])
+                    # Inject AFTER the first line, never at a fixed byte offset.
+                    # Offset 10 lands inside the shebang of a governed .py, and
+                    # CPython exempts the FIRST LINE only: measured, invalid UTF-8
+                    # there imports cleanly on 3.11, 3.12 and 3.13 and raises only
+                    # on 3.14+. This suite ran on a 3.14 developer venv and passed
+                    # while failing on the 3.11 floor the package deploys to, so
+                    # `verify_offline.py` could not pass on its own documented
+                    # platform. One newline further in, every supported version
+                    # rejects the file, and a text read still raises
+                    # UnicodeDecodeError wherever the bytes land.
+                    head, newline, rest = original.partition(b"\n")
+                    self.assertTrue(
+                        newline,
+                        f"{relative} has no newline, so there is no position that "
+                        f"is invalid on every supported CPython",
+                    )
+                    target.write_bytes(head + newline + b"\xff\xfe" + rest)
                     try:
                         done = subprocess.run(
                             [sys.executable, "-B", str(package / "scripts/validate_skill_system.py")],

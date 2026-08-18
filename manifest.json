@@ -72,8 +72,8 @@
     {
       "executable": false,
       "path": "CUSTOMIZATION.md",
-      "sha256": "4cf28608a0ed0eea7e9a3e159f351473be7f4a76b03c174ab612540cbdf439c9",
-      "size": 31771
+      "sha256": "e62cc2564f977b345efba297d0c5871f9b39f15da7c4ffddd07eb203bb7d29ad",
+      "size": 32306
     },
     {
       "executable": false,
@@ -204,8 +204,8 @@
     {
       "executable": false,
       "path": "docs/PRODUCTION_READINESS.md",
-      "sha256": "3568745e5bd5446da326212e41b6faeb5932efa9abf897e91e94a8cc3830aef7",
-      "size": 15376
+      "sha256": "dd0776f73f9ca240c4a76d3eaf486c2b408523646c5e4ac69ce9327b7f7f0f06",
+      "size": 15374
     },
     {
       "executable": false,
@@ -228,8 +228,8 @@
     {
       "executable": false,
       "path": "docs/V3_RELEASE_EVIDENCE.md",
-      "sha256": "b0bd17eb1bafc96e708045e0aa8a27b4274b609b6d8f96a422cba673acd774c1",
-      "size": 13984
+      "sha256": "9a5c52d49da3432e763611446e7fd3c9bc6b624c89259c77f2b9662423c3e1ca",
+      "size": 13981
     },
     {
       "executable": false,
@@ -240,7 +240,7 @@
     {
       "executable": false,
       "path": "evals/V3_EVAL_RESULTS.md",
-      "sha256": "3682f44cabed917cf05faca7aaab67e8a033fae9a94c9b8fbdc61d886bfa4fe0",
+      "sha256": "2d60b756719eade001d0286cf9b90dd58df0315d530295f3c7a11362193a5662",
       "size": 11138
     },
     {
@@ -528,8 +528,8 @@
     {
       "executable": true,
       "path": "scripts/backup.sh",
-      "sha256": "d55f9252b78e5c8136b35cb100775838b70ec108f29f6997a241c601aa3ed41c",
-      "size": 23014
+      "sha256": "a7852bcc8a5bcb2baede02e82292a069641fc7908ee1658b5d6906971bc7364c",
+      "size": 23589
     },
     {
       "executable": true,
@@ -540,8 +540,8 @@
     {
       "executable": true,
       "path": "scripts/build_release_manifest.py",
-      "sha256": "39e9e2f04512de9553e3b0fe774291f2fef9463a2a65911caf1e5b874476f173",
-      "size": 19892
+      "sha256": "fb0afe5990e8d1d6cc4409b6640f4d82b34489271248d90833a691752c53f0f4",
+      "size": 20711
     },
     {
       "executable": true,
@@ -642,8 +642,8 @@
     {
       "executable": true,
       "path": "scripts/update.sh",
-      "sha256": "07ac6a80f15d9d931a66983c0217ff5efbe3d1baac4c51c6aed857d2b5590aba",
-      "size": 18688
+      "sha256": "88210d95a0dd5f166c10113cb069a97be227c554842d20cdf44c9348be71f2dc",
+      "size": 19263
     },
     {
       "executable": true,
@@ -744,8 +744,8 @@
     {
       "executable": false,
       "path": "tests/g4/test_document_security.py",
-      "sha256": "1e48406f5c3fbf87cd5743bcb48b2b985edd079b7d9f4b36a3e7712fe6d04dba",
-      "size": 29723
+      "sha256": "0e2fb902eb17c143a4f27ebd751f88c0aae8f3878866e0d39d8e643975b87e19",
+      "size": 33116
     },
     {
       "executable": false,
@@ -762,8 +762,8 @@
     {
       "executable": false,
       "path": "tests/g4/test_semantics.py",
-      "sha256": "977414451dc972d07a763ffceaed1faa47149a3954892665ef4af66fc2de30f7",
-      "size": 17979
+      "sha256": "0dd4d3bced2dfaac90a4db256799fe5f90565bcc15d51dca8efb2c1c8c27377b",
+      "size": 18976
     },
     {
       "executable": false,
@@ -792,8 +792,8 @@
     {
       "executable": false,
       "path": "tests/g5/test_vcops_agent_boundary.py",
-      "sha256": "26ada14bc5ff45ff4b83f8d1a1770c4e278c703b3ecfe315eefbe5f34dac2a4f",
-      "size": 10915
+      "sha256": "37968cd70c2e1312db958ea19b3677533026b70cd4e69c8b60ead3790fdc9651",
+      "size": 12718
     },
     {
       "executable": false,
@@ -822,8 +822,8 @@
     {
       "executable": false,
       "path": "tests/g7/test_recovery_lifecycle.py",
-      "sha256": "da5f9376e2b53b959a6d59a81e46bb0d2ca9e026898ead945ef34cc5a3b4a750",
-      "size": 137831
+      "sha256": "454ced0f9f4eddaea2ff5ae295cb9456c67dfaa2466d707eb228c3642940d121",
+      "size": 146109
     },
     {
       "executable": false,
@@ -864,8 +864,8 @@
     {
       "executable": false,
       "path": "tests/v3/test_evidence_doc_consistency.py",
-      "sha256": "f4781170e0d7a7f97cf5f0296d4e8de85d2df4bbecd3c21f79c870d60b6df923",
-      "size": 21613
+      "sha256": "1031b245588ce8651c7e97c1aa9b6d295ce8b88972cc0b142ad39aee9fd96e2c",
+      "size": 26047
     },
     {
       "executable": false,
@@ -906,8 +906,8 @@
     {
       "executable": false,
       "path": "tests/v3/test_skill_agent_production.py",
-      "sha256": "ee5d42ede9f1b437a220d654409b4da498ec29e3a489399f69c22e479de023e6",
-      "size": 16702
+      "sha256": "3a2c0318a9905579e536c72fe78991cebff27442fa06f792e5de735e87d6bdc7",
+      "size": 17623
     },
     {
       "executable": false,
@@ -1512,8 +1512,8 @@
     {
       "executable": true,
       "path": "workspaces/vc-chief/vc/bin/vcops.py",
-      "sha256": "79dfde5f42581e688d00fb56ae17121e6f9e530dbd443f96d194218169046fec",
-      "size": 340912
+      "sha256": "020a61fde2dfe238c951a95a726ab58d70636ac0ab428acae2ba667241a0bc04",
+      "size": 342210
     },
     {
       "executable": true,

@@ -248,6 +248,15 @@ class DocumentSecurityTests(unittest.TestCase):
         # filename limit. Unsupported suffixes are exactly the inputs that reach
         # quarantine, so the suffix here is caller-controlled and unbounded.
         (cls.inbox / f"long-suffix.{'e' * 200}").write_text("not accepted", encoding="utf-8")
+        # Extensions carrying exactly what scripts/validate_recovery_archive.py
+        # refuses in an archive member name: a backslash and a control character.
+        # backup.sh tars the whole quarantine volume, so a copy named from one of
+        # these poisons every later backup and update -- after the quiesce.
+        # Distinct bytes per fixture: quarantine copies are content-addressed, so
+        # two sources with identical content resolve to one copy and the second
+        # would materialize only its metadata.
+        (cls.inbox / "backslash-suffix.p\\df").write_text("not accepted: backslash", encoding="utf-8")
+        (cls.inbox / "control-suffix.p\x01f").write_text("not accepted: control", encoding="utf-8")
         (cls.inbox / "renamed-png.xlsx").write_bytes(b"\x89PNG\r\n\x1a\nnot an office document")
         (cls.inbox / "legacy.xls").write_bytes(bytes.fromhex("D0CF11E0A1B11AE1") + b"legacy")
         (cls.inbox / "oversized.csv").write_bytes(b"x" * (int(CASES["environment"]["VCOPS_MAX_DOCUMENT_BYTES"]) + 1))
@@ -529,6 +538,53 @@ class DocumentSecurityTests(unittest.TestCase):
         ):
             with self.subTest(name=name):
                 self.assert_rejected(self.inbox / name, reason, must_quarantine=True)
+
+
+    def test_quarantine_copy_names_survive_the_recovery_archive_validator(self) -> None:
+        """A rejected file's extension must not be able to poison the quarantine volume.
+
+        `quarantine_document` builds `<digest><suffix>` from the source's own
+        extension, and `bounded_input_path` validates traversal, symlinks,
+        regularity and size but NOT the characters in the name. Unsupported
+        suffixes are precisely the inputs that reach quarantine, so the suffix is
+        caller-controlled.
+
+        `scripts/validate_recovery_archive.py` refuses any member name containing a
+        backslash or a control character, and `scripts/backup.sh` tars the entire
+        quarantine volume through it. So one malformed extension would sit in that
+        volume permanently and fail every later backup and update -- and on the
+        update path that failure lands AFTER `MUTATION_STARTED`, with production
+        stopped and no recovery point written. The inbox guard cannot cover it:
+        the quarantine copy outlives the inbox file that produced it.
+
+        Asserts the property the validator states, over whatever the quarantine
+        root actually holds, rather than spot-checking the two fixtures below.
+        """
+        for name in ("backslash-suffix.p\\df", "control-suffix.p\x01f"):
+            with self.subTest(source=name):
+                self.assert_rejected(self.inbox / name, must_quarantine=True)
+
+        published = [item for item in self.quarantine.rglob("*") if item.is_file()]
+        self.assertTrue(published, "nothing reached quarantine, so this proves nothing")
+        for item in published:
+            with self.subTest(quarantined=item.name):
+                self.assertNotIn(
+                    "\\", item.name,
+                    f"quarantine holds {item.name!r}; validate_recovery_archive.py "
+                    f"refuses a member name containing a backslash, so backup.sh "
+                    f"would fail on this volume from now on",
+                )
+                self.assertFalse(
+                    any(ord(character) < 32 or ord(character) == 127 for character in item.name),
+                    f"quarantine holds {item.name!r}, whose name carries a control "
+                    f"character; validate_recovery_archive.py refuses that member "
+                    f"and every later backup and update fails after the quiesce",
+                )
+                self.assertLessEqual(
+                    len(item.name.encode("utf-8")), 255,
+                    f"quarantine holds {item.name!r}, which exceeds the 255-byte "
+                    f"filename limit",
+                )
 
 
 if __name__ == "__main__":

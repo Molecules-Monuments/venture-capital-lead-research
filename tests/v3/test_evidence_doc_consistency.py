@@ -459,6 +459,93 @@ class EvidenceCountConsistencyTests(unittest.TestCase):
                 f"over {filename} counts {measured}",
             )
 
+    def test_readiness_growth_chain_is_arithmetically_consistent(self):
+        """The narrative chain of waypoints and deltas must add up, and end at discovery.
+
+        docs/PRODUCTION_READINESS.md's offline-suites cell narrates how the total
+        reached its current value: a sequence of "moved it to N" waypoints, each
+        introduced by an "added <word> more" delta. Only the cell's LEADING figure
+        was bound by a pattern, so the narrative could say anything. Measured at
+        06b307a: rewriting a delta word, a mid-chain waypoint and the final
+        waypoint together left all nine suites green.
+
+        The eighteenth pass wrote `315 + 73 = 388` into that chain and stated the
+        total as 347 in the same sentence, which is exactly the shape this binds.
+        Each waypoint must equal the previous one plus its delta, and the last must
+        equal what discovery counts.
+        """
+        cell = next(
+            (line for line in
+             EVIDENCE_TEXT["docs/PRODUCTION_READINESS.md"].split("\n")
+             if "Complete aggregate offline suites" in line),
+            None,
+        )
+        self.assertIsNotNone(
+            cell, "the offline-suites cell has been reworded away; this binding is blind"
+        )
+        assert cell is not None
+
+        waypoints = [int(value) for value in re.findall(r"mov(?:ed|ing) it to (\d+)", cell)]
+        deltas = re.findall(r"added ([a-z][a-z\- ]*?) more", cell)
+        self.assertGreaterEqual(
+            len(waypoints), 3, f"the growth chain has rotted; found waypoints {waypoints}"
+        )
+        self.assertTrue(deltas, "the growth chain states no delta in words")
+
+        # Invert the module's own number_word() rather than writing a second
+        # spelling table: the two could disagree, and this one would be wrong.
+        word_to_int = {number_word(value): value for value in range(1000)}
+        unknown = [word for word in deltas if word not in word_to_int]
+        self.assertEqual(
+            [], unknown,
+            f"delta word(s) {unknown} are not English number-words this module can "
+            f"read; the chain cannot be checked",
+        )
+
+        # The early waypoints predate the "added <word> more" phrasing and state no
+        # delta, so they cannot be checked arithmetically. They can still be
+        # checked for the property the sentence claims — that this is a record of
+        # GROWTH — which is what catches a waypoint rewritten in place. Measured:
+        # without this, changing "moved it to 262" to "999" passed.
+        self.assertEqual(
+            sorted(waypoints), waypoints,
+            f"the growth chain's waypoints are not increasing: {waypoints}. The "
+            f"cell narrates how the total grew, so a waypoint that goes backwards "
+            f"is either a typo or a rewritten history.",
+        )
+        self.assertEqual(
+            len(set(waypoints)), len(waypoints),
+            f"the growth chain repeats a waypoint: {waypoints}",
+        )
+
+        # Each delta introduces the waypoint that follows it. Align from the end,
+        # because the early waypoints predate the delta-word phrasing.
+        aligned = list(zip(waypoints[-len(deltas) - 1:], deltas, waypoints[-len(deltas):]))
+        for before, word, after in aligned:
+            with self.subTest(step=f"{before} + {word}"):
+                self.assertEqual(
+                    before + word_to_int[word], after,
+                    f"docs/PRODUCTION_READINESS.md says {before} plus '{word}' "
+                    f"({word_to_int[word]}) reaches {after}; that is "
+                    f"{before + word_to_int[word]}. The chain is the document's own "
+                    f"account of how the total was reached, so an operator "
+                    f"reconciling it finds arithmetic that does not close.",
+                )
+
+        self.assertEqual(
+            self.offline_tests, waypoints[-1],
+            f"the growth chain ends at {waypoints[-1]} but discovery counts "
+            f"{self.offline_tests}",
+        )
+        leading = re.search(r"\| (\d+) tests passed", cell)
+        self.assertIsNotNone(leading, "the cell's leading figure has been reworded away")
+        assert leading is not None
+        self.assertEqual(
+            waypoints[-1], int(leading.group(1)),
+            "the cell's leading figure and the end of its own narrative chain "
+            "disagree",
+        )
+
     def test_manifest_count_is_internally_coherent(self):
         manifest = json.loads((ROOT / "manifest.json").read_text(encoding="utf-8"))
         self.assertEqual(manifest["file_count"], len(manifest["files"]))

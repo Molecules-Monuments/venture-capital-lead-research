@@ -234,6 +234,14 @@ fi
 # Enumerate on its own line so `set -e` aborts when find itself fails; a
 # command substitution inside the here-document swallowed that, and an
 # unreadable subtree then read as a clean inbox.
+# Only enumerate if the probe above found nothing. The probe is terminal for the
+# class it detects: a name containing a newline splits into fragments that the
+# loop below judges individually, so letting the loop run would overwrite the
+# probe's accurate message with a fragment's — measured, an inbox holding one
+# file named "Q3 pitch<newline>deck.pdf" reported "…/Q3 pitch (not a regular file
+# or directory)", a path that does not exist. Same shape as the hard-link block
+# further down, which has always guarded itself this way.
+if [ -z "$inbox_reject" ]; then
 inbox_entries="$(find "$PACKAGE_INBOX" -mindepth 1)"
 while IFS= read -r entry; do
   [ -n "$entry" ] || continue
@@ -264,6 +272,7 @@ while IFS= read -r entry; do
 done <<INBOX_SCAN
 $inbox_entries
 INBOX_SCAN
+fi
 if [ -z "$inbox_reject" ]; then
   # A hard-linked regular file passes every test above -- it really is a
   # regular, non-symlink file -- but tar emits the second name as a link member
