@@ -341,19 +341,26 @@ the mention-gated team/channel lane in CH-05 receives nothing.
   address here, not the loopback callback described at the top of this section:
   the path is identical on both, which is what makes this field easy to get
   wrong. Nothing reads the value at runtime, so `scripts/check_env.sh` is what
-  catches a mis-recorded one. It refuses a **fully written** loopback, private,
-  link-local, carrier-NAT, documentation, reserved, unspecified, or multicast
-  IPv4 or IPv6 literal, and refuses `localhost`, any `.localhost` or `.local`
-  name, and any single-label name — the last of which is also what rejects the
-  dotless integer and hexadecimal spellings of an address, `2130706433` and
-  `0x7f000001`. It does **not** classify the abbreviated dotted forms: `127.1`,
-  `10.1`, `192.168.1`, `172.16.1` and `0x7f.1` all contain a dot, so `ipaddress`
-  declines them (it requires four octets) and they are read as DNS names and
-  accepted — while `inet_aton`, and therefore curl and anything else resolving
-  through it, expands them to `127.0.0.1`, `10.0.0.1`, `192.168.0.1`,
-  `172.16.0.1` and `127.0.0.1`. A syntactically public name is accepted without
-  a lookup either way, so CH-01 stays the step that confirms the URL actually
-  reaches your proxy.
+  catches a mis-recorded one. It refuses a loopback, private, link-local,
+  carrier-NAT, documentation, reserved, unspecified, or multicast IPv4 or IPv6
+  literal **written in canonical form**, and refuses `localhost`, any
+  `.localhost` or `.local` name, and any single-label name — the last of which is
+  also what rejects the dotless integer and hexadecimal spellings, `2130706433`
+  and `0x7f000001`.
+
+  Canonical form is what `ipaddress.ip_address` accepts, and it is stricter than
+  what resolvers accept. Since CPython 3.9.5 (CVE-2021-29921) `ipaddress` rejects
+  a leading zero in any octet, and it has never accepted abbreviated, hex or
+  octal octets — so **every non-canonical spelling falls through to the DNS-name
+  branch and is accepted**, including four-octet ones. Measured against the
+  shipped validator: `127.1`, `10.1`, `192.168.1`, `172.16.1`, `0x7f.1`,
+  `0177.1`, and also the fully written `127.000.000.001`, `127.0.0.01`,
+  `0177.0.0.1`, `0x7f.0.0.1`, `192.168.000.001` and `010.0.0.1` are all accepted
+  — while `inet_aton`, and therefore curl and anything else resolving through it,
+  expands them to loopback or RFC1918 addresses (`010.0.0.1` becomes `8.0.0.1`,
+  which is neither). A syntactically public name is accepted without a lookup
+  either way, so CH-01 stays the step that confirms the URL actually reaches your
+  proxy.
 
 The profile disables delegated auth, SSO, welcome/feedback cards, name
 matching, and config writes. DMs and groups use the same stable user allowlist;

@@ -43,6 +43,12 @@ EXCLUDED_PREFIXES = {"_internal"}
 # stale, which docs/RUNBOOK.md §9 would have the operator read as tampering.
 # Only the tracked placeholder in each root is a declared package file.
 OPERATOR_DATA_ROOTS = {"inbox", "quarantine"}
+# The one file inside each operator root that IS a declared package file. Named
+# once and used by both inventory() and tolerated(): tolerating it as operator
+# payload let an unreadable `inbox/` drop it from the written manifest (331 ->
+# 330, exit 0), after which `verify_release.py --pristine` PASSED over the
+# reduced inventory because the file it would have missed was no longer declared.
+OPERATOR_DATA_DECLARED_NAME = ".gitkeep"
 
 
 def tolerated(relative: str) -> bool:
@@ -65,7 +71,11 @@ def tolerated(relative: str) -> bool:
     root = relative.split("/", 1)[0]
     if root in EXCLUDED_PREFIXES:
         return True
-    return root in OPERATOR_DATA_ROOTS and relative != root
+    if root not in OPERATOR_DATA_ROOTS or relative == root:
+        return False
+    # A DECLARED file is a package file wherever it lives. Tolerating it here
+    # would let the write path below omit it and still exit 0.
+    return relative.rsplit("/", 1)[-1] != OPERATOR_DATA_DECLARED_NAME
 
 
 def walk_package() -> list[tuple[Path, os.stat_result]]:
@@ -91,9 +101,18 @@ def walk_package() -> list[tuple[Path, os.stat_result]]:
     """
     unreadable: list[str] = []
 
-    def record(filename: object, exc: OSError) -> None:
+    def record(filename: "str | os.PathLike[str] | None", exc: OSError) -> None:
         try:
-            where = Path(str(filename)).relative_to(PACKAGE).as_posix()
+            # `Path(filename)`, not `Path(str(filename))`: str() always succeeds,
+            # so the TypeError arm below was unreachable here while the identical
+            # arm in verify_release.py was live — two callbacks that read as
+            # equivalent and were not. os.scandir sets exc.filename to None on
+            # some errors, and Path(None) is what raises.
+            # ty: ignore[invalid-argument-type] — passing the possibly-None
+            # filename is the point: `Path(None)` is what raises the TypeError
+            # the handler below catches, and narrowing it away here would make
+            # that arm unreachable, which is the defect this replaced.
+            where = Path(filename).relative_to(PACKAGE).as_posix()
         except (TypeError, ValueError):
             unreadable.append(f"{filename}: {exc}")
             return
@@ -153,7 +172,7 @@ def inventory() -> list[dict[str, Any]]:
             or path.name == ".DS_Store"
             or (
                 relative.split("/", 1)[0] in OPERATOR_DATA_ROOTS
-                and path.name != ".gitkeep"
+                and path.name != OPERATOR_DATA_DECLARED_NAME
             )
         ):
             continue
@@ -284,6 +303,22 @@ def manifest_differences(expected: dict[str, Any], limit: int = 20) -> list[str]
     return lines[:limit] + ([f"... and {len(lines) - limit} more"] if len(lines) > limit else [])
 
 
+def read_manifest_text() -> str | None:
+    """The declared manifest's bytes, or None when it cannot be read.
+
+    A present-but-unreadable `manifest.json` (root-owned 0600, or a mount the
+    operator cannot read) raised an uncaught PermissionError out of both modes,
+    on a script whose whole job is an operator-actionable integrity verdict —
+    while `verify_release.py` reported the same state as a clean one-line error.
+    `manifest_differences()` already enumerates "manifest.json is missing or
+    unreadable"; this is what makes that line reachable rather than aspirational.
+    """
+    try:
+        return MANIFEST.read_text(encoding="utf-8")
+    except OSError:
+        return None
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--check", action="store_true", help="verify instead of writing")
@@ -291,7 +326,7 @@ def main() -> int:
     expected = expected_manifest()
     rendered = json.dumps(expected, indent=2, sort_keys=True) + "\n"
     if args.check:
-        if not MANIFEST.is_file() or MANIFEST.read_text(encoding="utf-8") != rendered:
+        if not MANIFEST.is_file() or read_manifest_text() != rendered:
             # Name what differs and what to do about it. A bare mismatch line
             # sends the operator to the runbook's tampering procedure even when
             # the cause is a customization they deliberately made.
@@ -313,11 +348,19 @@ def main() -> int:
     # backup, note or editor artifact into declared release content — which is
     # exactly the debris `verify_release.py --pristine` rejected a moment
     # earlier. Compute the delta before overwriting the declared inventory.
-    up_to_date = MANIFEST.is_file() and MANIFEST.read_text(encoding="utf-8") == rendered
+    up_to_date = MANIFEST.is_file() and read_manifest_text() == rendered
     # Both are read before the write, which overwrites what they measure against.
     delta = None if up_to_date else manifest_delta(expected)
     changes = [] if up_to_date else manifest_differences(expected)
-    MANIFEST.write_text(rendered, encoding="utf-8")
+    try:
+        MANIFEST.write_text(rendered, encoding="utf-8")
+    except OSError as exc:
+        # An operator-actionable verdict, not a traceback. This script exists to
+        # tell the operator what the integrity state is; a present-but-unwritable
+        # manifest.json (root-owned, a read-only mount) is a state they can fix,
+        # and the sibling verifier already reports its equivalent as one line.
+        print(f"cannot write {MANIFEST.name}: {exc}", file=sys.stderr)
+        return 1
     print(f"Manifest written: {expected['file_count']} files")
     if changes:
         print("Re-pinned against the current tree:", file=sys.stderr)

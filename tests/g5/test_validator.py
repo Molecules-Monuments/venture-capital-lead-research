@@ -32,6 +32,30 @@ REVIEWED_WORKFLOW_WRAPPERS = frozenset({
 })
 # Must never be admitted: it sets VCOPS_OPERATOR_MODE=1.
 OPERATOR_ONLY_WRAPPER = "/workspaces/vc-chief/vc/bin/vcops-operator"
+
+# The commands the shipped runtime keeps OUT of both wrapper lanes, written out
+# here independently of vcops. The per-wrapper checks below compare
+# `_wrapper_command_sets()` against `vcops.WORKFLOW_COMMANDS` /
+# `vcops.AGENT_READ_ONLY_COMMANDS` — the validator against the runtime — which
+# catches a validator that stops deriving, but not a one-line edit to vcops
+# itself: adding `data-erase-lead` to WORKFLOW_COMMANDS would admit subject
+# erasure to the workflow lane with the validator, the offline gate and this file
+# all still green, because both sides moved together.
+#
+# Admitting any of these to a wrapper lane is a reviewed change to the
+# authorization boundary. Editing this set is how that review is recorded.
+OPERATOR_ONLY_COMMANDS = frozenset({
+    "approval-consume",
+    "approval-decide",
+    "approval-request",
+    "data-erase-lead",
+    "fact-add",
+    "notification-claim",
+    "notification-enqueue",
+    "notification-mark",
+    "proposal-decide",
+    "source-add",
+})
 SPEC = importlib.util.spec_from_file_location("validate_g5_tests", VALIDATOR_PATH)
 assert SPEC is not None and SPEC.loader is not None
 g5 = importlib.util.module_from_spec(SPEC)
@@ -151,6 +175,22 @@ class WorkflowValidatorTests(unittest.TestCase):
             self.assertTrue(
                 shipped.stat().st_mode & 0o111, f"{wrapper} is not executable"
             )
+        # INDEPENDENT PIN on the command sets themselves. Without this, both
+        # sides of every per-wrapper comparison below are read from vcops, so a
+        # one-line edit there moves them together and nothing fails.
+        for wrapper, permitted_commands in sorted(permitted.items()):
+            with self.subTest(wrapper=wrapper):
+                intruders = sorted(OPERATOR_ONLY_COMMANDS & set(permitted_commands))
+                self.assertEqual(
+                    [], intruders,
+                    f"{wrapper} now reaches operator-only command(s) {intruders}. "
+                    f"These are write and authorization commands the shipped "
+                    f"runtime keeps out of both wrapper lanes; admitting one lets "
+                    f"a workflow step run it under the reviewed lane. If that is "
+                    f"intended it is a reviewed change to the authorization "
+                    f"boundary: update OPERATOR_ONLY_COMMANDS in the same commit.",
+                )
+
         # DERIVATION. Each admitted wrapper must resolve to a runtime command set.
         # This is a real check of `_wrapper_command_sets()`'s completeness over the
         # mapping, and it is NOT a scope check; keep both.
@@ -312,7 +352,7 @@ class WorkflowValidatorTests(unittest.TestCase):
     def test_unhashable_yaml_key_is_a_finding_not_a_traceback(self) -> None:
         # `? [a, b]` is legal YAML whose key is a list. This validator's strict
         # mapping constructor replaces SafeConstructor's, so without its own
-        # Hashable check (scripts/validate_workflows.py:107) the gate step
+        # Hashable check (scripts/validate_workflows.py:121) the gate step
         # aborts with a traceback that never names the file. The gate's second
         # validator carries the same guard for the same reason and is covered
         # by SkillSystemValidatorTests below, not by this method — `validate()`

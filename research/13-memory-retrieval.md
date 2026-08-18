@@ -185,7 +185,7 @@ acceptance.
 >   least 0.90, and a mean candidate count of at least 1.5 — and fails the run
 >   when one of its 60 exact-domain cases does not resolve to the seeded
 >   company, resolves to a different company, or returns other than the seeded
->   ten facts (`scripts/run_retrieval_scale.py:291-313`), which is where Gate
+>   ten facts (`scripts/run_retrieval_scale.py:302-324`), which is where Gate
 >   D's exact-key recall and precision limbs are enforced at this scale. (The
 >   p95 ceiling is Gate D's; Gate I covers research budgets, whose adherence
 >   half stays BLOCKED.)

@@ -39,7 +39,7 @@ PACKAGE = Path(__file__).resolve().parent.parent
 WORKFLOWS = PACKAGE / "workspaces/vc-chief/vc/workflows"
 VCOPS = PACKAGE / "workspaces/vc-chief/vc/bin/vcops.py"
 # Each wrapper `exec`s vcops.py through `env -i` with one mode flag set, and
-# vcops refuses any command outside that mode's own set (vcops.py:6398,6404).
+# vcops refuses any command outside that mode's own set (vcops.py:6410,6416).
 # The parser-wide subcommand inventory is therefore NOT the world a workflow
 # step can reach: at the time this mapping was added the parser had 53
 # subcommands while WORKFLOW_COMMANDS had 39 and AGENT_READ_ONLY_COMMANDS 16.

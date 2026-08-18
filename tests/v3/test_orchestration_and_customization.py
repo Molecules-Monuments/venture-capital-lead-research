@@ -765,6 +765,13 @@ class Version3ContractTests(unittest.TestCase):
         self.assertEqual(
             sorted(named & required),
             [
+                # Named by the band-change procedure because the eighteenth pass
+                # made it live offline-gate cover: tests/g4/test_semantics.py
+                # re-derives every row's expected band through the shipped helper,
+                # so an operator who changes the bands and does not re-cut this
+                # file gets a red g4-semantics suite. It is also profile-pinned,
+                # so it fails closed at the next lifecycle run too.
+                "tests/g3/scoring_boundary_cases.jsonl",
                 "workspaces/outbound-scout/USER.md",
                 "workspaces/vc-chief/USER.md",
                 "workspaces/vc-chief/vc/thesis.md",

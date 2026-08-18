@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: 0BSD
 from __future__ import annotations
 
+import difflib
 import hashlib
 import importlib.util
 import io
@@ -1365,6 +1366,13 @@ class RecoveryLifecycleContractTests(unittest.TestCase):
         for name in ("verify_release.py", "build_release_manifest.py"):
             shutil.copy2(SCRIPTS / name, scripts / name)
         (package / "declared.txt").write_text("reviewed\n", encoding="utf-8")
+        # A DECLARED file inside each operator root, exactly as the real package
+        # carries `inbox/.gitkeep` and `quarantine/.gitkeep`. Without these the
+        # fixture cannot construct the case where a tolerated root hides a
+        # declared package file, which is where the tolerance was wrong.
+        for root in ("inbox", "quarantine"):
+            (package / root).mkdir()
+            (package / root / ".gitkeep").write_text("", encoding="utf-8")
         built = subprocess.run(
             [sys.executable, "-B", str(scripts / "build_release_manifest.py")],
             text=True, capture_output=True, timeout=60,
@@ -1443,6 +1451,67 @@ class RecoveryLifecycleContractTests(unittest.TestCase):
                             tolerated, verified == 0,
                             f"{parent}/locked at mode {oct(mode)} should be "
                             f"{'tolerated' if tolerated else 'refused'} and was not",
+                        )
+
+            # The cell neither test occupied: an operator root that is itself
+            # unreadable HIDES A DECLARED FILE. Tolerating it let the builder's
+            # write path drop `inbox/.gitkeep` and exit 0 (331 -> 330 declared
+            # files), after which --pristine PASSED, because the file it would
+            # have missed was no longer declared. Assert the inventory, not just
+            # the exit status: a successful exit with a reduced manifest is the
+            # defect.
+            manifest = package / "manifest.json"
+            before = json.loads(manifest.read_text(encoding="utf-8"))
+            for root in ("inbox", "quarantine"):
+                for mode in (0o000, 0o444, 0o644):
+                    with self.subTest(declared_under=root, mode=oct(mode)):
+                        (package / root).chmod(mode)
+                        try:
+                            # Mode bits do not deny root. Under uid 0 the builder
+                            # reads the .gitkeep perfectly well and SHOULD succeed
+                            # with the file still declared, so probe what this
+                            # process can actually do rather than assuming the
+                            # chmod denied it — asserting a refusal unconditionally
+                            # made this block fail as root, and verify_offline.py
+                            # scores any failure as a suite failure.
+                            try:
+                                (package / root / ".gitkeep").read_bytes()
+                                denied = False
+                            except OSError:
+                                denied = True
+                            written = subprocess.run(
+                                [sys.executable, "-B", str(builder)],
+                                text=True, capture_output=True, timeout=60,
+                            )
+                        finally:
+                            (package / root).chmod(0o755)
+                        after = json.loads(manifest.read_text(encoding="utf-8"))
+                        if denied:
+                            self.assertNotEqual(
+                                0, written.returncode,
+                                f"the builder reported success over {root}/ at mode "
+                                f"{oct(mode)}, which hides the declared "
+                                f"{root}/.gitkeep: {written.stdout}{written.stderr}",
+                            )
+                        else:
+                            self.assertEqual(
+                                0, written.returncode,
+                                f"the builder refused {root}/ at mode {oct(mode)} "
+                                f"even though this process can still read the "
+                                f"declared file there: "
+                                f"{written.stdout}{written.stderr}",
+                            )
+                        # Either way the declared file must survive: refused, or
+                        # read and kept. What must never happen is a manifest
+                        # written without it.
+                        self.assertEqual(
+                            before["files"], after["files"],
+                            f"the manifest changed while {root}/ was at mode "
+                            f"{oct(mode)} (this process "
+                            f"{'could not' if denied else 'could'} read the "
+                            f"declared file). A declared path is a package file "
+                            f"wherever it lives; dropping it and exiting 0 makes "
+                            f"--pristine agree with an inventory that never saw it.",
                         )
 
     def test_deployment_lock_binds_release_and_migrations(self) -> None:
@@ -1897,6 +1966,10 @@ class RecoveryLifecycleContractTests(unittest.TestCase):
                 "MUTATION_STARTED=1",
                 "compose --profile tools stop openclaw-cli openclaw-gateway >/dev/null\n",
             ),
+            "rotate_runtime_role.sh": (
+                "ROTATION_STARTED=1",
+                "compose --profile tools stop openclaw-cli openclaw-gateway\n",
+            ),
             "update.sh": ("MUTATION_STARTED=1", './scripts/backup.sh "$BACKUP_DESTINATION"'),
         }
         # The map above is a hand-written world, and a hand-written world is how
@@ -1908,17 +1981,73 @@ class RecoveryLifecycleContractTests(unittest.TestCase):
         # of g7 green. Derive the world from the shipped scripts and require an
         # entry for every member, so the next script to grow a flag cannot be
         # silently excluded the way bootstrap.sh was.
-        arming = {
-            path.name
-            for path in shipped_shell_scripts()
-            if any(flag in path.read_text(encoding="utf-8")
-                   for flag in ("MUTATION_STARTED=1", "QUIESCED=1"))
-        }
+        # Derive the FLAG NAMES too, not just the scripts. Filtering on the two
+        # literals "MUTATION_STARTED=1" and "QUIESCED=1" was itself a hand-written
+        # world one level up: rotate_runtime_role.sh arms ROTATION_STARTED, whose
+        # cleanup branch runs the identical `compose --profile tools stop
+        # openclaw-cli openclaw-gateway`, and it was silently excluded exactly the
+        # way bootstrap.sh had been. Measured: moving that flag below the stop it
+        # guards left all of g7, the offline gate, ruff and ty green.
+        #
+        # The property, not the spelling: a mutation flag is a variable assigned
+        # `=1` on its own line whose name is tested `-eq 1` inside the cleanup
+        # handler, in a branch that stops the consumers.
+        arming: dict[str, str] = {}
+        for path in shipped_shell_scripts():
+            lines = path.read_text(encoding="utf-8").split("\n")
+            armed = set(
+                re.findall(r"^([A-Z][A-Z0-9_]*)=1$", "\n".join(lines), re.M)
+            )
+            if not armed:
+                continue
+            starts = [i for i, line in enumerate(lines) if line.startswith("cleanup()")]
+            if not starts:
+                continue
+            start = starts[0]
+            end = next(i for i in range(start + 1, len(lines)) if lines[i] == "}")
+            # Join shell line continuations first. backup.sh's guard is
+            # `[ "$status" -ne 0 ] && [ "$QUIESCED" -eq 1 ] && \` continued onto
+            # the next line, and scanning raw lines upward finds the continuation
+            # before the head — which names only GATEWAY_WAS_RUNNING and so lost
+            # QUIESCED entirely.
+            logical: list[str] = []
+            pending = ""
+            for line in lines[start:end]:
+                stripped = line.strip()
+                pending = f"{pending} {stripped}" if pending else stripped
+                if pending.endswith("\\"):
+                    pending = pending[:-1].rstrip()
+                    continue
+                logical.append(pending)
+                pending = ""
+            if pending:
+                logical.append(pending)
+            for i, statement in enumerate(logical):
+                if "compose" not in statement:
+                    continue
+                if not any(c in statement for c in ("openclaw-gateway", "openclaw-cli")):
+                    continue
+                # The flag gating this consumer action is the one named by the
+                # NEAREST enclosing `if`, not an outer one: rotate's consumer stop
+                # sits inside `if [ "$ROTATION_LOCK_OWNED" -eq 1 ]`, and it is
+                # ROTATION_STARTED that decides whether it runs.
+                for j in range(i, -1, -1):
+                    named = re.findall(r'\[ "\$([A-Z][A-Z0-9_]*)" -eq 1 \]', logical[j])
+                    if not named:
+                        continue
+                    # A flag armed at top level arms recovery; one armed indented
+                    # (backup.sh's GATEWAY_WAS_RUNNING) merely records observed
+                    # state, and is not a mutation flag.
+                    for name in named:
+                        if name in armed:
+                            arming[path.name] = f"{name}=1"
+                    break
+                break
         self.assertEqual(
-            arming, set(guarded),
-            "every shipped script that arms a mutation flag needs an entry here: "
-            f"unlisted={sorted(arming - set(guarded))}, "
-            f"listed-but-no-longer-arming={sorted(set(guarded) - arming)}",
+            arming, {name: flag for name, (flag, _) in guarded.items()},
+            "every shipped script that arms a flag gating the consumer stop needs "
+            f"an entry here. Derived {arming}; listed "
+            f"{ {name: flag for name, (flag, _) in guarded.items()} }.",
         )
         for name, (flag, command) in guarded.items():
             with self.subTest(script=name):
@@ -1994,6 +2123,45 @@ class RecoveryLifecycleContractTests(unittest.TestCase):
             ))
             refuses = "inbox holds an entry a recovery archive cannot represent" in text
             return patterns, reasons, hardlink, refuses
+
+        # The class LABELS are not the guard. Extracting the `case` patterns, the
+        # reject reason strings and the hard-link `find` covers three of the five
+        # predicates: the symlink test `[ -L "$entry" ]` and the not-a-regular-file
+        # test `[ ! -f ... ] && [ ! -d ... ]` are ordinary `if`s whose labels stay
+        # put when the predicate is neutered. Measured: appending `&& false` to
+        # either one in update.sh left ALL of g7 green while that class stopped
+        # refusing anything. So compare the two guard BODIES first — every code
+        # line, in order — and treat the class-set checks below as the friendlier
+        # message for the common case rather than as the enforcement.
+        def code_lines(name: str, remedy: str) -> list[str]:
+            text = body(name)
+            start = text.index('inbox_reject=""')
+            end = text.index(remedy)
+            end = text.index("\n", text.index("\n", end) + 1) + 1
+            return [
+                line.rstrip()
+                for line in text[start:end].split("\n")
+                if line.strip() and not line.strip().startswith("#")
+            ]
+
+        authority_body = code_lines("backup.sh", "remove or relocate it before backing up")
+        mirror_body = [
+            line.replace("before updating", "before backing up")
+            for line in code_lines("update.sh", "remove or relocate it before updating")
+        ]
+        if authority_body != mirror_body:
+            difference = "\n".join(
+                difflib.unified_diff(
+                    authority_body, mirror_body,
+                    "scripts/backup.sh", "scripts/update.sh", lineterm="", n=1,
+                )
+            )
+            self.fail(
+                "the two inbox guards have diverged. Every code line must be "
+                "identical apart from the remedy's last two words, because the "
+                "list cannot enforce itself and a comment saying 'keep these "
+                "identical' is not a check:\n" + difference
+            )
 
         authority = guard("backup.sh")
         mirror = guard("update.sh")
@@ -2079,18 +2247,54 @@ class RecoveryLifecycleContractTests(unittest.TestCase):
                     f"it must refuse a crash-left rotation lock itself, while "
                     f"production is still running",
                 )
+                # Order the REFUSAL, not the assignment. Pinning
+                # `index("ROTATION_LOCK_DIR=")` ordered only the variable
+                # definition: moving the `if` block twelve lines below it, down
+                # past the flag, left every assertion here true while restoring
+                # the blocker in both callers. Measured.
+                # Derive the path from the rotation itself. It existed as four
+                # independent literals — rotate_runtime_role.sh's own LOCK_DIR,
+                # the two mirrors, and this test — with nothing binding them, so
+                # renaming rotate's lock left both mirrors checking a path
+                # nothing creates: two dead guards with this test still green.
+                rotation = body("rotate_runtime_role.sh")
+                lock_path = re.search(r'^LOCK_DIR="([^"]+)"$', rotation, re.M)
+                self.assertIsNotNone(
+                    lock_path,
+                    "rotate_runtime_role.sh no longer declares LOCK_DIR on its own "
+                    "line, so the callers' mirrors cannot be checked against it",
+                )
+                assert lock_path is not None
+                self.assertIn(
+                    f'ROTATION_LOCK_DIR="{lock_path.group(1)}"', script,
+                    f"{name} pre-checks a different path than the rotation "
+                    f"actually locks ({lock_path.group(1)}), so its guard can "
+                    f"never fire",
+                )
+                refusal = 'if [ -e "$ROTATION_LOCK_DIR" ]; then'
+                self.assertIn(
+                    refusal, script,
+                    f"{name} no longer refuses on the rotation lock; the variable "
+                    f"alone is not the guard",
+                )
                 self.assertLess(
-                    script.index("ROTATION_LOCK_DIR="),
+                    script.index(refusal),
                     script.index("MUTATION_STARTED=1\n"),
-                    f"{name} checks the rotation lock after arming its mutation "
+                    f"{name} refuses on the rotation lock after arming its mutation "
                     f"flag, which is the same failure as not checking it: the "
                     f"cleanup stops both consumers for a refusal that changed "
                     f"nothing",
                 )
                 self.assertLess(
-                    script.index("ROTATION_LOCK_DIR="),
+                    script.index(refusal),
                     script.index("./scripts/rotate_runtime_role.sh"),
-                    f"{name} must check the lock before invoking the rotation",
+                    f"{name} must refuse on the lock before invoking the rotation",
+                )
+                # The exit must be inside that block, not merely somewhere after
+                # it: a refusal that reports and continues is not a refusal.
+                self.assertIn(
+                    "exit 1", script[script.index(refusal):script.index(refusal) + 500],
+                    f"{name}'s rotation-lock branch does not exit",
                 )
                 self.assertTrue(
                     "nothing has been changed" in script,
@@ -2098,6 +2302,37 @@ class RecoveryLifecycleContractTests(unittest.TestCase):
                     f"nothing was changed; the cleanup message they would "
                     f"otherwise see says the opposite",
                 )
+
+    def test_no_shipped_trap_hides_behind_a_shared_line(self) -> None:
+        """The trap inventory reads line-initial `trap` only; prove that is the world.
+
+        `trap_commands()` matches `^trap\\s`, and its own docstring concedes that a
+        `trap` written after a `;` on a shared line "would not be seen here, so
+        keep them on their own line, as every shipped script does today". Nothing
+        asserted the "as every shipped script does today" half, so a handler added
+        mid-line was invisible to every assertion built on that inventory —
+        including the fatal-signal-set check below. Measured: inserting
+        `STAGING_GUARD=1 ; trap 'rm -rf "$STAGING"' HUP INT` into backup.sh left
+        all of g7 green.
+        """
+        offenders = []
+        for path in shipped_shell_scripts():
+            for number, line in enumerate(
+                path.read_text(encoding="utf-8").split("\n"), 1
+            ):
+                stripped = line.strip()
+                if stripped.startswith(("#", "trap ")):
+                    continue
+                # A `trap` that is not the first word of its line: after a `;`,
+                # after `&&`/`||`, or inside a compound command.
+                if re.search(r"(?:^|[;&|]|\bdo\b|\bthen\b|\belse\b)\s*trap\s", stripped):
+                    offenders.append(f"{path.name}:{number}: {stripped[:70]}")
+        self.assertEqual(
+            [], offenders,
+            "a `trap` is not the first word of its line, so trap_commands() does "
+            "not see it and every assertion built on that inventory silently "
+            "skips it. Put each trap on its own line: " + "; ".join(offenders),
+        )
 
     def test_every_shipped_trap_names_the_whole_fatal_signal_set(self) -> None:
         """Enumerate the signal sets instead of reviewing twelve trap lines by eye.
