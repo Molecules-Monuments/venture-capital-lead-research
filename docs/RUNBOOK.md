@@ -911,6 +911,22 @@ holds when `update.sh` runs. Operator payload under `inbox/` is excluded from
 `manifest.json` and tolerated by `verify_release.py --pristine`, so carrying it
 across does not affect the re-pin below.
 
+Copy the contents as plain files. `update.sh` and `backup.sh` both refuse, before
+touching anything, an inbox entry a recovery archive cannot represent: a control
+character or a backslash in the path, a symlink, anything that is not a regular
+file or directory, and a **hard link** — which `cp -al` and
+`rsync --link-dest` produce and `cp -a` preserves from the source. The refusal
+names the entry and ends `nothing has been stopped`, so the deployment is
+untouched and you can correct it and re-run. To detach a hard-linked entry
+without changing its bytes:
+
+```sh
+cp inbox/<entry> inbox/<entry>.detached && mv inbox/<entry>.detached inbox/<entry>
+```
+
+`validate_recovery_archive.py` rejects all five classes when it verifies the
+recovery point, so the guard refuses early rather than after the quiesce.
+
 So re-pin afterwards. First run
 `python3 -B scripts/check_customization.py config/customization-profile.json .env`
 and read the `reviewed artifact changed after review: <path>` lines it prints.
@@ -1088,13 +1104,15 @@ record. Autonomous transcript review remains disabled.
     --profile tools ps --all
   ```
 
-  Both flags are load-bearing. `--all` because a bare `ps` omits stopped
-  containers, which makes a consumer this script stopped indistinguishable from
-  one that was never created — both render as an empty listing. `--profile
-  tools` because `openclaw-cli` is profile-gated and is otherwise not listed at
-  all; `scripts/update.sh`, `scripts/backup.sh`, and `scripts/restore.sh` use
-  the same pair for the same reason. A `postgres` row in state `running` is also
-  the "Postgres is up" confirmation the re-run below needs.
+  `--all` is the load-bearing flag: a bare `ps` omits stopped containers, which
+  makes a consumer this script stopped indistinguishable from one that was never
+  created — both render as an empty listing. `--profile tools` is carried for
+  consistency with `scripts/update.sh`, `scripts/backup.sh` and
+  `scripts/restore.sh`, which use one `compose` helper for both `ps` and the
+  profile-gated `stop`; measured on this host's Compose, `ps --all` lists
+  `openclaw-cli` with or without it, so do not read the profile flag as what
+  makes the CLI visible. A `postgres` row in state `running` is also the
+  "Postgres is up" confirmation the re-run below needs.
 
   The four phases below describe a **direct** `./scripts/rotate_runtime_role.sh`
   run. `scripts/bootstrap.sh` and `scripts/update.sh` both call it, and both arm
@@ -1184,10 +1202,19 @@ record. Autonomous transcript review remains disabled.
   | `FATAL:  password authentication failed for user "<role>"` | `.env` and the database disagree for that role |
   | `FATAL:  role "openclaw_runtime" is not permitted to log in` | the run aborted inside the `NOLOGIN` window (phase 4). The password may be correct. Re-run the script. |
 
-  Restoring from a recovery point (§5.4) is **not** part of this procedure. It is
-  warranted only if the database itself is unrecoverable — a corrupt cluster or a
-  lost volume — which the probes above do not diagnose and which no credential
-  mismatch implies.
+  Restoring from a recovery point (§5.4) is **not** part of *this* procedure —
+  re-running the rotation is what reconciles the credentials, and a restore
+  neither diagnoses nor repairs a credential mismatch. It is warranted only if
+  the database itself is unrecoverable: a corrupt cluster or a lost volume, which
+  the probes above do not diagnose.
+
+  That is scoped to the rotation. It does **not** override `update.sh`'s own
+  failure message, which says "Repair the release, or restore the verified
+  pre-update backup if its final directory was published, before restarting
+  traffic": an update that failed *after* publishing its pre-update recovery
+  point has a different remedy, because there the recovery point is a known-good
+  prior state of the whole deployment rather than an attempt to fix credentials.
+  If the message you are holding came from `update.sh`, follow §8's rollback.
 - **Database/auth anomaly:** stop gateway and CLI, preserve evidence, run the
   locked role reconciler, and do not restore traffic until both positive and
   negative authentication proofs pass.

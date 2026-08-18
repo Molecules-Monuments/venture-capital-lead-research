@@ -260,6 +260,22 @@ mkdir -m 0700 "$STAGING"
 # the check in one place is NOT enough: update.sh carries its own copy ahead of
 # its quiesce, and the two class lists must stay identical.
 inbox_reject=""
+# Probe for a control character BEFORE enumerating, and never parse this probe's
+# output as lines. `find` delimits its output with newlines, so an entry whose
+# own name contains one is split into two fragments that are each tested
+# separately -- and both can pass. Measured under dash: an entry named
+# "<newline>scripts" printed as "<inbox>/" and "scripts"; the first is the inbox
+# directory and the second resolves against $PACKAGE_DIR, so both are
+# directories, the loop below accepted them, and a symlink the validator refuses
+# reached the archive. A newline is a control character, so one probe closes the
+# whole class. `-name` matches each entry's own basename and every path
+# component is some entry's basename, so a control character anywhere under the
+# inbox is found. Verified to behave identically under GNU find (Debian) and BSD
+# find (macOS), and to leave Muller.pdf, CJK names, spaces, nested directories
+# and backslash names alone.
+if [ -n "$(find "$PACKAGE_INBOX" -mindepth 1 -name '*[[:cntrl:]]*' -print)" ]; then
+  inbox_reject="an entry name holds a control character; list them with: find $PACKAGE_INBOX -mindepth 1 -name '*[[:cntrl:]]*'"
+fi
 # Enumerate on its own line so `set -e` aborts when find itself fails; a
 # command substitution inside the here-document swallowed that, and an
 # unreadable subtree then read as a clean inbox.
@@ -299,8 +315,12 @@ if [ -z "$inbox_reject" ]; then
   # outside the inbox is archived by tar as an ordinary member, because tar
   # only emits a link member for an inode it has already written. Narrowing to
   # links wholly inside the inbox needs inode grouping that POSIX find cannot
-  # express, and the over-refusal is cheap -- nothing has been stopped, and
-  # `cp --remove-destination` on the entry clears it.
+  # express, and the over-refusal is cheap -- nothing has been stopped, and the
+  # operator detaches the entry with
+  #   cp <entry> <entry>.detached && mv <entry>.detached <entry>
+  # which leaves the content byte-identical and drops the link count to 1.
+  # NOT `cp --remove-destination <entry> <entry>`: an earlier version of this
+  # comment said that, and GNU cp refuses it with "are the same file".
   inbox_hardlinks="$(find "$PACKAGE_INBOX" -mindepth 1 -type f -links +1)"
   while IFS= read -r entry; do
     [ -n "$entry" ] || continue

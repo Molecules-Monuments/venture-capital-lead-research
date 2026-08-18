@@ -190,8 +190,15 @@ class SemanticContractTests(unittest.TestCase):
             self.helper.calculate_score(criteria, {**CASES["weights"], "founder_team_signal": 14}, {"identity_reliable": True})
 
 
-    def test_no_display_value_can_determine_a_recommendation(self):
-        """`display_5` spans a band edge, so it never implies a single band.
+    def test_every_band_edge_is_straddled_by_one_display_value(self):
+        """Each band edge falls INSIDE a display value, not on its boundary.
+
+        Stated precisely, because the obvious phrasing is false: of the 51 display
+        values `display_5` can take, 48 DO determine the recommendation exactly
+        (`3.0` is always `watch`). Only the three that sit on a band edge — `2.5`,
+        `3.3`, `4.1` — map to two bands each. Three is enough: a display-to-band
+        table cannot be written, and a fixture that asserts one band for `4.1` is
+        wrong for half of that value's window.
 
         The rubric says there is "deliberately no display-scale equivalent" of the
         recommendation intervals, and that one must never read a recommendation off
@@ -223,33 +230,51 @@ class SemanticContractTests(unittest.TestCase):
             "against the new rounding instead of trusting these constants",
         )
         rubric = json.loads(RUBRIC.read_text(encoding="utf-8"))
-        straddle: dict[str, set[str]] = {}
-        for raw in ("49.900", "50.000", "65.900", "66.000", "81.001", "82.000"):
-            final_100 = Decimal(raw).quantize(Decimal("0.001"))
-            display_5 = (final_100 / Decimal(20)).quantize(Decimal("0.1"))
-            straddle.setdefault(str(display_5), set()).add(
-                self.helper._recommendation_for_score(final_100, rubric)
-            )
-        for display, bands in sorted(straddle.items()):
-            with self.subTest(display_5=display):
-                self.assertGreater(
-                    len(bands), 1,
-                    f"display_5={display} resolved to the single band {bands}. If "
-                    f"that became true of the whole two-point window then the "
-                    f"rubric's 'deliberately no display-scale equivalent' needs "
-                    f"revisiting -- but until it does, a display value must never "
-                    f"identify a recommendation",
+        quantum = Decimal("0.001")
+
+        def display_of(value: Decimal) -> Decimal:
+            return (value / Decimal(20)).quantize(Decimal("0.1"))
+
+        # Derived from the rubric's own interval minima, not a hand-listed set of
+        # probe points: a deployment that customises its bands (they are
+        # `sample_only_must_customize`) gets its own edges checked, and a band
+        # edge added or moved is covered without editing this test.
+        edges = [
+            Decimal(str(interval["minimum"]))
+            for interval in rubric["recommendation_intervals"]
+            if Decimal(str(interval["minimum"])) > 0
+        ]
+        self.assertTrue(edges, "the rubric declares no interior band edge")
+        for edge in edges:
+            below = (edge - quantum).quantize(quantum)
+            with self.subTest(edge=str(edge)):
+                self.assertEqual(
+                    display_of(below), display_of(edge),
+                    f"the band edge at final_100={edge} falls on a display-value "
+                    f"boundary rather than inside one: {below} displays "
+                    f"{display_of(below)} and {edge} displays {display_of(edge)}. "
+                    f"If that ever becomes true of every edge, a display-to-band "
+                    f"table would be writable and the rubric's 'deliberately no "
+                    f"display-scale equivalent' would need revisiting.",
+                )
+                self.assertNotEqual(
+                    self.helper._recommendation_for_score(below, rubric),
+                    self.helper._recommendation_for_score(edge, rubric),
+                    f"final_100={below} and {edge} band identically, so "
+                    f"{edge} is not a band edge and this check is testing nothing",
                 )
 
     def test_the_reviewed_boundary_fixture_is_on_the_unrounded_scale(self):
         """The hash-pinned boundary fixture must not carry display-scale values.
 
-        No in-package executor replays `tests/g3/scoring_boundary_cases.jsonl` --
-        `tests/g3/README.md` says so, and its only code references are the
-        `check_customization.py` and G8 byte verifications -- so nothing else can
-        notice it drifting back onto the 0.0-5.0 display scale. It shipped that
-        way, asserting one band per display value, which the straddle above shows
-        is untrue of half of each window.
+        BEFORE this test nothing replayed `tests/g3/scoring_boundary_cases.jsonl`
+        -- it was hash-pinned by `check_customization.py` and the G8 gate and read
+        by nothing else -- so it could drift back onto the 0.0-5.0 display scale
+        unnoticed. It shipped that way, asserting one band per display value,
+        which the straddle above shows is untrue of half of each window. This
+        test IS that executor now, so the fixture is live offline-gate cover:
+        `tests/g3/README.md` and `CUSTOMIZATION.md` both say it must be re-cut
+        when the recommendation bands change.
 
         Every `expected` is re-derived through the shipped helper here, so this is
         also the check that the fixture's bands are the runtime's bands.
@@ -273,8 +298,8 @@ class SemanticContractTests(unittest.TestCase):
                 value = Decimal(str(row["final_100"]))
                 self.assertTrue(
                     Decimal(0) <= value <= Decimal(100),
-                    f"{row['id']}'s final_100 {value} is outside [0, 100], so it "
-                    f"is a display-scale value sitting on a final_100 field",
+                    f"{row['id']}'s final_100 {value} is outside the scale's own "
+                    f"range [0, 100]",
                 )
                 self.assertEqual(
                     row["expected"],
@@ -283,6 +308,33 @@ class SemanticContractTests(unittest.TestCase):
                     ),
                     f"{row['id']}'s expected band is not what the shipped helper "
                     f"returns for final_100={value}",
+                )
+
+        # The range check above cannot separate the two scales: every display
+        # value (0.0-5.0) is also inside [0, 100], and re-deriving `expected`
+        # only proves internal consistency. Measured: a fixture rewritten
+        # entirely onto the display scale, with each band re-derived, passed both
+        # of those. Tie the fixture to the rubric's OWN edges instead — the one
+        # property a display-scale fixture cannot satisfy.
+        values = {Decimal(str(row["final_100"])) for row in rows}
+        quantum = Decimal("0.001")
+        for interval in rubric["recommendation_intervals"]:
+            minimum = Decimal(str(interval["minimum"]))
+            if minimum <= 0:
+                continue
+            with self.subTest(edge=str(minimum)):
+                self.assertIn(
+                    minimum, values,
+                    f"the fixture does not probe the band edge at "
+                    f"final_100={minimum}. Its values are {sorted(values)}; if "
+                    f"those look like 0.0-5.0 numbers, the file has drifted back "
+                    f"onto the display scale.",
+                )
+                self.assertIn(
+                    (minimum - quantum).quantize(quantum), values,
+                    f"the fixture probes the band edge at final_100={minimum} but "
+                    f"not the value just below it, so it cannot show the edge is "
+                    f"where the rubric says it is",
                 )
 
 

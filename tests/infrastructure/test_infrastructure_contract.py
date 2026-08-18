@@ -418,6 +418,100 @@ class RuntimeInfrastructureTests(unittest.TestCase):
             services["openclaw-gateway"]["depends_on"]["openclaw-state-init"]["condition"],
         )
 
+    def test_state_init_checks_for_a_symlink_before_writing_each_path(self) -> None:
+        """Every `test ! -L <path>` must PRECEDE the write it protects.
+
+        `openclaw-state-init` runs as `user: "0:0"` with CHOWN, DAC_OVERRIDE and
+        FOWNER. `install -d` is satisfied by a symlink to an existing directory
+        and follows it to chown and chmod the target, so a link planted in the
+        writable state volume redirects a root-privileged write.
+
+        Measured in the shipped image while the two `test ! -L` lines for
+        `media` and `media/inbound` sat AFTER their `install -d`: the link was
+        still caught and the gateway never started, but only after this lane had
+        already handed `/runtime-config/victim` (root:root 755 before the run) to
+        node:node 0700 and created `inbound/` inside it. The guards were moved
+        ahead of the install; nothing pinned that ordering, and putting them back
+        left the whole offline gate green.
+
+        Derived from the command rather than pinned as a line list, so a new write
+        with one of the covered verbs is checked the moment it is added.
+
+        Scope, stated so this is not over-credited: it reads the four verbs that
+        actually follow a symlink destination (`install -d`, `cp`, `chown`,
+        `chmod`) and the paths they name. A write through a verb outside that set
+        — `touch`, `tee`, a shell redirection — is NOT seen, so the assertion
+        below is "every write by these verbs is guarded", not "every write is".
+        Widening the verb set is the way to widen the claim; the guard against a
+        silently unguarded NEW verb is the reviewed-diff process, not this test.
+        """
+        initializer = self.compose["services"]["openclaw-state-init"]
+        statements = [
+            line.strip()
+            for line in "\n".join(initializer["command"]).split("\n")
+            if line.strip() and not line.strip().startswith("#")
+        ]
+
+        guarded_at: dict[str, int] = {}
+        writes: list[tuple[int, str, str]] = []      # (index, verb, path)
+        for index, statement in enumerate(statements):
+            if statement.startswith("test ! -L "):
+                path = statement[len("test ! -L "):].strip().strip("\"'")
+                guarded_at.setdefault(path, index)
+                continue
+            fields = statement.split()
+            verb = fields[0] if fields else ""
+            # Only the verbs that actually FOLLOW a symlink destination need a
+            # guard. Measured under debian:bookworm-slim against a link pointing
+            # at /elsewhere/victim:
+            #   install -d <dir>   FOLLOWS  -- victim directory became 0700
+            #   cp <src> <dst>     FOLLOWS  -- victim file received the payload
+            #   chmod / chown      FOLLOW   -- victim file's mode changed
+            #   install -m SRC DST does NOT -- it replaces the link with a regular
+            #                                  file and leaves the victim untouched
+            # So `install -m 0400 ... /runtime-config/.openclaw.json.tmp` needs no
+            # `test ! -L`, and requiring one here would have been a false finding
+            # forcing a pointless change to a deployment artifact.
+            # Strip quotes before testing for a leading `/`: a quoted path begins
+            # with `"` or `'` and was invisible to this parser, so a guarded-looking
+            # `install -d "/home/node/.openclaw/media/new"` would have been skipped
+            # entirely rather than checked.
+            operands = [field.strip("\"'") for field in fields[1:]]
+            if verb == "install" and "-d" in operands:
+                targets = [f for f in operands if f.startswith("/")]
+            elif verb in {"chown", "chmod"}:
+                targets = [f for f in operands if f.startswith("/")]
+            elif verb == "cp":
+                targets = [f for f in operands if f.startswith("/")][1:]
+            else:
+                continue
+            for target in targets:
+                writes.append((index, verb, target))
+
+        self.assertTrue(guarded_at, "the state-init lane has no `test ! -L` guards at all")
+        self.assertTrue(writes, "no writes were parsed out of the state-init command")
+
+        unguarded = []
+        for index, verb, target in writes:
+            # Only the state and runtime-config trees are attacker-writable; the
+            # image's own /opt and /run/openclaw-source are not.
+            if not target.startswith(("/home/node/.openclaw", "/runtime-config")):
+                continue
+            first = guarded_at.get(target)
+            if first is None or first > index:
+                unguarded.append(
+                    f"{verb} {target} at statement {index}"
+                    + (f", but its `test ! -L` is at {first}" if first is not None
+                       else ", with no `test ! -L` for it at all")
+                )
+        self.assertEqual(
+            [], unguarded,
+            "a root-privileged write in openclaw-state-init is not preceded by a "
+            "symlink check on the same path, so a link planted in the writable "
+            "state volume redirects it before the guard trips: "
+            + "; ".join(unguarded),
+        )
+
     def test_cli_has_gateway_diagnostic_environment(self) -> None:
         services = self.compose["services"]
         gateway = services["openclaw-gateway"]["environment"]
@@ -564,34 +658,67 @@ class LifecycleScriptContractTests(unittest.TestCase):
             hidden = fake / "hidden"
             hidden.mkdir()
             (hidden / "payload").write_text("undeclared\n", encoding="utf-8")
+            baseline_manifest = (fake / "manifest.json").read_text(encoding="utf-8")
             for mode in (0o000, 0o444, 0o644):
+                # Reset the declared inventory first. The write-mode invocation
+                # below can legitimately ABSORB the payload (that is what a re-pin
+                # is), and leaving that behind made the next iteration test a tree
+                # where `hidden/payload` was already declared — so the later modes
+                # silently stopped testing anything.
+                (fake / "manifest.json").write_text(baseline_manifest, encoding="utf-8")
                 hidden.chmod(mode)
                 try:
+                    # Mode bits do not deny root. Under uid 0 the payload is
+                    # readable whatever the mode, so the scripts must report it as
+                    # an UNDECLARED FILE rather than as an unreadable subtree, and
+                    # the write path must absorb it rather than refuse. Probe what
+                    # this process can actually do instead of assuming the chmod
+                    # denied it: asserting a refusal unconditionally made every row
+                    # here fail as root, and verify_offline.py scores any failure
+                    # as a suite failure.
+                    try:
+                        (hidden / "payload").read_bytes()
+                        denied = False
+                    except OSError:
+                        denied = True
                     for name, arguments in (
                         ("verify_release.py", ["--pristine"]),
                         ("build_release_manifest.py", ["--check"]),
                         ("build_release_manifest.py", []),
                     ):
-                        with self.subTest(script=name, arguments=arguments, mode=oct(mode)):
+                        writing = name == "build_release_manifest.py" and not arguments
+                        with self.subTest(script=name, arguments=arguments,
+                                          mode=oct(mode), denied=denied):
                             done = subprocess.run(
                                 [sys.executable, "-B", str(fake / "scripts" / name), *arguments],
                                 capture_output=True, text=True, timeout=120,
                             )
                             output = done.stdout + done.stderr
-                            self.assertNotEqual(
-                                done.returncode, 0,
-                                f"{name} {' '.join(arguments)} reported success at "
-                                f"mode {oct(mode)} over a directory it could not "
-                                f"read: {output}",
-                            )
+                            if denied or not writing:
+                                self.assertNotEqual(
+                                    done.returncode, 0,
+                                    f"{name} {' '.join(arguments)} reported success "
+                                    f"at mode {oct(mode)} over a directory holding "
+                                    f"an undeclared payload it "
+                                    f"{'could not read' if denied else 'could read'}"
+                                    f": {output}",
+                                )
+                            else:
+                                # Readable payload, write mode: absorbing it is the
+                                # documented re-pin, but it must SAY so.
+                                self.assertEqual(
+                                    done.returncode, 0,
+                                    f"the builder refused a payload it can read: {output}",
+                                )
                             self.assertIn(
                                 "hidden", output,
-                                f"{name} {' '.join(arguments)} failed at mode "
-                                f"{oct(mode)} without naming the unreadable path, so "
-                                f"the operator cannot act on it: {output}",
+                                f"{name} {' '.join(arguments)} at mode {oct(mode)} "
+                                f"did not name the offending path, so the operator "
+                                f"cannot act on it: {output}",
                             )
                 finally:
                     hidden.chmod(0o755)
+            (fake / "manifest.json").write_text(baseline_manifest, encoding="utf-8")
             shutil.rmtree(hidden)
 
             # The declared-file case the mode-0o000 rows cannot express. An exit
@@ -620,6 +747,15 @@ class LifecycleScriptContractTests(unittest.TestCase):
             )
             declared_dir.chmod(0o444)
             try:
+                # Root reads it whatever the mode, and then a successful re-pin
+                # that KEEPS all three files is correct. The defect is a success
+                # with a REDUCED inventory, which the assertion below catches in
+                # both cases.
+                try:
+                    (declared_dir / "policy0.md").read_bytes()
+                    denied = False
+                except OSError:
+                    denied = True
                 written = subprocess.run(
                     [sys.executable, "-B", str(fake / "scripts/build_release_manifest.py")],
                     capture_output=True, text=True, timeout=120,
@@ -627,17 +763,19 @@ class LifecycleScriptContractTests(unittest.TestCase):
             finally:
                 declared_dir.chmod(0o755)
             after = json.loads(manifest.read_text(encoding="utf-8"))
-            self.assertNotEqual(
-                written.returncode, 0,
-                f"the manifest builder reported success over a declared directory it "
-                f"could not read: {written.stdout}{written.stderr}",
-            )
+            if denied:
+                self.assertNotEqual(
+                    written.returncode, 0,
+                    f"the manifest builder reported success over a declared "
+                    f"directory it could not read: {written.stdout}{written.stderr}",
+                )
             self.assertEqual(
                 before["files"], after["files"],
-                "the manifest was rewritten over a declared directory the builder "
-                "could not read. A successful exit with a reduced inventory is the "
-                "defect: a later --pristine then agrees with a manifest that never "
-                "saw those files (docs/RUNBOOK.md §9).",
+                f"the manifest changed while the declared subdirectory was mode "
+                f"0o444 (this process {'could not' if denied else 'could'} read "
+                f"it). A successful exit with a reduced inventory is the defect: a "
+                f"later --pristine then agrees with a manifest that never saw those "
+                f"files (docs/RUNBOOK.md §9).",
             )
 
     def test_no_lifecycle_path_can_shed_bytecode_into_the_pristine_package(self) -> None:

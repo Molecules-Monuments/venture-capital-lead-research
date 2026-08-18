@@ -44,7 +44,7 @@ REVIEW_ONLY_ROOTS = {"_internal"}
 OPERATOR_DATA_ROOTS = {"inbox", "quarantine"}
 
 
-def tolerated_unreadable(relative: str) -> bool:
+def tolerated_unreadable(relative: str, declared: set[str]) -> bool:
     """Whether a package path this gate cannot read hides anything it would name.
 
     Nothing under `_internal/` enters the declared inventory and --pristine never
@@ -71,7 +71,13 @@ def tolerated_unreadable(relative: str) -> bool:
     root = relative.split("/", 1)[0]
     if root in REVIEW_ONLY_ROOTS:
         return True
-    return root in OPERATOR_DATA_ROOTS and relative != root
+    if root not in OPERATOR_DATA_ROOTS or relative == root:
+        return False
+    # Never tolerate a DECLARED path. `inbox/.gitkeep` and `quarantine/.gitkeep`
+    # are declared package files sitting inside otherwise-tolerated roots, and
+    # tolerating them let the sibling builder write a manifest without them
+    # while this gate then passed over the reduced inventory.
+    return relative not in declared
 
 
 def unique_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
@@ -167,7 +173,7 @@ def main() -> int:
             except (TypeError, ValueError):
                 errors.append(f"cannot inspect package path {exc.filename}: {exc}")
                 return
-            if tolerated_unreadable(where):
+            if tolerated_unreadable(where, declared):
                 return
             errors.append(f"cannot inspect package path {where}: {exc}")
 
@@ -202,7 +208,7 @@ def main() -> int:
                     # os.walk without error and fails here instead. Classifying
                     # in only one of the two places is what left --pristine
                     # failing on tolerated roots at mode 0444/0644.
-                    if not tolerated_unreadable(relative):
+                    if not tolerated_unreadable(relative, declared):
                         errors.append(f"cannot inspect package path {relative}: {exc}")
                     continue
                 if relative in RUNTIME_ALLOWED:
