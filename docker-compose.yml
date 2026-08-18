@@ -71,11 +71,19 @@ services:
         if [ ! -e /home/node/.openclaw/exec-approvals.json ]; then
           cp /opt/openclaw-seed/exec-approvals.json /home/node/.openclaw/exec-approvals.json
         fi
-        install -d -m 0700 -o node -g node /home/node/.openclaw/media /home/node/.openclaw/media/inbound
-        # install -d is satisfied by a symlink to an existing directory, which
-        # would silently relocate every inbound attachment.
+        # Both checks precede the install, as in the exec-approvals lane above:
+        # install -d is satisfied by a symlink to an existing directory and
+        # follows it to chown and chmod the target. While these two lines sat
+        # after the install, a link planted in the writable state volume was
+        # still caught — the init exits non-zero and the gateway never starts —
+        # but only after this root lane had already handed the attacker-chosen
+        # directory to node:node 0700 and created inbound/ inside it (measured
+        # in the shipped image against /runtime-config/victim, root:root 755
+        # before the run). `test ! -L` on an absent path exits 0, so a
+        # first-ever init still creates both directories.
         test ! -L /home/node/.openclaw/media
         test ! -L /home/node/.openclaw/media/inbound
+        install -d -m 0700 -o node -g node /home/node/.openclaw/media /home/node/.openclaw/media/inbound
         test -f /home/node/.openclaw/exec-approvals.json
         test ! -L /home/node/.openclaw/exec-approvals.json
         chown node:node /home/node/.openclaw/exec-approvals.json

@@ -363,13 +363,20 @@ class PopulatedUpgradePathTests(unittest.TestCase):
     database, so a migration that trips a guard installed by an earlier one —
     the thirteenth audit pass found 008's backfill raising against 005's
     append-only trigger — passes a fresh install and fails exactly the
-    populated databases its backfill exists for. This class applies the
-    pre-008 migrations to a scratch database, inserts a workflow_requests row,
-    applies the remainder of the series over it, and proves the backfill
-    landed with the append-only protection re-enabled afterwards. The
-    populated set is workflow_requests alone — a future migration mutating a
-    different guarded table needs that table populated here too, so extend
-    the inserted fixtures whenever an append-only table gains a backfill.
+    populated databases its backfill exists for.
+
+    This class applies the whole series to a scratch database, inserting each
+    fixture immediately before the migration it must survive. `fixtures` is
+    keyed by the three-digit prefix of that migration: `companies` rows before
+    `006`, a `workflow_requests` row before `008`. A single split point could
+    only ever populate one migration's inputs — this class used a pre-008 /
+    post-008 split until the eighteenth pass needed rows in place before `006`,
+    which that shape could not express.
+
+    So a new backfill, or a CHECK-tightening derivation, over a table an earlier
+    migration already guards adds a KEY to `fixtures` rather than moving a split
+    point. CLAUDE.md §"Auditing this package" states the same rule and sends
+    migration authors to this class by name.
     """
 
     @classmethod
@@ -390,16 +397,36 @@ class PopulatedUpgradePathTests(unittest.TestCase):
             migrations = sorted((PACKAGE_ROOT / "migrations").glob("[0-9][0-9][0-9]_*.sql"))
             if len(migrations) < 8:
                 raise AssertionError("migration series not found from the package root")
-            pre = [path for path in migrations if path.name[:3] < "008"]
-            post = [path for path in migrations if path.name[:3] >= "008"]
-            for migration in pre:
-                cls.apply(migration)
-            cls.scratch(
-                "INSERT INTO workflow_requests"
-                " (workflow_id, idempotency_key, request_hash, request_payload)"
-                f" VALUES ('document-lead-intake', '{cls.database}', '{'ab' * 32}', '{{}}')"
-            )
-            for migration in post:
+            # Fixtures are keyed by the migration whose backfill has to survive
+            # them and are inserted immediately BEFORE that migration runs. A
+            # single split point could only ever populate one migration's inputs;
+            # the eighteenth pass needed rows in place before 006, which the
+            # previous pre-008/post-008 split could not express.
+            fixtures = {
+                "006": (
+                    # 006 derives company_aliases.normalized_alias through NFKC.
+                    # NFKC maps U+00A0 NO-BREAK SPACE and U+3000 IDEOGRAPHIC
+                    # SPACE onto U+0020, so trimming before normalising let the
+                    # derived value keep edge whitespace and fail
+                    # company_aliases' own
+                    # btrim(normalized_alias) = normalized_alias CHECK, aborting
+                    # the whole upgrade under migrate.sh's ON_ERROR_STOP.
+                    # companies.name only forbids btrim(name) = '', so all three
+                    # shapes below are storable: edge NBSP, leading ideographic
+                    # space, and a name that normalises away to nothing.
+                    "INSERT INTO companies (name) VALUES "
+                    "(E'Acme\\u00A0'), (E'\\u3000Beta'), (E'\\u00A0'), ('Gamma Corp')",
+                ),
+                "008": (
+                    "INSERT INTO workflow_requests"
+                    " (workflow_id, idempotency_key, request_hash, request_payload)"
+                    f" VALUES ('document-lead-intake', '{cls.database}',"
+                    f" '{'ab' * 32}', '{{}}')",
+                ),
+            }
+            for migration in migrations:
+                for sql in fixtures.get(migration.name[:3], ()):
+                    cls.scratch(sql)
                 cls.apply(migration)
         except BaseException:
             cls.admin(f"DROP DATABASE IF EXISTS {cls.database}")
@@ -453,6 +480,39 @@ class PopulatedUpgradePathTests(unittest.TestCase):
             f" WHERE idempotency_key = '{self.database}'"
         )
         self.assertEqual(row, "legacy-unversioned|legacy-unversioned")
+
+    def test_alias_backfill_normalized_names_carrying_nfkc_whitespace(self):
+        """006's backfill must survive a name whose NFKC form gains edge spaces.
+
+        Asserts what the backfill produced, not that the series merely applied:
+        the three seeded companies whose names normalise to something get exactly
+        one canonical_name alias each, every derived normalized_alias is already
+        trimmed (which is what the table's CHECK demands), and the name that
+        normalises away to nothing is skipped rather than inserted empty.
+        """
+        rows = self.scratch(
+            "SELECT count(*) || '|' || count(*) FILTER ("
+            "  WHERE btrim(normalized_alias) <> normalized_alias"
+            ") || '|' || coalesce(string_agg(normalized_alias, ',' ORDER BY normalized_alias), '')"
+            " FROM company_aliases WHERE alias_kind = 'canonical_name'"
+        )
+        total, untrimmed, values = rows.split("|", 2)
+        self.assertEqual(
+            untrimmed, "0",
+            "006 wrote a normalized_alias that is not trimmed; NFKC must be "
+            "applied before btrim, not after (the CHECK on the column would "
+            "have aborted the upgrade)",
+        )
+        self.assertEqual(
+            total, "3",
+            "expected one canonical_name alias for each of the three seeded "
+            f"companies whose name normalises to something; got {total} ({values})",
+        )
+        self.assertEqual(
+            values, "acme,beta,gamma corp",
+            "the derived aliases are not the trimmed, lowercased NFKC forms of "
+            f"the seeded names: {values}",
+        )
 
     def test_append_only_protection_is_enforcing_after_the_series(self):
         enabled = self.scratch(

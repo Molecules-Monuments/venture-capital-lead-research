@@ -148,7 +148,13 @@ if [ "${OPENCLAW_VERIFY_TCP_AUTH:-0}" = "1" ]; then
   cleanup() {
     rm -f "$runtime_passfile" "$owner_passfile" "$invalid_passfile"
   }
-  trap cleanup EXIT HUP INT TERM
+  # QUIT belongs here with the rest: a handler that does not name it is not run
+  # under SIGQUIT (measured under Debian dash: exit 131, handler never entered),
+  # which left all three mode-0600 files -- holding the openclaw_runtime and
+  # openclaw_owner passwords in cleartext -- behind in the container's /dev/shm,
+  # contradicting the "live briefly" bound two lines above. cleanup is `rm -f`,
+  # so running it for both QUIT and the following EXIT is harmless.
+  trap cleanup EXIT HUP INT QUIT TERM
   chmod 0600 "$runtime_passfile" "$owner_passfile" "$invalid_passfile"
   printf '127.0.0.1:5432:openclaw:openclaw_runtime:%s\n' "$runtime_password" > "$runtime_passfile"
   printf '127.0.0.1:5432:openclaw:openclaw_owner:%s\n' "$owner_password" > "$owner_passfile"

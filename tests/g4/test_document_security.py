@@ -374,7 +374,25 @@ class DocumentSecurityTests(unittest.TestCase):
         self.assertNotEqual(proc.returncode, 0, (payload, proc.stderr))
         rendered = json.dumps(payload, sort_keys=True).lower()
         self.assertNotIn("internal_error", rendered, (payload, proc.stderr))
-        self.assertIn("quarant", rendered, (payload, proc.stderr))
+        # Substring assertions on the whole payload ("quarant") let the reason
+        # string be swapped for a different branch's reason without any gate
+        # noticing: an audit mutant that returned
+        # `exceeds_quarantine_byte_limit` here kept this test, the tests/v3
+        # quarantine-lane suite, and every offline suite green. The reason is
+        # operator-facing and the two branches diverge in docs/RUNBOOK.md §9 --
+        # only `quarantine_write_failed` carries "an earlier rejection of the
+        # same bytes may still have published a copy", so the swapped reason
+        # would tell an operator no copy can exist. Pin the exact dict, which
+        # also proves the guard ran rather than being skipped on a filesystem
+        # that accepts the 265-byte quarantine name.
+        self.assertEqual(
+            {"materialized": False, "reason": "quarantine_write_failed"},
+            payload["error"]["details"]["quarantine"],
+            f"a quarantine copy the filesystem refused must report exactly the "
+            f"reason docs/RUNBOOK.md gives its own retention wording, and the "
+            f"copy-failure branch must actually have run: {payload!r}",
+        )
+        self.assertEqual("unsupported_format", payload["error"]["code"], payload)
 
     def test_macro_extensions_and_payloads_quarantine(self):
         self.assert_rejected(self.inbox / "macro.xlsm", "active", must_quarantine=True)

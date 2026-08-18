@@ -102,7 +102,7 @@ verify_local_artifacts() {
 
 cleanup() {
   status="$?"
-  trap - EXIT HUP INT TERM
+  trap - EXIT HUP INT QUIT TERM
   if [ "$status" -ne 0 ] && [ "$QUIESCED" -eq 1 ] && \
      [ "$GATEWAY_WAS_RUNNING" -eq 1 ] && [ "$LEAVE_QUIESCED" -ne 1 ]; then
     echo "Backup failed; attempting to restore the previously running gateway." >&2
@@ -121,7 +121,7 @@ cleanup() {
   exit "$status"
 }
 trap cleanup EXIT
-trap 'exit 1' HUP INT TERM
+trap 'exit 1' HUP INT QUIT TERM
 
 if [ -z "$DESTINATION_INPUT" ]; then
   echo "usage: $0 NEW_BACKUP_DIRECTORY" >&2
@@ -142,7 +142,15 @@ if [ "$COMPATIBLE_BACKUP" -eq 1 ] && \
 fi
 
 cd "$PACKAGE_DIR"
-./scripts/check_env.sh "$ENV_FILE" >/dev/null
+# Keep stdout quiet on success but never swallow the report on failure: the
+# only diagnosis of which .env value is wrong lives in that envelope, and
+# discarding it left both scripts aborting with exit 1 and zero bytes on both
+# streams -- during a destructive restore that reads as a crash, not a refusal.
+if ! CHECK_ENV_REPORT="$(./scripts/check_env.sh "$ENV_FILE")"; then
+  printf '%s\n' "$CHECK_ENV_REPORT" >&2
+  echo "environment validation failed; nothing has been changed." >&2
+  exit 1
+fi
 if [ ! -d "$PACKAGE_DIR/inbox" ] || [ -L "$PACKAGE_DIR/inbox" ]; then
   echo "package inbox must be an existing, non-symlink directory" >&2
   exit 1
@@ -230,6 +238,83 @@ if [ -e "$STAGING" ] || [ -L "$STAGING" ]; then
   exit 1
 fi
 mkdir -m 0700 "$STAGING"
+
+# The inbox is archived verbatim, so an entry the recovery archive cannot carry
+# has to be refused somewhere. Not by tar: measured under debian:bookworm-slim,
+# GNU tar exits 0 for a symlink, a device node, a fifo and a control character
+# in a name, and for a socket it prints "socket ignored" and drops the file --
+# the recovery point would then be quietly missing it. The step that does refuse
+# is scripts/validate_recovery_archive.py: links, sparse files, devices and
+# special entries in its member loop, backslashes and control characters when it
+# normalizes a member name. backup.sh only reaches that step at the end, long
+# after the quiesce, so a bad inbox entry stops production first and names the
+# file second. Refuse here instead, while the gateway is still up.
+# The patterns match the inbox-relative path, not the absolute one: the relative
+# path is the member name tar writes and therefore the exact string the
+# validator judges, and matching the absolute path refuses every backup on a
+# package installed under a directory whose own name carries one of these
+# characters.
+# These are the entry classes a live inbox produces; the validator stays the
+# authority on the archive's bytes and this is not a reimplementation of it.
+# update.sh reaches backup.sh only after arming MUTATION_STARTED, so mirroring
+# the check in one place is NOT enough: update.sh carries its own copy ahead of
+# its quiesce, and the two class lists must stay identical.
+inbox_reject=""
+# Enumerate on its own line so `set -e` aborts when find itself fails; a
+# command substitution inside the here-document swallowed that, and an
+# unreadable subtree then read as a clean inbox.
+inbox_entries="$(find "$PACKAGE_INBOX" -mindepth 1)"
+while IFS= read -r entry; do
+  [ -n "$entry" ] || continue
+  # `inbox_relative`, not `relative`: verify_local_artifacts() already uses a
+  # global `relative`, and sh has no scoping to keep the two apart.
+  inbox_relative="${entry#"$PACKAGE_INBOX"/}"
+  case "$inbox_relative" in
+    *[[:cntrl:]]*) inbox_reject="$entry (control character in path)" ; break ;;
+    # validate_recovery_archive.py rejects any member name containing a
+    # backslash; such a file passes every test below, so tar happily archives
+    # it and the validator fails the whole recovery point after the quiesce.
+    *\\*) inbox_reject="$entry (backslash in path)" ; break ;;
+  esac
+  if [ -L "$entry" ]; then
+    inbox_reject="$entry (symlink)"
+    break
+  fi
+  if [ ! -f "$entry" ] && [ ! -d "$entry" ]; then
+    inbox_reject="$entry (not a regular file or directory)"
+    break
+  fi
+done <<INBOX_SCAN
+$inbox_entries
+INBOX_SCAN
+if [ -z "$inbox_reject" ]; then
+  # A hard-linked regular file passes every test above -- it really is a
+  # regular, non-symlink file -- but tar emits the second name as a link member
+  # and the validator then refuses the archive with "links, sparse files,
+  # devices, and special entries are forbidden". There is no portable per-entry
+  # link count in the shell (`find -printf '%n'` and `stat` are both non-POSIX),
+  # so enumerate the offenders with `-links +1`, which is. `-type f` is not
+  # optional: every directory has more than one link.
+  # This deliberately over-refuses one case: a file whose second name lies
+  # outside the inbox is archived by tar as an ordinary member, because tar
+  # only emits a link member for an inode it has already written. Narrowing to
+  # links wholly inside the inbox needs inode grouping that POSIX find cannot
+  # express, and the over-refusal is cheap -- nothing has been stopped, and
+  # `cp --remove-destination` on the entry clears it.
+  inbox_hardlinks="$(find "$PACKAGE_INBOX" -mindepth 1 -type f -links +1)"
+  while IFS= read -r entry; do
+    [ -n "$entry" ] || continue
+    inbox_reject="$entry (hard link: the file has more than one name)"
+    break
+  done <<HARDLINK_SCAN
+$inbox_hardlinks
+HARDLINK_SCAN
+fi
+if [ -n "$inbox_reject" ]; then
+  printf '%s\n' "package inbox holds an entry a recovery archive cannot represent: $inbox_reject" >&2
+  echo "remove or relocate it before backing up; nothing has been stopped." >&2
+  exit 1
+fi
 
 running_services="$(compose --profile tools ps --all --status running --services)"
 if printf '%s\n' "$running_services" | grep -Fxq openclaw-gateway; then
@@ -351,8 +436,12 @@ python3 scripts/authenticate_backup.py create "$ENV_FILE" \
 
 if [ "$GATEWAY_WAS_RUNNING" -eq 1 ] && [ "$LEAVE_QUIESCED" -ne 1 ]; then
   compose up -d --wait --no-deps openclaw-gateway >/dev/null
-  compose exec -T openclaw-gateway \
-    /workspaces/vc-chief/vc/bin/agent/vcops db-check >/dev/null
+  if ! DB_CHECK_REPORT="$(compose exec -T openclaw-gateway \
+    /workspaces/vc-chief/vc/bin/agent/vcops db-check)"; then
+    printf '%s\n' "$DB_CHECK_REPORT" >&2
+    echo "database check failed after restarting the gateway." >&2
+    exit 1
+  fi
   QUIESCED=0
 fi
 

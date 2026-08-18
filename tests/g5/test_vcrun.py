@@ -5,6 +5,7 @@ import hashlib
 import importlib.util
 import json
 import os
+import re
 import subprocess
 import sys
 import unittest
@@ -335,6 +336,50 @@ class FixedRunnerTests(unittest.TestCase):
         self.assertEqual("reconciliation_invalid", invalid["postgres_reconciliation"]["error"]["code"])
 
 
+def _closed_domain_row_values(document: str, workflow: str, argument: str) -> str | None:
+    """The "Accepted values" cell documenting (workflow, argument), or None.
+
+    The documentation half of this class used to search the whole of
+    docs/WORKFLOWS.md for the backticked value. That could not see a value
+    deleted from its own row, because the same token is often accepted by a
+    second domain: `other` belongs to both `proposal-record --proposal_kind`
+    and `source-watch --source_class`, so gutting the first row left the token
+    in the second and the assertion still passed — reproducing exactly the
+    "follow the table verbatim and it is incomplete" defect the class exists to
+    close. Anchor on the row instead of the file.
+
+    Returning None rather than raising lets the caller fail with a rot message:
+    a reworded or moved table must fail loudly, not pass on nothing.
+    """
+    for line in document.splitlines():
+        stripped = line.strip()
+        if not stripped.startswith("|"):
+            continue
+        cells = [cell.strip() for cell in stripped.strip("|").split("|")]
+        # `| workflow | argument | values |` — the exact match on the argument
+        # cell is what keeps the workflow-inventory table (also three columns,
+        # and also leading with a backticked workflow name) out of the search.
+        if len(cells) != 3 or cells[1] != f"`{argument}`":
+            continue
+        # `preference_key` documents two workflows in one cell, so the workflow
+        # is matched inside the cell rather than against the whole of it.
+        if f"`{workflow}`" in cells[0]:
+            return cells[2]
+    return None
+
+
+def _preference_value_prose(document: str, preference_key: str) -> str | None:
+    """The parenthesised value list docs/WORKFLOWS.md gives for one preference key.
+
+    `preference_value` is the one closed domain with no table row, so its
+    documentation is prose: ``\\`memo_length\\`\\n(\\`short\\`/...)``. Anchoring
+    on "backticked key immediately followed by a parenthesis" skips the
+    `preference_key` table row, where the key is followed by a comma.
+    """
+    match = re.search(rf"`{re.escape(preference_key)}`\s*\(([^)]*)\)", document)
+    return match.group(1) if match else None
+
+
 class DocumentedValueDomainTests(unittest.TestCase):
     """Every closed argument domain is enforced AND written down.
 
@@ -343,6 +388,10 @@ class DocumentedValueDomainTests(unittest.TestCase):
     the accepted values existed only in vcrun.py. This binds the three together —
     if a domain changes in code, the behavioural half fails; if the table is not
     updated, the documentation half fails.
+
+    "The table" means the operator's own row for that argument, not the
+    document: see `_closed_domain_row_values` for the substring form this
+    replaced and the value it could not miss.
     """
 
     DOMAINS: ClassVar[dict[tuple[str, str], tuple[str, ...]]] = {
@@ -414,13 +463,20 @@ class DocumentedValueDomainTests(unittest.TestCase):
     def test_every_accepted_value_appears_in_the_operator_documentation(self) -> None:
         workflows_doc = (PACKAGE / "docs/WORKFLOWS.md").read_text(encoding="utf-8")
         for (workflow, argument), values in self.DOMAINS.items():
+            row = _closed_domain_row_values(workflows_doc, workflow, argument)
+            if row is None:
+                self.fail(
+                    f"docs/WORKFLOWS.md has no closed-domain table row for "
+                    f"{workflow} --{argument}. The table moved or was reworded, "
+                    "so this check was about to assert against nothing.",
+                )
             for value in values:
                 with self.subTest(workflow=workflow, argument=argument, value=value):
                     self.assertIn(
                         f"`{value}`",
-                        workflows_doc,
-                        f"{workflow} --{argument} accepts {value!r} but docs/WORKFLOWS.md "
-                        "does not list it",
+                        row,
+                        f"{workflow} --{argument} accepts {value!r} but its own "
+                        f"docs/WORKFLOWS.md row does not list it: {row}",
                     )
 
     def test_preference_values_match_the_helper_schema(self) -> None:
@@ -434,9 +490,21 @@ class DocumentedValueDomainTests(unittest.TestCase):
         vcops = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(vcops)
         for key, values in vcops.PREFERENCE_VALUES.items():
+            documented = _preference_value_prose(workflows_doc, key)
+            if documented is None:
+                self.fail(
+                    f"docs/WORKFLOWS.md no longer states the values for "
+                    f"preference_key {key!r} as a parenthesised list after the "
+                    "key. Reword the prose back, or this check asserts nothing.",
+                )
             for value in values:
                 with self.subTest(preference_key=key, value=value):
-                    self.assertIn(f"`{value}`", workflows_doc)
+                    self.assertIn(
+                        f"`{value}`",
+                        documented,
+                        f"vcops accepts {value!r} for preference_key {key!r} but "
+                        f"docs/WORKFLOWS.md lists ({documented}) for that key",
+                    )
 
 
 class ReplayProbeTests(unittest.TestCase):
@@ -772,6 +840,144 @@ class NewSelectorContractTests(unittest.TestCase):
                     vcrun.validate_workflow_args(
                         selector, json.dumps({**NEW_SELECTOR_VALID_ARGS[selector], key: value})
                     )
+
+
+class IdentifierCeilingTests(unittest.TestCase):
+    """Every identifier-shaped argument is bounded before the run row is created.
+
+    `vcrun` enforced the PostgreSQL BIGINT ceiling for `lead_id` alone; the other
+    identifier arguments accepted an in-shape value above 9223372036854775807 and
+    failed later inside `vcops`, after `workflow-start` had already committed the
+    run row — costing a fresh idempotency key to correct.
+
+    Coverage is split deliberately. The classification is asserted as a TOTAL
+    partition over every contract key, which is the part that stops a seventh
+    identifier being added unbounded (that is how `flow_revision` was missed).
+    The ceiling itself is asserted on the shared helper for every bounded key,
+    plus one end-to-end pass through `validate_workflow_args` proving the helper
+    is actually reached before dispatch. A contract-complete payload cannot be
+    synthesised generically — `company_domain`, `severity` and friends have their
+    own formats — so the end-to-end leg uses one hand-built valid object rather
+    than a generated one that would fail for the wrong reason.
+    """
+
+    OVER = "9223372036854775808"  # BIGINT max + 1, still a legal shape
+    MAX = "9223372036854775807"
+
+    def test_no_identifier_argument_is_left_unclassified(self) -> None:
+        self.assertEqual(
+            set(), set(vcrun.UNCLASSIFIED_ID_ARG_KEYS),
+            "these identifier-shaped arguments are declared neither bigint nor "
+            "opaque text, so no ceiling applies to them: "
+            f"{sorted(vcrun.UNCLASSIFIED_ID_ARG_KEYS)}. Classify each one.",
+        )
+
+    def test_the_helper_bounds_every_key_declared_bigint(self) -> None:
+        bounded = set(vcrun.BIGINT_ID_ARG_KEYS) | set(vcrun.NON_NEGATIVE_BIGINT_ARG_KEYS)
+        self.assertTrue(bounded, "the bigint identifier sets are empty; the derivation has rotted")
+        for key in sorted(bounded):
+            with self.subTest(argument=key):
+                zero_ok = key in vcrun.NON_NEGATIVE_BIGINT_ARG_KEYS
+                vcrun._canonical_bigint({key: self.MAX}, key, allow_zero=zero_ok)
+                with self.assertRaises(vcrun.VCRunError) as caught:
+                    vcrun._canonical_bigint({key: self.OVER}, key, allow_zero=zero_ok)
+                self.assertIn(
+                    key, str(caught.exception),
+                    f"the refusal for {key} does not name it, so an operator cannot "
+                    f"tell which argument was out of range: {caught.exception}",
+                )
+
+    def test_zero_is_accepted_only_where_it_is_legitimate(self) -> None:
+        # flow_revision is a Task Flow handle whose first value is 0; the row
+        # identifiers are positive, so 0 must stay a refusal for them.
+        for key in sorted(vcrun.NON_NEGATIVE_BIGINT_ARG_KEYS):
+            with self.subTest(argument=key, expect="0 accepted"):
+                vcrun._canonical_bigint({key: "0"}, key, allow_zero=True)
+        for key in sorted(vcrun.BIGINT_ID_ARG_KEYS):
+            with self.subTest(argument=key, expect="0 refused"):
+                with self.assertRaises(vcrun.VCRunError):
+                    vcrun._canonical_bigint({key: "0"}, key)
+
+    # Contract-complete payloads, hand-built and verified: a generated one is
+    # refused on `company_domain`/`severity`/`citations_json` formats long before
+    # any ceiling, which would make this pass for the wrong reason. Each payload
+    # is asserted key-complete below, so a changed contract fails loudly here
+    # instead of silently degrading into a key-mismatch test.
+    VALID: ClassVar[dict[str, dict[str, str]]] = {
+        "evaluate-lead": {
+            "idempotency_key": "k" * 20, "lead_id": "1",
+            "criteria_json": "{}", "decision_context_json": "{}",
+        },
+        "contradiction-record": {
+            "idempotency_key": "k" * 20, "lead_id": "1",
+            "left_fact_id": "1", "right_fact_id": "1", "severity": "low",
+        },
+        "document-lead-intake": {
+            "idempotency_key": "k" * 20, "extraction_id": "1",
+            "company_domain": "example.com", "company_name": "x",
+            "lead_title": "x", "trusted_context": "x",
+        },
+        "memo-record": {
+            "idempotency_key": "k" * 20, "lead_id": "1", "evaluation_id": "1",
+            "compiled_truth_id": "1", "memo_markdown": "x", "memo_title": "x",
+            "evidence_hash": "a" * 64,
+            "citations_json":
+                '[{"fact_id": 1, "source_id": 1, "citation": "[C1]", "locator": "p1"}]',
+        },
+        # Carries the OPTIONAL `flow_revision` on purpose. It is the only
+        # non-negative bounded identifier, and no other payload here (or
+        # anywhere in tests/) supplies it, so without this entry the second
+        # dispatch loop in `validate_workflow_args` was uncovered end to end:
+        # deleting that loop kept every offline suite green while the runner
+        # started accepting "abc", "-1" and BIGINT_MAX+1 for flow_revision.
+        "orchestration-record": {
+            "idempotency_key": "k" * 20, "lead_id": "1",
+            "record_kind": "chief_output", "specialist": "founder-researcher",
+            "payload_json": "{}", "flow_revision": "0",
+        },
+    }
+
+    def test_validate_workflow_args_applies_the_ceiling_before_dispatch(self) -> None:
+        """The end-to-end leg, over EVERY bounded identifier, not just lead_id.
+
+        Asserting the helper alone was dead cover: reverting the dispatch loop to
+        `{"lead_id"} & actual` left the helper's own tests green while five
+        identifiers went unbounded again. This drives the real entry point, so an
+        over-range value provably never reaches `workflow-start`.
+        """
+        bounded = set(vcrun.BIGINT_ID_ARG_KEYS) | set(vcrun.NON_NEGATIVE_BIGINT_ARG_KEYS)
+        covered = set()
+        for workflow, payload in sorted(self.VALID.items()):
+            # Required keys, plus exactly the optional keys this payload chooses
+            # to carry: an optional key stays legal, an unknown or missing one
+            # still fails loudly. Comparing against the required set alone would
+            # have made carrying `flow_revision` impossible, which is why the
+            # non-negative dispatch loop went uncovered.
+            allowed = set(vcrun.WORKFLOWS[workflow]["keys"]) | (
+                set(payload) & set(vcrun.WORKFLOWS[workflow].get("optional_keys", ()))
+            )
+            self.assertEqual(
+                sorted(payload), sorted(allowed),
+                f"{workflow}'s contract moved; this payload is no longer complete "
+                "and would be refused on key mismatch rather than on the ceiling",
+            )
+            vcrun.validate_workflow_args(workflow, json.dumps(payload))
+            for key in sorted(bounded & set(payload)):
+                covered.add(key)
+                with self.subTest(workflow=workflow, argument=key):
+                    with self.assertRaises(vcrun.VCRunError) as caught:
+                        vcrun.validate_workflow_args(
+                            workflow, json.dumps(dict(payload, **{key: self.OVER}))
+                        )
+                    self.assertIn(
+                        key, str(caught.exception),
+                        f"{workflow}: the refusal does not name {key}: {caught.exception}",
+                    )
+        self.assertEqual(
+            covered, bounded,
+            "these bounded identifiers are exercised by no end-to-end payload, so "
+            f"a dispatch-loop regression would not be caught: {sorted(bounded - covered)}",
+        )
 
 
 class FailureReasonParityTests(unittest.TestCase):

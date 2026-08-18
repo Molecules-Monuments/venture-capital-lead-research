@@ -3,10 +3,19 @@
 `routing_cases.jsonl` is a fail-closed routing contract, not example output. A
 denial case may not name an executing agent.
 
-`scoring_boundary_cases.jsonl` probes every lower boundary and the upper end of
-the permitted 0.0–5.0 aggregate scale. The scoring rubric must express recommendation
-bands with mathematical interval notation, for example `[2.5, 3.3)`, so gaps,
-overlaps, and the exact treatment of 4.1 are machine-verifiable.
+`scoring_boundary_cases.jsonl` probes every band boundary on **unrounded
+`final_100`**, the 0–100 scale the recommendation is actually decided from, and
+its `final_100` field says so. The scoring rubric must express recommendation
+bands in mathematical interval notation on that scale — `[0, 50)`, `[50, 66)`,
+`[66, 82)`, `[82, 100]` — so gaps and overlaps are machine-verifiable.
+
+These cases carry no display value, deliberately. `display_5` rounds
+`final_100 / 20` to one decimal, so each display value covers a two-point
+`final_100` window that STRADDLES a band edge rather than starting at it: `2.5`,
+`3.3` and `4.1` each map to two different recommendations. A fixture asserting
+one band for a display value asserts something untrue of half its own window,
+and this file did exactly that until the eighteenth pass. `tests/g4/test_semantics.py`
+executes that straddle against the shipped helper.
 
 These fixtures are deliberately independent of model output. They gate the
 static governance and capability contract before workflow/runtime tests.

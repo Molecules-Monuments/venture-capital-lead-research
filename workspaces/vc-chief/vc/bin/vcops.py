@@ -1533,9 +1533,56 @@ def parse_numeric_claim(text: str) -> dict[str, Any]:
 
 
 def _period_bounds(fact: Mapping[str, Any]) -> tuple[str | None, str | None]:
-    start = fact.get("period_start") or fact.get("valid_from") or fact.get("observed_at")
-    end = fact.get("period_end") or fact.get("valid_to") or start
-    return (str(start) if start else None, str(end) if end else None)
+    """The asserted validity period of a fact, or (None, None) if it has none.
+
+    `observed_at` must never stand in for a missing bound. It records when a
+    claim was observed or written down, not the interval over which the claim
+    holds: `facts.observed_at` is `TIMESTAMPTZ NOT NULL DEFAULT
+    clock_timestamp()` and both writers store it as `COALESCE(%s, now())`. A
+    caller *can* set it — `observed_at` is an accepted `evidence_json` field
+    (`EVIDENCE_FIELDS`, bound into the `cmd_evidence_record` INSERT) and
+    `fact-add --observed-at` reaches the same column — which is precisely why it
+    must not be substituted for a missing period bound: a caller-chosen
+    observation instant would silently become an asserted validity period.
+    Substituting it produced three wrong answers, all measured against a live
+    PostgreSQL 17 through this CLI:
+
+    * a `period_end`-only fact got `start = now`, which *inverts* the interval,
+      so `_periods_overlap` reported no overlap for periods that plainly overlap
+      and a same-period contradiction became `trajectory` — undetectable, with
+      `blocking_contradiction` false and an evaluation persisted at 100.000;
+    * two undated facts became two instants microseconds apart, so they were
+      `trajectory` — a typed direction over facts with no time ordering — where
+      `contradiction_policy.md` and the contradiction-check skill both require
+      `not_comparable` when dates are absent;
+    * two undated facts that happened to share one `observed_at` string
+      *overlapped*, so the classification turned on a timestamp collision.
+
+    A single known bound is therefore treated as a point (it is the one instant
+    the fact does assert), an interval that comes out inverted is reported as
+    unknown rather than as silently disjoint, and no bound at all yields
+    (None, None). `classify_fact_pair` routes (None, None) to `not_comparable`
+    only when the two values differ: its equality test runs before its
+    `overlap is None` test, so two undated facts asserting the same value still
+    classify `consistent` (tests/g4/semantic_cases.json,
+    `undated_identical_values_are_consistent`). Reordering those two tests would
+    make the skill's absent-dates rule hold unconditionally, but that is a
+    behaviour change with its own evidence bar, not something this helper
+    decides. All bounds come from DATE columns, so ISO string ordering is
+    chronological.
+    """
+    start = fact.get("period_start") or fact.get("valid_from")
+    end = fact.get("period_end") or fact.get("valid_to")
+    if not start and not end:
+        return (None, None)
+    if not start:
+        start = end
+    if not end:
+        end = start
+    start, end = str(start), str(end)
+    if end < start:
+        return (None, None)
+    return (start, end)
 
 
 def _periods_overlap(left: Mapping[str, Any], right: Mapping[str, Any]) -> bool | None:

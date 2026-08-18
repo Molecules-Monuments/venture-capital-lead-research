@@ -61,10 +61,21 @@ to enforce:
 - SQL injection, command injection, or path traversal in `vcops.py`,
   `vcrun.py`, the lifecycle shell scripts, or the `vc-trusted-context`
   extension.
-- Writing to an append-only history table (`facts`, `fact_sources`,
-  `document_facts`, `compiled_truth_facts`, `evaluation_criteria`,
-  `memo_citations`, `contradiction_facts`, `trajectory_points`) or otherwise
-  defeating a guard trigger as the runtime role.
+<!-- This bullet used to close with an eight-name parenthetical, naming eight of
+     the nineteen tables docs/SCHEMA.sql then guarded with an *_append_only
+     trigger and omitting, among others, trusted_context_uses — which backs the
+     trusted-context boundary listed above — and workflow_requests, whose replay
+     boundary the bullet below it now names. Name the class, not a sample: the
+     list is enumerable from the schema and grows with every history table. -->
+- Writing to a table that carries an `*_append_only` trigger (`docs/SCHEMA.sql`
+  is the current list) or otherwise defeating a guard trigger as the runtime
+  role.
+- Defeating a workflow request claim: reusing an existing
+  `(workflow_id, idempotency_key)` with different content — a changed argument,
+  document SHA, extraction, or principal — and landing a divergent mutation
+  instead of an `idempotency_payload_mismatch` refusal. Which arguments the
+  claim itself hashes, and which are caught after it by `leads.request_hash` or
+  `input_digest`, is enumerated in `tests/v3/test_workflow_claim_step_coverage.py`.
 - Escaping the document intake lane: quarantine bypass, or reaching the host or
   another lead's data through an uploaded PDF/PPTX/XLSX/CSV.
 - Recovering plaintext secrets from a backup archive, an image layer, a log, or

@@ -128,6 +128,27 @@ def last_json_object(text: str) -> dict:
     return found
 
 
+def project_containers() -> list[str]:
+    """Container IDs labelled with this gate's compose project.
+
+    check defaults to True on purpose: a failing `docker ps` writes nothing to
+    stdout, and a caller that read that as "no containers" would certify a
+    teardown it never measured. precheck() and teardown() share this
+    enumeration so the entry and exit conditions cannot describe different
+    worlds.
+    """
+    return run(
+        ["docker", "ps", "-aq", "--filter", f"label=com.docker.compose.project={COMPOSE_PROJECT}"],
+        timeout=60,
+    ).stdout.split()
+
+
+def project_volumes() -> list[str]:
+    """This gate's volumes that exist. Raises on a failing enumeration."""
+    existing = set(run(["docker", "volume", "ls", "-q"], timeout=60).stdout.split())
+    return sorted(existing.intersection(PROJECT_VOLUMES))
+
+
 def precheck() -> None:
     for tool in ("docker",):
         if not shutil.which(tool):
@@ -140,14 +161,9 @@ def precheck() -> None:
             )
     if LIFECYCLE_LOCK.exists():
         raise GateError(f"lifecycle lock {LIFECYCLE_LOCK} exists; another lifecycle operation ran or crashed")
-    containers = run(
-        ["docker", "ps", "-aq", "--filter", f"label=com.docker.compose.project={COMPOSE_PROJECT}"],
-        timeout=60,
-    ).stdout.strip()
-    if containers:
+    if project_containers():
         raise GateError(f"compose project {COMPOSE_PROJECT} already has containers; refusing")
-    existing = set(run(["docker", "volume", "ls", "-q"], timeout=60).stdout.split())
-    collisions = sorted(existing.intersection(PROJECT_VOLUMES))
+    collisions = project_volumes()
     if collisions:
         raise GateError(f"project volumes already exist: {collisions}; refusing")
 
@@ -474,41 +490,97 @@ def owner_sql(sql: str) -> str:
     return process.stdout.strip()
 
 
-def teardown() -> None:
+def release_our_lifecycle_lock() -> tuple[str, bool]:
+    """Clear the lifecycle lock iff this gate's own bootstrap.sh left it.
+
+    precheck() proved the lock absent at start, so anything here appeared
+    during the run. Only a lock this gate's own bootstrap.sh could have left
+    is ours to clear: a backup/restore/update/rotate token belongs to a real
+    operator lifecycle operation and removing it would defeat the mutual
+    exclusion the lock exists to provide.
+
+    Returns (note for the check detail, stuck) where stuck is True only for a
+    lock that is ours and survived removal — which would make precheck() refuse
+    the next run.
+    """
+    if not LIFECYCLE_LOCK.exists():
+        return "absent", False
+    try:
+        owner = (LIFECYCLE_LOCK / "owner").read_text(encoding="utf-8").strip()
+    except OSError:
+        owner = ""
+    if not owner.startswith("bootstrap:"):
+        held_by = owner or "an unidentified owner"
+        print(f"leaving lifecycle lock {LIFECYCLE_LOCK} held by {held_by}", file=sys.stderr)
+        return f"left held by {held_by}", False
+    shutil.rmtree(LIFECYCLE_LOCK, ignore_errors=True)
+    # ignore_errors discards the failure, so re-check instead of assuming.
+    if LIFECYCLE_LOCK.exists():
+        return "ours and NOT removed", True
+    return "removed", False
+
+
+def teardown() -> str:
+    """Remove the deployment, re-verify that it is gone, and report what was measured.
+
+    Through the seventeenth pass every removal here ran with check=False and
+    nothing re-listed afterwards, so teardown() returned normally whatever
+    happened: `docker rm` / `docker volume rm` exiting 1 — or `docker ps` /
+    `docker volume ls` failing, whose empty stdout read as "nothing to
+    remove" — still produced result=PASS with the fixed detail string "removed
+    containers, volumes, runtime files". The gate would have certified a clean
+    teardown while leaving a populated postgres-data volume (throwaway
+    credentials, leads, approval rows) on the host, and both evidence
+    documents cite this check for exactly that claim. The detail is now a
+    measurement taken after the removals, not an assertion written before them.
+    """
+    down = "skipped (no .env)"
     if (PACKAGE / ".env").exists():
-        subprocess.run(
+        # Deliberately not fatal on its own: the leftover sweep below is the
+        # compensating path for a partial `compose down`, and the re-listing at
+        # the end is what decides PASS/FAIL. The return code is reported rather
+        # than discarded so a non-zero one is visible in the gate's evidence.
+        completed = subprocess.run(
             compose("--profile", "tools", "down", "--volumes", "--remove-orphans"),
             cwd=PACKAGE, text=True, capture_output=True, timeout=600,
         )
-    leftovers = run(
-        ["docker", "ps", "-aq", "--filter", f"label=com.docker.compose.project={COMPOSE_PROJECT}"],
-        timeout=60, check=False,
-    ).stdout.split()
+        down = f"rc={completed.returncode}"
+    leftovers = project_containers()
     if leftovers:
+        # check=False on the removals only: a container can legitimately vanish
+        # between the listing and the rm. Survival is the failure, not the exit
+        # status, and the re-listing below is what detects survival.
         run(["docker", "rm", "-f", *leftovers], timeout=120, check=False)
-    existing = set(run(["docker", "volume", "ls", "-q"], timeout=60, check=False).stdout.split())
-    stale = sorted(existing.intersection(PROJECT_VOLUMES))
+    stale = project_volumes()
     if stale:
         run(["docker", "volume", "rm", "-f", *stale], timeout=120, check=False)
     for relative in GENERATED_FILES:
         (PACKAGE / relative).unlink(missing_ok=True)
-    # precheck() proved the lock absent at start, so anything here appeared
-    # during the run. Only a lock this gate's own bootstrap.sh could have left
-    # is ours to clear: a backup/restore/update/rotate token belongs to a real
-    # operator lifecycle operation and removing it would defeat the mutual
-    # exclusion the lock exists to provide.
-    if LIFECYCLE_LOCK.exists():
-        try:
-            owner = (LIFECYCLE_LOCK / "owner").read_text(encoding="utf-8").strip()
-        except OSError:
-            owner = ""
-        if owner.startswith("bootstrap:"):
-            shutil.rmtree(LIFECYCLE_LOCK, ignore_errors=True)
-        else:
-            print(
-                f"leaving lifecycle lock {LIFECYCLE_LOCK} held by {owner or 'an unidentified owner'}",
-                file=sys.stderr,
-            )
+    lock_note, lock_stuck = release_our_lifecycle_lock()
+
+    surviving = []
+    surviving_containers = project_containers()
+    if surviving_containers:
+        surviving.append(f"containers={surviving_containers}")
+    surviving_volumes = project_volumes()
+    if surviving_volumes:
+        surviving.append(f"volumes={surviving_volumes}")
+    surviving_files = [relative for relative in GENERATED_FILES if (PACKAGE / relative).exists()]
+    if surviving_files:
+        surviving.append(f"runtime files={surviving_files}")
+    if lock_stuck:
+        surviving.append(f"lifecycle lock {LIFECYCLE_LOCK}")
+    if surviving:
+        raise GateError(
+            "teardown left state behind: " + "; ".join(surviving)
+            + f" (compose down {down}). Remove it by hand before re-running the "
+            "gate; precheck() refuses to start over an existing deployment."
+        )
+    return (
+        f"compose down {down}; swept {len(leftovers)} leftover container(s) and "
+        f"{len(stale)} stale volume(s); lifecycle lock {lock_note}; re-listed after "
+        "removal: no project containers, no project volumes, no runtime files"
+    )
 
 
 def main() -> int:
@@ -534,7 +606,9 @@ def main() -> int:
             checks.append(check("fixed-workflows-live", lambda: workflow_proofs(secrets_map)))
     finally:
         if not args.keep_up:
-            checks.append(check("teardown", lambda: teardown() or "removed containers, volumes, runtime files"))
+            # teardown() returns its own detail: the string must describe what
+            # the post-removal re-listing measured, not what was attempted.
+            checks.append(check("teardown", teardown))
     passed = bool(checks) and all(item["result"] == "PASS" for item in checks)
     print(json.dumps({"gate": "G8", "result": "PASS" if passed else "FAIL", "checks": checks}, indent=2, sort_keys=True))
     return 0 if passed else 1

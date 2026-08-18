@@ -164,10 +164,20 @@ CREATE INDEX IF NOT EXISTS entity_resolution_consumptions_company_idx
 
 -- Existing canonical rows become resolver evidence without changing their
 -- historical company records. They are internal until explicitly reclassified.
+-- normalize() runs BEFORE btrim(), not after. btrim() with no character
+-- argument strips only U+0020, while NFKC maps U+00A0 NO-BREAK SPACE and U+3000
+-- IDEOGRAPHIC SPACE (among others) onto U+0020 -- so trimming first let
+-- normalization reintroduce edge whitespace and the derived value then failed
+-- this table's own CHECK (btrim(normalized_alias) = normalized_alias). Measured
+-- on PostgreSQL 17.10: name 'Acme ' produced 'acme ' and aborted the
+-- migration, which under migrate.sh's ON_ERROR_STOP takes the whole upgrade with
+-- it. companies.name is TEXT NOT NULL with no trim constraint, so such a name is
+-- storable and a name pasted from a PDF or web page plausibly carries one.
 INSERT INTO company_aliases
   (company_id, alias_kind, alias_value, normalized_alias, status, confidentiality, confidence)
-SELECT id, 'canonical_name', name, lower(normalize(btrim(name), NFKC)), 'active', 'internal', 1.000
+SELECT id, 'canonical_name', name, lower(btrim(normalize(name, NFKC))), 'active', 'internal', 1.000
 FROM companies
+WHERE btrim(normalize(name, NFKC)) <> ''
 ON CONFLICT DO NOTHING;
 
 INSERT INTO company_domains

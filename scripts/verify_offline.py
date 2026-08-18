@@ -90,6 +90,60 @@ def test_suite(name: str, directory: str, pattern: str) -> dict[str, Any]:
     }
 
 
+def declared_suite_directories() -> set[str]:
+    """The tests/<name> directories the SUITES table above actually discovers."""
+    return {Path(directory).name for _, directory, _ in SUITES}
+
+
+def present_suite_directories() -> set[str]:
+    """The tests/<name> directories holding at least one discoverable module.
+
+    `test*.py` is the discovery pattern every SUITES entry hands to unittest,
+    so it is also the key for "is this a suite": a directory carrying only
+    fixtures is not one and does not appear here. tests/g3 ships a README and
+    two .jsonl case files consumed by other suites, and drops out on that key
+    rather than on a name this function would have to keep in step.
+    """
+    try:
+        return {
+            path.name
+            for path in (PACKAGE / "tests").iterdir()
+            if path.is_dir() and any(path.glob("test*.py"))
+        }
+    except OSError as exc:
+        raise SystemExit(
+            f"suite-inventory: cannot enumerate {PACKAGE / 'tests'}: {exc}"
+        ) from exc
+
+
+def require_complete_suite_inventory() -> None:
+    """Refuse to report on a matrix whose suite inventory has drifted.
+
+    SUITES is declared rather than globbed because each entry carries its own
+    discovery pattern: tests/g4 is deliberately split, with its two
+    database-free modules named there and the other five left to
+    scripts/run_g4.py, which needs a disposable PostgreSQL. That is why the
+    comparison is at directory granularity and not at file granularity.
+
+    A declared inventory stops covering a suite the moment someone adds one:
+    nothing fails, the reported test total moves by zero, and this gate still
+    prints PASS over a directory it never discovered. scripts/run_g4.py already
+    applies this guard one level down; this is the same fail-closed check for
+    the tests/ tree as a whole.
+    """
+    declared = declared_suite_directories()
+    present = present_suite_directories()
+    if declared != present:
+        absent = sorted(declared - present)
+        unrun = sorted(present - declared)
+        raise SystemExit(
+            "suite-inventory: the tests/ tree does not match this gate's declared "
+            f"SUITES; declared-but-absent={absent}, present-but-never-run={unrun}. "
+            "Add the new suite to SUITES with its discovery pattern, or drop the "
+            "stale entry."
+        )
+
+
 def command_check(name: str, command: list[str], timeout: int = 300) -> dict[str, Any]:
     process = run(command, timeout=timeout)
     rendered = process.stderr + process.stdout
@@ -109,9 +163,19 @@ def shell_paths() -> list[Path]:
     `vcrun-control`, `agent/vcops`, `agent/vcrun`) carry no suffix, so both
     globs missed them and no step of this matrix parsed them at all.
     """
-    manifest = json.loads((PACKAGE / "manifest.json").read_text(encoding="utf-8"))
+    # Fail closed rather than raising. This runs inside syntax_checks(), which
+    # the matrix reaches only after nine suites have executed, so an unreadable
+    # manifest destroyed the whole report instead of producing one FAIL -- and
+    # the shell-inventory detail text below already names exactly this cause,
+    # describing a path the code could not reach. Returning no paths trips the
+    # SHELL_SCRIPT_FLOOR guard, which is that FAIL.
+    try:
+        manifest = json.loads((PACKAGE / "manifest.json").read_text(encoding="utf-8"))
+        entries = manifest["files"]
+    except (OSError, ValueError, KeyError):
+        return []
     found: list[Path] = []
-    for entry in manifest["files"]:
+    for entry in entries:
         path = PACKAGE / entry["path"]
         try:
             first = path.read_text(encoding="utf-8", errors="ignore").splitlines()[0]
@@ -224,6 +288,11 @@ def main() -> int:
         help="run the real bootstrap/vcrun deployment gate (requires Docker and a clean package)",
     )
     args = parser.parse_args()
+    # Before the first suite runs, not after: if SUITES no longer describes the
+    # tests/ tree, the matrix below is not the matrix this report would claim to
+    # be, and an hour of gate time would end in a PASS that means less than it
+    # says. --help still works, because argparse has already handled it.
+    require_complete_suite_inventory()
     checks = [test_suite(*suite) for suite in SUITES]
     checks.extend(syntax_checks())
     ruff = locked_tool("ruff")

@@ -101,6 +101,125 @@
         "period_end": "2026-06-30"
       },
       "classification": "not_comparable"
+    },
+    {
+      "name": "period_end_only_overlapping_is_a_contradiction",
+      "left": {
+        "fact_type": "arr",
+        "definition": "annual recurring revenue",
+        "currency": "EUR",
+        "value_numeric": "1000000",
+        "period_end": "2025-03-31",
+        "observed_at": "2026-08-17 10:00:00+00:00"
+      },
+      "right": {
+        "fact_type": "arr",
+        "definition": "annual recurring revenue",
+        "currency": "EUR",
+        "value_numeric": "4000000",
+        "period_start": "2025-01-01",
+        "period_end": "2025-06-30",
+        "observed_at": "2026-08-17 10:00:01+00:00"
+      },
+      "classification": "contradiction"
+    },
+    {
+      "name": "undated_incompatible_is_not_comparable",
+      "left": {
+        "fact_type": "arr",
+        "definition": "annual recurring revenue",
+        "currency": "EUR",
+        "value_numeric": "1000000",
+        "observed_at": "2026-08-17 10:00:00+00:00"
+      },
+      "right": {
+        "fact_type": "arr",
+        "definition": "annual recurring revenue",
+        "currency": "EUR",
+        "value_numeric": "4000000",
+        "observed_at": "2026-08-17 10:00:05+00:00"
+      },
+      "classification": "not_comparable"
+    },
+    {
+      "name": "undated_identical_values_are_consistent",
+      "left": {
+        "fact_type": "arr",
+        "definition": "annual recurring revenue",
+        "currency": "EUR",
+        "value_numeric": "4000000",
+        "observed_at": "2026-08-17 10:00:00.956594+00:00"
+      },
+      "right": {
+        "fact_type": "arr",
+        "definition": "annual recurring revenue",
+        "currency": "EUR",
+        "value_numeric": "4000000",
+        "observed_at": "2026-08-17 10:00:00.957864+00:00"
+      },
+      "classification": "consistent"
+    },
+    {
+      "name": "undated_sharing_one_insertion_instant_is_not_comparable",
+      "left": {
+        "fact_type": "arr",
+        "definition": "annual recurring revenue",
+        "currency": "EUR",
+        "value_numeric": "1000000",
+        "observed_at": "2026-08-17 10:00:00+00:00"
+      },
+      "right": {
+        "fact_type": "arr",
+        "definition": "annual recurring revenue",
+        "currency": "EUR",
+        "value_numeric": "4000000",
+        "observed_at": "2026-08-17 10:00:00+00:00"
+      },
+      "classification": "not_comparable"
+    },
+    {
+      "name": "validity_window_only_overlapping_is_a_contradiction",
+      "left": {
+        "fact_type": "arr",
+        "definition": "annual recurring revenue",
+        "currency": "EUR",
+        "value_numeric": "500000",
+        "valid_from": "2025-02-01",
+        "valid_to": "2025-04-30",
+        "observed_at": "2026-08-17 10:00:00+00:00"
+      },
+      "right": {
+        "fact_type": "arr",
+        "definition": "annual recurring revenue",
+        "currency": "EUR",
+        "value_numeric": "900000",
+        "valid_from": "2025-03-01",
+        "valid_to": "2025-05-31",
+        "observed_at": "2026-08-17 10:00:01+00:00"
+      },
+      "classification": "contradiction"
+    },
+    {
+      "name": "period_start_after_valid_to_is_not_comparable_not_a_trajectory",
+      "left": {
+        "fact_type": "arr",
+        "definition": "annual recurring revenue",
+        "currency": "EUR",
+        "value_numeric": "1000000",
+        "period_start": "2026-06-01",
+        "valid_to": "2025-01-01",
+        "observed_at": "2026-08-17 10:00:00+00:00"
+      },
+      "right": {
+        "fact_type": "arr",
+        "definition": "annual recurring revenue",
+        "currency": "EUR",
+        "value_numeric": "4000000",
+        "period_start": "2026-06-01",
+        "period_end": "2026-06-30",
+        "observed_at": "2026-08-17 10:00:01+00:00"
+      },
+      "classification": "not_comparable"
     }
   ],
   "scores": [

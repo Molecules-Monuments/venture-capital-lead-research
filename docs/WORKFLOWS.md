@@ -40,10 +40,11 @@ Selectors are `runtime-preflight`, `outbound-scout`, `inbound-intake`, `inbound-
 
 `vcrun` rejects unknown selectors, paths, `--file`, inline pipelines, arbitrary
 commands, passthrough flags, cwd/env overrides, caller time/output overrides,
-duplicate JSON keys, non-object JSON, NULs, input above 32 KiB, any single
-argument value above 16 384 characters, wrong value
-types, missing fields, extra fields, invalid domain, BIGINT and
-preference-*key* values, and paths outside the exact permitted intake root.
+duplicate JSON keys, non-object JSON, NULs, raw input above 32 768 UTF-8 bytes,
+any single argument value above 16 384 characters, wrong value
+types, missing fields, extra fields, invalid domains, malformed BIGINT
+identifier *shapes*, unsupported preference-*key* values, and paths outside the
+exact permitted intake root.
 (`preference_value` is the one closed domain the helper rather than the runner
 enforces — see "Closed argument value domains" below.)
 
@@ -80,23 +81,33 @@ marked optional.
 The outer runner cap is 360 seconds and 512 KiB output. Individual helper
 steps use lower operation-specific limits.
 
-Two size ceilings apply to the argument object: the whole JSON payload may not
-exceed 32 KiB, and **no single argument value may exceed 16 384 characters**.
-The per-value ceiling is the lower of the two, so it is the one a long
-`memo_markdown`, `evidence_json` or `citations_json` normally meets first, and
-the refusal is `<field> exceeds 16384 characters`.
+Two size ceilings apply to the argument object, and they are measured in
+different units: the whole JSON payload may not exceed **32 768 UTF-8 bytes**,
+and no single argument value may exceed **16 384 characters**. Neither is
+therefore unconditionally the lower one — which of the two binds depends on the
+script the text is written in.
 
-The two are checked in the opposite order to that, which decides which message
-you get. `vcrun` measures the raw payload *before* it parses, so the 32 KiB
-check runs first and a value large enough to push the whole object past 32 KiB
-is refused as `args JSON exceeds 32768 bytes` instead — naming the payload, not
-the field. Measured on `memo-record`: a 16 385-character `memo_markdown` gives
-the per-field message, and so does 32 000; at 40 000 the payload message takes
-over. Either way the refusal is raised before the first step runs, so nothing is
-written and the same idempotency key remains usable for the corrected call.
-Budget memo prose against the 16 384-character per-value ceiling rather than
-against 32 KiB, and read a payload-size error as "one of these fields is far
-over its own limit" rather than as a different problem.
+`vcrun` measures the raw payload *before* it parses, so the byte check runs
+first and decides which message you get. For ASCII-dominant prose the character
+ceiling is the tighter of the two and is the one a long `memo_markdown`,
+`evidence_json` or `citations_json` normally meets first. Measured on
+`memo-record`: 16 385 ASCII characters is refused as `memo_markdown exceeds
+16384 characters`, and so is 32 000 (32 238 bytes, still inside the payload
+ceiling); at 40 000 the payload message takes over. For prose in a multi-byte
+script the byte ceiling binds far below the character ceiling: a `memo_markdown`
+of 12 000 CJK characters — 4 384 characters *under* the per-value ceiling —
+is refused as `args JSON exceeds 32768 bytes` at 36 238 bytes, and even
+16 000 U+00FC characters clears the payload ceiling by only ~500 bytes.
+Serializing non-ASCII as `\uXXXX` escapes costs six bytes per character rather
+than two or three, so an escaping caller reaches the byte ceiling sooner still.
+
+Budget memo prose against **both**: at most 16 384 characters in any one value,
+and at most 32 768 UTF-8 bytes across the whole payload. A payload-size error
+does not imply that some field is over its own limit — for multi-byte text it
+usually means every field is inside its character ceiling and only the total
+byte size is not. Either refusal is raised before the first step runs, so
+nothing is written and the same idempotency key remains usable for the
+corrected call.
 
 The inner payload contracts are reviewed model-facing documentation: the
 `evidence_json` field set and researcher-packet mapping live in
@@ -146,7 +157,15 @@ Send a value from the list above rather than relying on the runner to catch it.
 
 Identifier arguments (`lead_id`, `left_fact_id`, `right_fact_id`,
 `extraction_id`, `evaluation_id`, `compiled_truth_id`) must be canonical
-positive BIGINT strings — no leading zeros, no sign, no UUIDs.
+positive BIGINT strings — no leading zeros, no sign, no UUIDs, and not above
+`9223372036854775807`. `flow_revision` follows the same rule but also accepts
+`0`. `vcrun` refuses both a malformed shape **and** an in-shape value above the
+maximum before Lobster starts, so an out-of-range identifier commits no run row
+and costs no idempotency key. Which arguments are bounded is read off each
+workflow's own key set rather than listed per workflow, and an identifier-shaped
+key that is classified as neither bigint nor opaque text is itself refused — so a
+new identifier cannot be added without a decision about its bound.
+
 `company_domain` must be a bare DNS domain (no scheme, no path), and
 `evidence_hash` a lowercase 64-character SHA-256 digest.
 
@@ -279,9 +298,15 @@ mutation. A new logical operation receives a new opaque idempotency key. The sam
 logical retry reuses the same key and exactly the same inputs. Same key plus
 changed arguments, document path/hash, extraction, or principal fails closed.
 
-Two tables hold that claim, because the five intake workflows must resolve a
-company, create a lead, or bind an extraction *before* their run row can
-reference them:
+Two tables hold that claim, for two different reasons. Four of the five
+`workflow_requests` claimants — `inbound-intake`, `inbound-text-intake`,
+`outbound-scout` and `document-lead-intake` — resolve a company and create a
+lead *before* their run row can reference them. `document-ingest` does neither:
+its `workflow-start` step passes no `--lead-id` and no `--company-id` at all,
+and its extraction is created after that step, not before it. It claims early
+because it must pin the SHA-256 of the inspected bytes before it snapshots any
+of them, and `workflow_requests.document_sha256` is the column that holds that
+hash — `workflow_runs` has no such column. The two claim tables are:
 
 - **`workflow_requests`** — the outer claim for `inbound-intake`,
   `inbound-text-intake`, `outbound-scout` (`workflow-request-claim`),

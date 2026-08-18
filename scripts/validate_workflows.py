@@ -2,15 +2,18 @@
 # SPDX-License-Identifier: 0BSD
 """Fail-closed static validator for the fixed Version 3 Lobster workflows.
 
-The validator treats workflow YAML and command text as untrusted. Command and
-option inventories are derived from vcops.build_parser(), so CLI/workflow drift
-is a release failure. It never executes a workflow or opens the database.
+The validator treats workflow YAML and command text as untrusted. Option
+inventories are derived from vcops.build_parser() and the accepted command set
+is derived per wrapper from vcops's own WORKFLOW_COMMANDS /
+AGENT_READ_ONLY_COMMANDS, so CLI/workflow drift is a release failure. It never
+executes a workflow or opens the database.
 """
 
 from __future__ import annotations
 
 import argparse
 import collections.abc
+import functools
 import importlib.util
 import json
 import os
@@ -35,10 +38,21 @@ sys.dont_write_bytecode = True
 PACKAGE = Path(__file__).resolve().parent.parent
 WORKFLOWS = PACKAGE / "workspaces/vc-chief/vc/workflows"
 VCOPS = PACKAGE / "workspaces/vc-chief/vc/bin/vcops.py"
-WRAPPERS = {
-    "/workspaces/vc-chief/vc/bin/agent/vcops",
-    "/workspaces/vc-chief/vc/bin/vcops-workflow",
+# Each wrapper `exec`s vcops.py through `env -i` with one mode flag set, and
+# vcops refuses any command outside that mode's own set (vcops.py:6398,6404).
+# The parser-wide subcommand inventory is therefore NOT the world a workflow
+# step can reach: at the time this mapping was added the parser had 53
+# subcommands while WORKFLOW_COMMANDS had 39 and AGENT_READ_ONLY_COMMANDS 16.
+# Validating against the parser alone accepted ten commands the workflow lane
+# refuses at runtime — including `data-erase-lead`, whose full option set
+# passed both release-gate validators with zero findings — so the gate could
+# certify a workflow that the runtime is the only thing left to stop. Derive
+# the accepted set per wrapper from the runtime's own enumerable sets instead.
+WRAPPER_COMMAND_SETS = {
+    "/workspaces/vc-chief/vc/bin/agent/vcops": "AGENT_READ_ONLY_COMMANDS",
+    "/workspaces/vc-chief/vc/bin/vcops-workflow": "WORKFLOW_COMMANDS",
 }
+WRAPPERS = frozenset(WRAPPER_COMMAND_SETS)
 ID_RE = re.compile(r"^[a-z][a-z0-9_-]{0,63}$")
 STEP_REF_RE = re.compile(r"\$([A-Za-z0-9_-]+)\.([A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)*)")
 SAFE_STEP_PATHS = {
@@ -131,16 +145,51 @@ class Finding:
         return asdict(self)
 
 
+@functools.lru_cache(maxsize=1)
+def _load_vcops_module() -> Any:
+    """Execute the reviewed vcops module by path, once per process.
+
+    Two derivations read this module — the option inventory via build_parser()
+    and the per-wrapper command sets — and `validate_workflow` asks for the
+    latter once per workflow file. Without the cache the eighteen-file run
+    would exec vcops.py nineteen times for no benefit. lru_cache does not
+    memoize exceptions, so a failed load stays a failed load on every call.
+    """
+    spec = importlib.util.spec_from_file_location("v3_workflow_vcops", VCOPS)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("cannot construct vcops import spec")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _wrapper_command_sets() -> dict[str, frozenset[str]]:
+    """Map each reviewed wrapper to the command set its mode actually permits.
+
+    Reject an empty or wrongly-typed set rather than falling back to the
+    parser-wide inventory: a silently empty set here would restore exactly the
+    over-acceptance this derivation exists to remove.
+    """
+    module = _load_vcops_module()
+    sets: dict[str, frozenset[str]] = {}
+    for wrapper, attribute in WRAPPER_COMMAND_SETS.items():
+        names = getattr(module, attribute)
+        if not isinstance(names, (set, frozenset)) or not names or not all(isinstance(name, str) for name in names):
+            raise TypeError(f"vcops.{attribute} is not a non-empty set of command names")
+        sets[wrapper] = frozenset(names)
+    return sets
+
+
 def _load_vcops_parser() -> tuple[argparse.ArgumentParser | None, list[Finding]]:
     try:
-        spec = importlib.util.spec_from_file_location("v3_workflow_vcops", VCOPS)
-        if spec is None or spec.loader is None:
-            raise RuntimeError("cannot construct vcops import spec")
-        module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
+        module = _load_vcops_module()
         parser = module.build_parser()
         if not isinstance(parser, argparse.ArgumentParser):
             raise TypeError("build_parser did not return ArgumentParser")
+        # Fail closed here rather than at first use: the per-wrapper command
+        # sets gate as much as the parser does, and a run that loaded one but
+        # not the other would report PASS over an unvalidated command surface.
+        _wrapper_command_sets()
         return parser, []
     except Exception as exc:  # fail closed with a bounded public error
         return None, [Finding("vcops_parser", f"cannot load reviewed vcops parser: {type(exc).__name__}: {exc}")]
@@ -253,6 +302,7 @@ def _validate_command(
     prior_ids: set[str],
     all_ids: set[str],
     command_parsers: dict[str, argparse.ArgumentParser],
+    wrapper_commands: dict[str, frozenset[str]],
 ) -> list[Finding]:
     findings: list[Finding] = []
     if "$(" in command or "`" in command:
@@ -313,17 +363,58 @@ def _validate_command(
             findings.append(Finding("step_ref_unbounded", f"unreviewed step-output path: {path}", step_id))
 
     # The runner is `/bin/sh -lc` with the full gateway environment, so any
-    # chaining/redirection operator or unsanctioned expansion sidesteps every
-    # command and option allowlist below. Scan after bounded-reference
-    # substitution: whatever `$name` remains is not a reviewed reference. Both
-    # scans look only at shell-active text, so a quoted literal is not a false
-    # positive and a newline cannot smuggle a second command past them.
+    # chaining/redirection operator, and any word expansion the shell performs
+    # before argv is built, sidesteps every command and option allowlist below.
+    # The four scanned here are command substitution and `${...}` (above),
+    # parameter expansion, pathname (glob) expansion, and tilde expansion.
+    # Scan after bounded-reference substitution: whatever `$name` remains is
+    # not a reviewed reference. Every scan looks only at shell-active text, so
+    # a quoted literal is not a false positive and a newline cannot smuggle a
+    # second command past them.
     sanitized = _substitute_bounded_references(command)
-    if re.search(r"[;|&<>\n\r]", _shell_active_text(sanitized)):
+    active = _shell_active_text(sanitized)
+    if re.search(r"[;|&<>\n\r]", active):
         findings.append(Finding("shell_operator", "shell chaining/redirection/backgrounding is forbidden", step_id))
     expandable = _shell_active_text(sanitized, expansion=True)
     for name in sorted({match.group(1) for match in re.finditer(r"\$(?!\{)([A-Za-z_][A-Za-z0-9_]*)", expandable)}):
         findings.append(Finding("raw_env", f"raw environment expansion is forbidden: ${name}", step_id))
+    # Pathname (glob) and tilde expansion were the two the scans above missed.
+    # Both are inert inside either quote style, which is why they run against
+    # `active` rather than `expandable`.
+    #
+    # Glob is the sharper of the two because it changes the argv WORD COUNT,
+    # not just a word's value: `--path "$LOBSTER_ARG_DOCUMENT_PATH"*` puts the
+    # reference inside a double-quoted region, so the arg_unquoted rule above
+    # certifies it as unsplittable, and the trailing unquoted `*` then hands
+    # the whole word back to pathname expansion anyway. Measured against
+    # /bin/sh with a stub at the wrapper path, that text delivered two `--path`
+    # values chosen by directory contents, and `--path /tmp/media/*` delivered
+    # a `/tmp/media/--confidentiality` word that no option allowlist ever saw.
+    # `--path ~/x.pdf` likewise reached the helper as `/home/node/x.pdf`.
+    #
+    # This costs the shipped inventory nothing: measured over the eighteen
+    # workflows, no `run:` step carries a shell-active `*`, `?`, `[` or `~`,
+    # because every path argument is a fully double-quoted whole-value
+    # reference. tests/g5 asserts the whole inventory yields zero findings, so
+    # a workflow that later needs one fails there rather than silently.
+    if re.search(r"[*?\[]", active):
+        findings.append(
+            Finding(
+                "glob_expansion",
+                "unquoted pathname-expansion characters (* ? [) are forbidden: "
+                "the shell replaces the word with matching filenames before vcops sees argv",
+                step_id,
+            )
+        )
+    if re.search(r"(?:^|\s)~", active):
+        findings.append(
+            Finding(
+                "tilde_expansion",
+                "an unquoted leading ~ is forbidden: the shell rewrites the word to a home directory "
+                "before vcops sees argv",
+                step_id,
+            )
+        )
 
     try:
         tokens = shlex.split(sanitized, posix=True)
@@ -351,6 +442,24 @@ def _validate_command(
     if len(tokens) < 2 or tokens[1] not in command_parsers:
         findings.append(Finding("command_unknown", f"unknown vcops command: {tokens[1] if len(tokens) > 1 else ''}", step_id))
         return findings
+    # The wrapper decides the mode, and the mode decides the command set. A
+    # command outside the invoking wrapper's set is refused by vcops at
+    # runtime, so accepting it here means the gate certifies a workflow that
+    # cannot run — and, worse, that the gate is not what stops an operator-lane
+    # command such as `data-erase-lead` from being written into a workflow.
+    permitted = wrapper_commands.get(tokens[0], frozenset())
+    if tokens[1] not in permitted:
+        findings.append(
+            Finding(
+                "command_wrapper_scope",
+                f"{tokens[1]} is outside the command set {tokens[0]} permits "
+                f"({WRAPPER_COMMAND_SETS.get(tokens[0], 'no reviewed set')})",
+                step_id,
+            )
+        )
+    # Subsumed by the derived rule above (none of these four is in either
+    # runtime set), and kept because it names the boundary that was crossed
+    # rather than only the set that was left; tests/g5 pins this code.
     if tokens[1] in {"approval-decide", "approval-consume", "notification-claim", "notification-mark"}:
         findings.append(Finding("approval_boundary", f"operator/dispatcher command forbidden in workflow: {tokens[1]}", step_id))
     allowed_options = set(command_parsers[tokens[1]]._option_string_actions)
@@ -398,6 +507,10 @@ def validate_workflow(
     # step with a traceback that does not name the offending workflow file.
     # scripts/validate_skill_system.py reads the same *.lobster set and reports
     # a decode failure over it as workflow_parse / workflow_read.
+    try:
+        wrapper_commands = _wrapper_command_sets()
+    except Exception as exc:  # fail closed with a bounded public error
+        return [Finding("vcops_command_sets", f"cannot load reviewed vcops command sets: {type(exc).__name__}: {exc}")], {}
     try:
         body = yaml.load(path.read_text(encoding="utf-8"), Loader=UniqueSafeLoader)  # noqa: S506  # SafeLoader subclass; adds duplicate-key rejection
     except (OSError, UnicodeError, yaml.YAMLError, DuplicateKeyError) as exc:
@@ -481,6 +594,7 @@ def validate_workflow(
                     _validate_command(
                         step["run"], step_id=rendered_id or f"step-{index + 1}",
                         prior_ids=seen, all_ids=all_ids, command_parsers=command_parsers,
+                        wrapper_commands=wrapper_commands,
                     )
                 )
             timeout = step.get("timeout_ms")

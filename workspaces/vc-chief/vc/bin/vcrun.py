@@ -178,6 +178,69 @@ DOMAIN_RE = re.compile(
     r"[A-Za-z]{2,63}$"
 )
 
+# PostgreSQL's `bigint` ceiling. The canonical shapes below admit up to
+# nineteen digits — 9999999999999999999 — so the shape check is not the bound;
+# the explicit comparison is.
+BIGINT_MAX = 9_223_372_036_854_775_807
+POSITIVE_BIGINT_RE = re.compile(r"[1-9][0-9]{0,18}")
+NON_NEGATIVE_BIGINT_RE = re.compile(r"0|[1-9][0-9]{0,18}")
+
+# Argument names that carry a PostgreSQL `bigint` key. Applied by intersection
+# with the contract's own key set rather than per workflow, so a workflow that
+# gains one of these arguments cannot gain it unvalidated.
+BIGINT_ID_ARG_KEYS = frozenset({
+    "lead_id", "left_fact_id", "right_fact_id",
+    "extraction_id", "evaluation_id", "compiled_truth_id",
+})
+# Counters that legitimately start at zero, so they are bounded but not
+# "positive": workflow_runs.flow_revision defaults to 0 and migration 014's
+# orchestration_audit CHECK admits >= 0.
+NON_NEGATIVE_BIGINT_ARG_KEYS = frozenset({"flow_revision"})
+# Identifier-shaped arguments that are opaque text rather than numeric keys:
+# orchestration_audit.flow_id/task_id and the channel handles are `text`
+# columns, so a numeric bound here would refuse legitimate values.
+OPAQUE_TEXT_ID_ARG_KEYS = frozenset({
+    "channel_account_id", "channel_event_id", "flow_id", "task_id",
+})
+# Contract arguments that carry no database identifier: free text, JSON object
+# strings, enumerations, URIs and digests, each validated by its own rule below.
+# Listed so the classification underneath is a partition over EVERY contract
+# key. It is not a description of the three sets above; it is the fourth cell.
+NON_IDENTIFIER_ARG_KEYS = frozenset({
+    "cadence", "channel_provider", "citations_json", "company_domain",
+    "company_name", "content_json", "criteria_json", "decision_context_json",
+    "document_path", "evidence_hash", "evidence_json", "expected_signal",
+    "idempotency_key", "lead_title", "limit", "memo_markdown", "memo_title",
+    "observation_kind", "origin_subtype", "payload_json", "preference_key",
+    "preference_value", "proposal_kind", "record_kind", "severity",
+    "source_class", "source_name", "source_uri", "specialist", "summary",
+    "thesis_relevance", "title", "trusted_context",
+})
+# Contract arguments no set above classifies. The world is enumerated from
+# WORKFLOWS rather than restated, so adding an argument without deciding how it
+# is bounded leaves it here, and a call that carries it is refused instead of
+# forwarding an unchecked value to the database. It is empty while every
+# argument is classified.
+#
+# The derivation is over EVERY contract key, not over keys matching a suffix
+# tuple. It used to filter WORKFLOWS through an IDENTIFIER_SHAPED_SUFFIXES
+# tuple, which made the filter define the very world it was supposed to be
+# checked against: narrowing that tuple back to ("_id",) and dropping
+# `flow_revision` from the bounded set emptied this frozenset and let a 23-digit
+# `flow_revision` through to orchestration_audit's bigint column with all 35 g5
+# tests green -- the exact regression the tuple's own comment claimed it
+# prevented. No tuple to narrow now: a new argument is unclassified until it is
+# named in one of the four sets.
+UNCLASSIFIED_ID_ARG_KEYS = frozenset(
+    key
+    for contract in WORKFLOWS.values()
+    for key in (set(contract["keys"]) | set(contract.get("optional_keys", ())))
+    if key not in BIGINT_ID_ARG_KEYS
+    and key not in NON_NEGATIVE_BIGINT_ARG_KEYS
+    and key not in OPAQUE_TEXT_ID_ARG_KEYS
+    and key not in NON_IDENTIFIER_ARG_KEYS
+)
+
 
 class VCRunError(RuntimeError):
     """Expected, structured command failure."""
@@ -309,6 +372,25 @@ def _validate_json_object_string(name: str, value: str) -> str:
     return json.dumps(parsed, sort_keys=True, separators=(",", ":"))
 
 
+def _canonical_bigint(parsed: dict[str, Any], key: str, *, allow_zero: bool = False) -> None:
+    """Refuse an identifier argument PostgreSQL's `bigint` cannot hold.
+
+    The canonical shape alone admits nineteen digits, i.e. values above
+    `BIGINT_MAX`. Such a value used to pass the runner and fail inside the
+    database, after `workflow-start` had already committed the run row — which
+    costs the caller a fresh idempotency key to correct. Both refusals are
+    raised here, before any step runs.
+    """
+    value = parsed[key]
+    if allow_zero:
+        if not NON_NEGATIVE_BIGINT_RE.fullmatch(value):
+            raise VCRunError(f"{key} must be a non-negative integer string")
+    elif not POSITIVE_BIGINT_RE.fullmatch(value):
+        raise VCRunError(f"{key} must be a canonical positive BIGINT string")
+    if int(value) > BIGINT_MAX:
+        raise VCRunError(f"{key} exceeds PostgreSQL BIGINT")
+
+
 def validate_workflow_args(workflow: str, raw: str) -> str:
     if workflow not in WORKFLOWS:
         raise VCRunError("unknown fixed workflow selector")
@@ -348,29 +430,28 @@ def validate_workflow_args(workflow: str, raw: str) -> str:
     if not IDEMPOTENCY_RE.fullmatch(parsed["idempotency_key"]):
         raise VCRunError("idempotency_key has an invalid format")
 
-    if workflow in {"evaluate-lead", "evidence-record", "contradiction-record", "trajectory-record",
-                    "memo-record", "orchestration-record"}:
-        if not re.fullmatch(r"[1-9][0-9]{0,18}", parsed["lead_id"]):
-            raise VCRunError("lead_id must be a canonical positive BIGINT string")
-        if int(parsed["lead_id"]) > 9_223_372_036_854_775_807:
-            raise VCRunError("lead_id exceeds PostgreSQL BIGINT")
+    # Identifier arguments are bounded by name, not per workflow: which ones
+    # apply is read off the contract's own key set, so every workflow that
+    # names one gets the same shape *and* the same ceiling.
+    unclassified = UNCLASSIFIED_ID_ARG_KEYS & actual
+    if unclassified:
+        raise VCRunError(
+            "arguments are not classified as bigint, opaque text or "
+            f"non-identifier: {sorted(unclassified)}"
+        )
+    for key in sorted(BIGINT_ID_ARG_KEYS & actual):
+        _canonical_bigint(parsed, key)
+    for key in sorted(NON_NEGATIVE_BIGINT_ARG_KEYS & actual):
+        _canonical_bigint(parsed, key, allow_zero=True)
+
     if workflow == "orchestration-record" and parsed["record_kind"] not in {
         "delegation_eval", "return_assessment", "chief_output",
     }:
         raise VCRunError("record_kind must be delegation_eval, return_assessment, or chief_output")
-    if workflow == "orchestration-record" and "flow_revision" in parsed:
-        # Revision 0 is legitimate: workflow_runs.flow_revision defaults to 0
-        # and migration 014's orchestration_audit CHECK admits >= 0.
-        if not re.fullmatch(r"0|[1-9][0-9]{0,18}", parsed["flow_revision"]):
-            raise VCRunError("flow_revision must be a non-negative integer string")
     if workflow == "proposal-record" and parsed["proposal_kind"] not in {
         "schema_change", "source_policy", "skill_candidate", "other",
     }:
         raise VCRunError("proposal_kind must be schema_change, source_policy, skill_candidate, or other")
-    if workflow in {"contradiction-record", "trajectory-record"}:
-        for key in ("left_fact_id", "right_fact_id"):
-            if not re.fullmatch(r"[1-9][0-9]{0,18}", parsed[key]):
-                raise VCRunError(f"{key} must be a canonical positive BIGINT string")
     if workflow == "contradiction-record" and parsed["severity"] not in {"low", "medium", "high", "blocking"}:
         raise VCRunError("severity must be low, medium, high, or blocking")
     if workflow in {"source-watch", "source-unwatch"}:
@@ -396,9 +477,6 @@ def validate_workflow_args(workflow: str, raw: str) -> str:
         if not re.fullmatch(r"[1-9][0-9]{0,2}", parsed["limit"]) or int(parsed["limit"]) > 500:
             raise VCRunError("limit must be an integer between 1 and 500")
     if workflow == "memo-record":
-        for key in ("evaluation_id", "compiled_truth_id"):
-            if not re.fullmatch(r"[1-9][0-9]{0,18}", parsed[key]):
-                raise VCRunError(f"{key} must be a canonical positive BIGINT string")
         if not re.fullmatch(r"[0-9a-f]{64}", parsed["evidence_hash"]):
             raise VCRunError("evidence_hash must be a lowercase SHA-256 digest")
         try:
@@ -408,9 +486,6 @@ def validate_workflow_args(workflow: str, raw: str) -> str:
         if not isinstance(citations, list) or any(not isinstance(item, dict) for item in citations):
             raise VCRunError("citations_json must be a JSON array of citation objects")
         parsed["citations_json"] = json.dumps(citations, sort_keys=True, separators=(",", ":"))
-    if workflow == "document-lead-intake":
-        if not re.fullmatch(r"[1-9][0-9]{0,18}", parsed["extraction_id"]):
-            raise VCRunError("extraction_id must be a canonical positive BIGINT string")
     if workflow == "inbound-intake":
         document_path = PurePosixPath(parsed["document_path"])
         if not document_path.is_absolute() or ".." in document_path.parts:

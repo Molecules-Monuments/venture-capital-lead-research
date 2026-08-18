@@ -35,6 +35,12 @@ MIGRATIONS = PACKAGE / "migrations"
 TESTS = PACKAGE / "tests/g4"
 HELPER = PACKAGE / "workspaces/vc-chief/vc/bin/vcops.py"
 
+# How many times this gate applies the whole migration series. Named once so
+# the request, the reported measurement and the pass/fail check all read the
+# same number; the evidence documents state "applied twice", and main() fails
+# the gate when the applier does not report exactly this many completed passes.
+IDEMPOTENCE_PASSES = 2
+
 
 class GateError(RuntimeError):
     pass
@@ -139,7 +145,7 @@ def require_pinned_postgres(initdb: str) -> None:
 
 
 @contextmanager
-def disposable_postgres(*, passes: int = 1) -> Iterator[str]:
+def disposable_postgres(*, passes: int = 1, receipt: dict[str, int] | None = None) -> Iterator[str]:
     """Yield a scratch database with the migration series applied `passes` times.
 
     The default is one pass — the state a real deployment reaches. Only the
@@ -147,6 +153,12 @@ def disposable_postgres(*, passes: int = 1) -> Iterator[str]:
     generated schema reference is rendered from this same helper, and while
     it silently applied twice its header described a state no deployment
     occupies.
+
+    `receipt`, when given, has `migration_passes` set to the number of passes
+    that actually completed. Callers that publish a claim about the pass count
+    must read it from there: the caller's own `passes=` argument is what it
+    asked for, not what ran, and a claim derived from the request is not a
+    measurement.
     """
     discovered = {name: shutil.which(name) for name in ("initdb", "pg_ctl", "psql")}
     missing = [name for name, path in discovered.items() if not path]
@@ -169,7 +181,18 @@ def disposable_postgres(*, passes: int = 1) -> Iterator[str]:
         # --no-locale fixes the cluster catalog, and LC_ALL/LANG=C keep initdb
         # and the postmaster deterministic on hosts with unset or broken
         # LANG/LC_* (unset locale can abort server startup on macOS).
-        cluster_env = {**os.environ, "LC_ALL": "C", "LANG": "C"}
+        #
+        # Ambient PG* variables are dropped rather than forwarded. They steer
+        # libpq and pg_ctl, and this cluster is built from scratch here, so
+        # none of them can be wanted: PGCTLTIMEOUT shortens pg_ctl's readiness
+        # wait (which is what makes a "failed" start with a live postmaster
+        # reachable on an otherwise healthy host), and PGOPTIONS, PGSERVICE,
+        # PGCLIENTENCODING or PGSSLMODE would change what the gate exercises
+        # without changing what it reports.
+        cluster_env = {
+            key: value for key, value in os.environ.items() if not key.startswith("PG")
+        }
+        cluster_env.update({"LC_ALL": "C", "LANG": "C"})
         initialized = run(
             [
                 tools["initdb"], "-A", "trust", "-U", "postgres",
@@ -180,17 +203,30 @@ def disposable_postgres(*, passes: int = 1) -> Iterator[str]:
         )
         if initialized.returncode:
             raise GateError(f"initdb failed: {initialized.stderr or initialized.stdout}")
-        started = run(
-            [
-                tools["pg_ctl"], "-D", data, "-l", base / "postgres.log", "-o",
-                f"-F -p {port} -k {socket} -c listen_addresses=''", "-w", "start",
-            ],
-            env=cluster_env,
-            timeout=120,
-        )
-        if started.returncode:
-            raise GateError(f"pg_ctl start failed: {started.stderr or started.stdout}")
+        # The postmaster is pg_ctl's child, not ours, so ownership of the
+        # cluster starts at the moment pg_ctl is invoked — not once its result
+        # has been inspected. `pg_ctl -w start` exits non-zero when its
+        # readiness wait expires while the server it already forked keeps
+        # coming up, and the outer timeout below kills pg_ctl without touching
+        # that server. While the start call sat outside this try, both paths
+        # left before the `finally`, so nothing stopped the postmaster and the
+        # enclosing TemporaryDirectory then deleted the data and socket
+        # directories underneath a live server: measured here as an orphan
+        # still running on an already-deleted data directory, alongside two
+        # such orphans that had survived from earlier gate runs. `pg_ctl stop`
+        # against a cluster that never started is harmless — it exits non-zero
+        # and the result is discarded.
         try:
+            started = run(
+                [
+                    tools["pg_ctl"], "-D", data, "-l", base / "postgres.log", "-o",
+                    f"-F -p {port} -k {socket} -c listen_addresses=''", "-w", "start",
+                ],
+                env=cluster_env,
+                timeout=120,
+            )
+            if started.returncode:
+                raise GateError(f"pg_ctl start failed: {started.stderr or started.stdout}")
             database_url = f"host={socket} port={port} dbname=postgres user=postgres"
             role = run(
                 [
@@ -211,6 +247,10 @@ def disposable_postgres(*, passes: int = 1) -> Iterator[str]:
                         tools["psql"], database_url, migration, pass_number,
                         env=cluster_env,
                     )
+                # Recorded per completed pass, not once after the loop, so a
+                # series that dies part-way reports what actually ran.
+                if receipt is not None:
+                    receipt["migration_passes"] = pass_number
             yield database_url
         finally:
             run(
@@ -251,8 +291,9 @@ def main() -> int:
         return 1
 
     checks: list[dict[str, object]] = []
+    receipt: dict[str, int] = {}
     try:
-        with disposable_postgres(passes=2) as owner_url:
+        with disposable_postgres(passes=IDEMPOTENCE_PASSES, receipt=receipt) as owner_url:
             runtime_url = re.sub(r"\buser=\S+", "user=openclaw_runtime", owner_url)
             migration_files = sorted(MIGRATIONS.glob("[0-9][0-9][0-9]_*.sql"))
             checksums = {
@@ -311,11 +352,31 @@ def main() -> int:
             )
     except Exception as exc:
         checks.append({"name": "disposable_postgres", "ok": False, "tests": 0, "skipped": False, "error_tail": str(exc)})
+    # Measured, never assumed. This key used to be a copy of the suite
+    # aggregate: it printed true for a run whose migrations were applied once
+    # (change the passes= argument and nothing else fails) and false for a run
+    # that did apply them twice but tripped an unrelated suite. The count now
+    # comes from the applier, and the gate's own result depends on it, so PASS
+    # cannot be reached without the double application this gate claims.
+    migration_passes = receipt.get("migration_passes", 0)
+    checks.append(
+        {
+            "name": "migration_idempotence",
+            "ok": migration_passes == IDEMPOTENCE_PASSES,
+            "tests": 0,
+            "skipped": False,
+            "error_tail": None if migration_passes == IDEMPOTENCE_PASSES else (
+                f"the migration series completed {migration_passes} pass(es); this gate "
+                f"proves re-application only at {IDEMPOTENCE_PASSES}"
+            ),
+        }
+    )
     passed = bool(checks) and all(check["ok"] for check in checks)
     report = {
         "gate": "G4",
         "result": "PASS" if passed else "FAIL",
-        "migrations_applied_twice": passed,
+        "migration_passes": migration_passes,
+        "migrations_applied_twice": migration_passes == IDEMPOTENCE_PASSES,
         "checks": checks,
     }
     print(json.dumps(report, indent=2, sort_keys=True))

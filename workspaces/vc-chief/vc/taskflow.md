@@ -33,17 +33,21 @@ Agents may ask the data steward to execute only the exact approved runner:
 
 `vcrun` maps the selector to a reviewed file and rejects unknown selectors,
 `--file`, paths, inline pipelines, arbitrary commands, passthrough arguments,
-cwd/env overrides, timeout/output overrides, NUL characters, JSON larger than
-32 KiB, any single argument value longer than 16 384 characters, non-string
-values, missing required keys, and extra keys. The runner owns the time and
-output limits. The per-value ceiling is the lower of the two and is the one a
-long `memo_markdown`, `evidence_json` or `citations_json` normally hits first:
-the refusal is `<field> exceeds 16384 characters`. The payload ceiling is
-nevertheless checked earlier — before the JSON is parsed — so a value big
-enough to carry the whole object past 32 KiB is refused as `args JSON exceeds
-32768 bytes` instead, naming the payload rather than the field. Either refusal
-is raised before any step runs, so nothing is written and the same idempotency
-key stays usable.
+cwd/env overrides, timeout/output overrides, NUL characters, JSON payloads
+above 32 768 UTF-8 bytes, any single argument value longer than 16 384
+characters, non-string values, missing required keys, and extra keys. The
+runner owns the time and output limits. Those two ceilings are measured in
+different units, so neither is unconditionally the lower one. `vcrun` measures
+the raw payload before it parses, so the byte check decides which refusal you
+get: a long ASCII `memo_markdown`, `evidence_json` or `citations_json`
+normally meets the character ceiling first and is refused as `<field> exceeds
+16384 characters`, while the same prose in a multi-byte script is refused as
+`args JSON exceeds 32768 bytes` at well under 16 384 characters — a
+payload-size refusal names the payload rather than the field and does not imply
+that any one field is over its own limit. Budget prose against both.
+`docs/WORKFLOWS.md` records the measured boundaries on either side. Either
+refusal is raised before any step runs, so nothing is written and the same
+idempotency key stays usable.
 
 Only an authenticated operator environment may use the separate control
 binary, which is not present in any agent exec allowlist:

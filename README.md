@@ -536,15 +536,15 @@ from a constant, so 300 s is only its floor — and a prefill emits nothing unti
 it finishes, so a long prefill is indistinguishable from a stalled provider.
 Left at those defaults, no value of `VC_MODEL_TIMEOUT_SECONDS` can keep a slow
 local model alive: a call that needs 480 s of prefill is killed at ~390 s (the
-abort threshold plus the sweep interval) with
-
-```text
-AbortError: agent run aborted: code=OPENCLAW_DIRECT_ABORT
-```
-
-which names neither the provider nor the prefill, and reads like a flake. This
-package therefore sets the window above its own maximum per-call timeout, so
-`VC_MODEL_TIMEOUT_SECONDS` is the constraint that actually binds:
+abort threshold plus the sweep interval). The run ends with an `AbortError`
+whose `code` is `OPENCLAW_DIRECT_ABORT`; that code is the token to grep for,
+because the harness sets the error's name, message and code as three separate
+`Error` properties and never composes them into one sentence. The watchdog's
+own line in the gateway log begins `stuck session recovery:` and carries
+`action=abort_embedded_run`. Neither surface names the provider or the prefill,
+so the failure reads like a flake. This package therefore sets the window above
+its own maximum per-call timeout, so `VC_MODEL_TIMEOUT_SECONDS` is the
+constraint that actually binds:
 
 ```json
 "diagnostics": { "stuckSessionWarnMs": 300000, "stuckSessionAbortMs": 960000 }
@@ -1418,7 +1418,16 @@ restart/replay, Lobster checkpoint/resume, capacity, rotation, and isolated
 restore require real deployment evidence. Offline tests never silently count
 as those checks.
 
-After any package change, regenerate the manifest only after tests pass:
+If the change touched `migrations/`, regenerate the schema reference first, with
+`python3 -B scripts/generate_schema_reference.py` (PostgreSQL 17 tools), and
+re-run the `--with-schema-reference` gate above. `docs/SCHEMA.sql` is the only
+table inventory the offline gate can read without a database, and it is what
+`tests/v3/test_erasure_gap_enumeration.py` enumerates to prove the erasure-gap
+list in `workspaces/vc-chief/vc/data_retention.md` is complete. A table that
+exists only in `migrations/` is invisible to that suite, so the default gate
+reports `PASS` while that completeness claim is already false.
+
+Then, after any package change, regenerate the manifest — only once tests pass:
 
 ```sh
 python3 -B scripts/build_release_manifest.py

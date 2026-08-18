@@ -338,7 +338,14 @@ def validate_skills_and_agents(config: dict[str, Any], findings: list[Finding]) 
         if not agent_path.is_file() or not tools_path.is_file():
             add(findings, "agent_files", WORKSPACES_ROOT / agent_id, "AGENTS.md and TOOLS.md are required")
             continue
-        body = agent_path.read_text(encoding="utf-8")
+        # Bounded like every other governed read: an AGENTS.md saved in a
+        # non-UTF-8 encoding raised UnicodeDecodeError straight out of main(),
+        # which has no handler, so the JSON report -- and every finding already
+        # collected, including this loop's own earlier agent findings -- was
+        # replaced by a traceback.
+        body = read_body(agent_path, findings, "agent_unreadable")
+        if body is None:
+            continue
         headings = set(re.findall(r"(?m)^## (.+?)\s*$", body))
         for required in ("Inputs", "Evidence and trust"):
             if required not in headings:
@@ -395,8 +402,40 @@ def validate_skills_and_agents(config: dict[str, Any], findings: list[Finding]) 
         add(findings, "evolution_contract", SKILLS_ROOT / "controlled-evolution/SKILL.md", "pending-only skill path is incomplete")
 
 
+def read_body(path: Path, findings: list[Finding], code: str) -> str | None:
+    """Read a governed artifact, or record a bounded finding and return None.
+
+    `main()` installs no exception handler, so a read that raises escapes
+    before the JSON report is printed and takes every finding the run had
+    already collected with it. An absent or non-UTF-8 governed artifact then
+    aborts `verify_offline.py`'s `skill-agent-system` step with a traceback and
+    no JSON at all, which is strictly worse than a recorded finding.
+
+    The invariant is stated as a rule rather than a count, because the count was
+    wrong twice: EVERY read of a governed artifact is either routed through this
+    helper, or wrapped at its own call site by a handler that catches
+    `UnicodeError`. Note that `UnicodeError` is not implied by
+    `json.JSONDecodeError`: both derive from `ValueError` but they are siblings,
+    so a handler naming only the JSON error still lets a non-UTF-8 file raise,
+    while one naming `ValueError` does catch it. The most recent instance was
+    `config/exec-approvals.json`, whose handler named `json.JSONDecodeError`
+    alone and produced exit 1 with zero bytes of stdout.
+
+    tests/v3/test_skill_agent_production.py enumerates the governed artifacts,
+    writes invalid bytes into each in turn, and requires a parseable JSON
+    envelope every time, so this claim is checked rather than asserted.
+    """
+    try:
+        return path.read_text(encoding="utf-8")
+    except (OSError, UnicodeError) as exc:
+        add(findings, code, path, f"{type(exc).__name__}: {exc}")
+        return None
+
+
 def validate_router_and_hook(findings: list[Finding]) -> None:
-    resolver = RESOLVER_PATH.read_text(encoding="utf-8")
+    resolver = read_body(RESOLVER_PATH, findings, "resolver_unreadable")
+    if resolver is None:
+        return
     # Derived from the inventory, not a frozen literal: checking for the string
     # "discovers 26 shared skills" is the exact inversion of what this check
     # claims — a stale count would pass and a truthful one would fail.
@@ -418,7 +457,9 @@ def validate_router_and_hook(findings: list[Finding]) -> None:
         if marker not in resolver:
             add(findings, "resolver_skillify", RESOLVER_PATH, f"missing guarded skill route marker: {marker}")
 
-    hook = HOOK_PATH.read_text(encoding="utf-8")
+    hook = read_body(HOOK_PATH, findings, "hook_unreadable")
+    if hook is None:
+        return
     for marker in (
         'api.on("before_tool_call", guardSkillWorkshop)',
         'event?.toolName !== "skill_workshop"',
@@ -437,7 +478,9 @@ def validate_resolver_routing(config: dict[str, Any], workflows: dict[str, Any],
     dead route (e.g. an origin with no lead-creation workflow, or a router enum
     that drifted from the skill inventory).
     """
-    resolver = RESOLVER_PATH.read_text(encoding="utf-8")
+    resolver = read_body(RESOLVER_PATH, findings, "resolver_unreadable")
+    if resolver is None:
+        return
 
     # 1. lead-router output enums must exactly match the effective inventory, so
     #    the router can never emit a skill/agent the system does not have.
@@ -572,13 +615,24 @@ def validate_workflows(findings: list[Finding]) -> None:
             continue
         if body.get("name") != f"vc-{workflow}-v3":
             add(findings, "workflow_name", path, "workflow name must be the exact Version 3 name")
-        steps = body.get("steps", [])
+        steps = body.get("steps")
+        if steps is None:
+            steps = []
+        if not isinstance(steps, list):
+            add(findings, "workflow_shape", path, "workflow steps must be a list")
+            continue
         actual_steps = [item.get("id") for item in steps if isinstance(item, dict)]
         if actual_steps != expected_steps:
             add(findings, "workflow_steps", path, f"expected={expected_steps} actual={actual_steps}")
         # Test the parsed workflow, not the constant it was compared against:
-        # keyed on expected_steps this finding could never fire.
-        if actual_steps[-1] != "workflow_succeeded":
+        # keyed on expected_steps this finding could never fire. The emptiness
+        # branch is separate because `actual_steps[-1]` on an empty or null
+        # `steps` value raised IndexError out of this loop, replacing the whole
+        # JSON report -- including every finding already collected -- with a
+        # traceback.
+        if not actual_steps:
+            add(findings, "workflow_terminal", path, "workflow declares no steps, so it has no terminal success step")
+        elif actual_steps[-1] != "workflow_succeeded":
             add(findings, "workflow_terminal", path, "workflow inventory lacks a terminal success step")
         contract = contracts.get(workflow, {})
         contract_args = (
@@ -625,8 +679,13 @@ def validate_agent_exec_paths(findings: list[Finding]) -> None:
             for item in agent.get("allowlist") or []:
                 if isinstance(item.get("pattern"), str):
                     allowlisted.add(item["pattern"])
-    except (OSError, json.JSONDecodeError, AttributeError) as exc:
-        add(findings, "exec_approvals_unreadable", approvals_path, str(exc))
+    # `UnicodeError` is not implied by `json.JSONDecodeError`. Both are
+    # `ValueError` subclasses, but they are siblings, so a handler naming only
+    # the JSON error lets a non-UTF-8 file through: measured, two invalid bytes
+    # here produced exit 1 with ZERO bytes of stdout and a UnicodeDecodeError
+    # traceback, losing the JSON report and every finding collected before it.
+    except (OSError, UnicodeError, json.JSONDecodeError, AttributeError) as exc:
+        add(findings, "exec_approvals_unreadable", approvals_path, f"{type(exc).__name__}: {exc}")
         return
 
     token = re.compile(r"/workspaces/vc-chief/vc/bin/[A-Za-z0-9_./-]+")
@@ -639,7 +698,13 @@ def validate_agent_exec_paths(findings: list[Finding]) -> None:
         if not any(part.startswith(".") for part in path.relative_to(WORKSPACES_ROOT).parts)
     )
     for path in sorted(markdown):
-        for reference in sorted(set(token.findall(path.read_text(encoding="utf-8")))):
+        # Same bound: this scan reads every markdown file under workspaces/, so
+        # one operator-supplied or re-encoded file aborted the whole gate step
+        # with a traceback rather than reporting the file it could not read.
+        prose = read_body(path, findings, "agent_markdown_unreadable")
+        if prose is None:
+            continue
+        for reference in sorted(set(token.findall(prose))):
             target = PACKAGE / reference.lstrip("/")
             if not target.is_file():
                 add(findings, "agent_exec_path_missing", path, f"{reference} does not exist in the package")

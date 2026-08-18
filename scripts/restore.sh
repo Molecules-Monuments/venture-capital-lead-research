@@ -40,7 +40,7 @@ paths_overlap() {
 
 cleanup() {
   status="$?"
-  trap - EXIT HUP INT TERM
+  trap - EXIT HUP INT QUIT TERM
   if [ -n "$VALIDATION_DB" ]; then
     compose exec -T postgres dropdb --username openclaw_owner --if-exists \
       --force "$VALIDATION_DB" >/dev/null 2>&1 || true
@@ -59,7 +59,7 @@ cleanup() {
   exit "$status"
 }
 trap cleanup EXIT
-trap 'exit 1' HUP INT TERM
+trap 'exit 1' HUP INT QUIT TERM
 
 fail() {
   echo "$*" >&2
@@ -234,7 +234,15 @@ if paths_overlap "$BACKUP_DIR" "$PACKAGE_INBOX"; then
 fi
 
 cd "$PACKAGE_DIR"
-./scripts/check_env.sh "$ENV_FILE" >/dev/null
+# Keep stdout quiet on success but never swallow the report on failure: the
+# only diagnosis of which .env value is wrong lives in that envelope, and
+# discarding it left both scripts aborting with exit 1 and zero bytes on both
+# streams -- during a destructive restore that reads as a crash, not a refusal.
+if ! CHECK_ENV_REPORT="$(./scripts/check_env.sh "$ENV_FILE")"; then
+  printf '%s\n' "$CHECK_ENV_REPORT" >&2
+  echo "environment validation failed; nothing has been changed." >&2
+  exit 1
+fi
 # The restore target must satisfy the reviewed profile<->environment binding
 # before its rendered config is used to bring the deployment back up.
 python3 scripts/check_customization.py config/customization-profile.json "$ENV_FILE"
@@ -347,7 +355,14 @@ VALIDATION_DB=""
 # it holds the lifecycle lock across a destructive replace, and a refusal after
 # the stop would leave the deployment down with nothing restored. A one-off that
 # starts after this point is not caught.
-if compose --profile tools ps --all --status running --services | grep -Fxq openclaw-cli; then
+# Capture the enumeration on its own line, the way backup.sh already does, so
+# `set -e` aborts when `compose ps` itself fails. Piping it straight into grep
+# made the pipeline exit status grep's alone: a failing or empty enumeration
+# looked exactly like "openclaw-cli is not running" and silently disabled this
+# refusal, which is the only guard between a live CLI turn and a destructive
+# operation that cannot stop it.
+running_services="$(compose --profile tools ps --all --status running --services)"
+if printf '%s\n' "$running_services" | grep -Fxq openclaw-cli; then
   fail "openclaw-cli is running: a 'docker compose run' CLI turn does not stop
 with its service and would keep writing the volumes this restore replaces.
 Let the turn finish, then re-run."

@@ -58,11 +58,11 @@ The reconciler proves both new credentials over TCP and proves that an invalid p
 
 Both database passwords must be independent 24-128 character base64url-safe values (`A-Z`, `a-z`, `0-9`, `_`, `-`); this keeps Compose, `psql`, passfiles, and recovery handling unambiguous. This package requires Docker Compose, not `docker stack deploy`: its file-backed secret sources are Compose-only. `docker compose -f docker-compose.yml -p openclaw-lead-research-v3 --env-file .env config --quiet` is a mandatory compatibility preflight and the lifecycle commands require support for `up --wait`, `--force-recreate`, `--no-deps`, `--no-start`, and `run --rm`.
 
-Backup, restore, update, bootstrap, and direct role rotation share `/tmp/openclaw-lead-research-v3-lifecycle.lock`. Nested update/bootstrap operations pass a private owner token that is checked against the mode-`0700` lock directory; setting a boolean environment flag cannot bypass the lock. If a host crash leaves the directory, confirm no lifecycle process is active — the lock directory's `owner` file names the holder as `<operation>:<pid>`, so read it (`cat /tmp/openclaw-lead-research-v3-lifecycle.lock/owner`) and check that PID with `ps` — then remove the whole directory with `rm -rf /tmp/openclaw-lead-research-v3-lifecycle.lock`; `rmdir` fails while the `owner` file is present. A lock directory with **no** `owner` file is an acquisition interrupted between the `mkdir` that creates the lock and the write that names its holder: each script does those two steps in that order, so a signal in that window leaves the directory behind before its `owner` line is written. That state names no PID, so the `cat`/`ps` step above dead-ends — fall back to looking for a running lifecycle script by path, and if nothing is running remove the directory the same way (`rmdir` also succeeds here, the directory being empty):
+Backup, restore, update, bootstrap, and direct role rotation share `/tmp/openclaw-lead-research-v3-lifecycle.lock`. Nested update/bootstrap operations pass a private owner token that is checked against the mode-`0700` lock directory; setting a boolean environment flag cannot bypass the lock. If a host crash leaves the directory, confirm no lifecycle process is active — the lock directory's `owner` file names the holder as `<operation>:<pid>`, so read it (`cat /tmp/openclaw-lead-research-v3-lifecycle.lock/owner`) and check that PID with `ps`. A dead holder PID is **not** sufficient on its own: the named script may have exited while the `psql`, `pg_restore`, `docker compose` or `migrate.sh` child it launched is still running against the production database, and killing the parent does not stop the SQL a child has already streamed. Run the path scan below in **both** branches and require it to be empty before you delete anything. Then remove the whole directory with `rm -rf /tmp/openclaw-lead-research-v3-lifecycle.lock`; `rmdir` fails while the `owner` file is present. A lock directory with **no** `owner` file is an acquisition interrupted between the `mkdir` that creates the lock and the write that names its holder: each script does those two steps in that order, so a signal in that window leaves the directory behind before its `owner` line is written. That state names no PID, so the `cat`/`ps` step above dead-ends — fall back to looking for a running lifecycle script by path, and if nothing is running remove the directory the same way (`rmdir` also succeeds here, the directory being empty):
 
 ```sh
 ps -eo pid,args \
-  | grep -E 'scripts/(bootstrap|update|backup|restore|rotate_runtime_role)\.sh' \
+  | grep -E 'scripts/(bootstrap|update|backup|restore|rotate_runtime_role|migrate)\.sh' \
   | grep -v grep
 # no output means no lifecycle script is running
 ```
@@ -77,6 +77,35 @@ docker compose -f docker-compose.yml -p openclaw-lead-research-v3 --env-file .en
 docker compose -f docker-compose.yml -p openclaw-lead-research-v3 --env-file .env \
   exec -T postgres dropdb --username openclaw_owner --force <name>
 ```
+
+Check the database for work the dead script left running, before touching either
+lock. Killing a lifecycle script does not stop SQL it has already streamed: the
+`psql` process runs **inside the Postgres container**, so it survives a `kill -9`
+on the host script, keeps the migration advisory lock, and can still commit.
+A leftover session is therefore the one state in which removing a lock and
+retrying causes two writers to overlap. The probe below is deliberately not
+scoped to the `openclaw` database, and connects through `postgres`: `restore.sh`
+does part of its work in its own `openclaw_restore_validate_%` database and part
+through the `postgres` maintenance database (`dropdb --force openclaw` followed
+by `createdb openclaw`), so a `datname = 'openclaw'` filter reports nothing
+while a crashed restore is still streaming, and a connection to `openclaw` can
+itself fail because that database is momentarily gone. `pg_stat_activity` is
+server-wide, and `usename = 'openclaw_owner'` already excludes the background
+workers and the gateway runtime role:
+
+```sh
+docker compose -f docker-compose.yml -p openclaw-lead-research-v3 --env-file .env \
+  exec -T postgres psql -X -w --username openclaw_owner --dbname postgres \
+  --tuples-only --no-align --command \
+  "SELECT pid, datname, state, xact_start, left(query, 80) FROM pg_stat_activity
+   WHERE usename = 'openclaw_owner'
+     AND state <> 'idle' AND pid <> pg_backend_pid()"
+# no output means no openclaw_owner session is executing anywhere in the cluster
+```
+
+If a row comes back, let it finish or terminate it deliberately
+(`SELECT pg_terminate_backend(<pid>)`) and re-check, before removing any lock or
+re-running any lifecycle script.
 
 Every script pins both the absolute Compose file and project name, so invoking it from a different current directory cannot select another stack.
 
@@ -225,7 +254,7 @@ was explicitly excluded from this package-readiness effort.
 
 1. Review upstream release notes and migration requirements.
 2. Change pinned references only in a reviewed release revision; never use `latest` or `main`.
-3. Carry the deployed revision's runtime state into the new package directory before running anything: `deployment-lock.json`, `.env`, `config/customization-profile.json`, `config/connectors.json` if you use connectors, and every customized policy artifact. `inbox/` is bind-mounted from the package directory (`docker-compose.yml`, `./inbox:/inbox:ro`), not held in a named volume, so a new package directory starts with the shipped placeholder alone. Copy the deployed revision's `inbox/` contents across too if you want the operator lane to keep seeing them; the pre-update recovery point captures whatever the new directory's `inbox/` holds when `update.sh` runs. Operator payload under `inbox/` is excluded from `manifest.json` and tolerated by `verify_release.py --pristine`, so carrying it across does not affect the re-pin. `update.sh` runs `check_env.sh` and `check_customization.py` before it takes the lifecycle lock, and the profile's twenty artifact hashes are re-checked against the new tree — so the profile has to be re-pinned once the artifacts are across. Before re-pinning, run `python3 -B scripts/check_customization.py config/customization-profile.json .env` and read the `reviewed artifact changed after review: <path>` lines it prints. Account for each path it names — a deliberate edit of yours, or a change this release made to a shipped artifact. A path you cannot account for is a customization that was not carried across; re-pinning it is how you lose it, silently, because the re-pin reports only a count and no later gate can see the reversion (RUNBOOK §9, "Never regenerate hashes around a change you cannot account for"). Only then re-pin with `python3 -B scripts/init_customization.py --update-hashes`. Then run `scripts/update.sh <new-pre-update-backup-directory>`. The update-only compatible-backup mode validates the old lock against the still-live image IDs and writes both backup `VERSION` and `BACKUP_MANIFEST.package_version` from that lock, never from the newly placed package. The old lock and its matching old version are therefore embedded together in the pre-update recovery point. If a first update attempt failed *after* its migrations applied but before it recorded the new lock, the deployment's schema is already ahead of that old lock — a retry's pre-update backup would otherwise stamp the old version onto a new-schema dump, and restoring it would fail only at `migrate.sh`, after the production database was dropped. `backup.sh` refuses in that state in **either** mode — the ledger comparison runs before the compatible-lock branch, because the same drift makes a direct backup's VERSION stamp wrong too — naming the applied migration the lock cannot account for; the valid rollback target is then the **first** attempt's recovery point. The script holds one lifecycle lock from that quiesced point through build, migration, secret/role reconciliation, readiness, and recording the new lock. Do not set `OPENCLAW_BACKUP_COMPATIBLE_LOCK` manually; backup rejects it unless the private update lock and quiesced mode are both active.
+3. Carry the deployed revision's runtime state into the new package directory before running anything: `deployment-lock.json`, `.env`, `config/customization-profile.json`, `config/connectors.json` if you use connectors, and every customized policy artifact. `inbox/` is bind-mounted from the package directory (`docker-compose.yml`, `./inbox:/inbox:ro`), not held in a named volume, so a new package directory starts with the shipped placeholder alone. Copy the deployed revision's `inbox/` contents across too if you want the operator lane to keep seeing them; the pre-update recovery point captures whatever the new directory's `inbox/` holds when `update.sh` runs. Operator payload under `inbox/` is excluded from `manifest.json` and tolerated by `verify_release.py --pristine`, so carrying it across does not affect the re-pin. `update.sh` runs `check_env.sh` and `check_customization.py` before it takes the lifecycle lock, and the profile's twenty artifact hashes are re-checked against the new tree — so the profile has to be re-pinned once the artifacts are across. Before re-pinning, run `python3 -B scripts/check_customization.py config/customization-profile.json .env` and read the `reviewed artifact changed after review: <path>` lines it prints. Account for each path it names — a deliberate edit of yours, or a change this release made to a shipped artifact. A path you cannot account for is a customization that was not carried across; re-pinning it is how you lose it, silently, because the re-pin reports only a count and no later gate can see the reversion (RUNBOOK §9, "Never regenerate hashes around a change you cannot account for"). Only then re-pin with `python3 -B scripts/init_customization.py --update-hashes`. Then run `scripts/update.sh <new-pre-update-backup-directory>`. The update-only compatible-backup mode validates the old lock against the still-live image IDs and writes both backup `VERSION` and `BACKUP_MANIFEST.package_version` from that lock, never from the newly placed package. The old lock and its matching old version are therefore embedded together in the pre-update recovery point. If a first update attempt failed *after* its migrations applied but before it recorded the new lock, the deployment's schema is already ahead of that old lock — a retry's pre-update backup would otherwise stamp the old version onto a new-schema dump, and restoring it would fail only at `migrate.sh`, after the production database was dropped. `backup.sh` refuses in that state in **either** mode — the ledger comparison runs before the compatible-lock branch, because the same drift makes a direct backup's VERSION stamp wrong too — naming the applied migration the lock cannot account for; the valid rollback target is then the **first** attempt's recovery point. The script holds one lifecycle lock from that quiesced point through build, secret/role reconciliation, migration, consumer reconciliation, the readiness probes, and recording the new lock — that is the order it executes them in. Do not set `OPENCLAW_BACKUP_COMPATIBLE_LOCK` manually; backup rejects it unless the private update lock and quiesced mode are both active.
 4. Run all offline and live release gates again.
 5. Confirm the rebuilt image actually carries the policy artifacts you carried across: `python3 -B scripts/record_images.py --validate-baked-sources deployment-lock.json`. Do not re-run the bare recorder first: `update.sh` already recorded the new image IDs and digests immediately after its build, and a standalone `python3 -B scripts/record_images.py` would re-stamp `baked_sources_sha256` from the current tree and make this step pass unconditionally (RUNBOOK §4). `workspaces/` is image-baked and never bind-mounted, so a carried-across thesis or rubric that was not present at build time is silently absent from the running gateway (`CUSTOMIZATION.md`, "Policy edits reach the deployment only through a rebuild").
 
@@ -327,10 +356,13 @@ docker compose -f docker-compose.yml -p openclaw-lead-research-v3 --env-file .en
 # `docker compose` invocation in the same shell.
 runtime_config_volume="$(sed -n 's/^OPENCLAW_RUNTIME_CONFIG_VOLUME=//p' .env | head -n 1)"
 quarantine_volume="$(sed -n 's/^VC_QUARANTINE_VOLUME=//p' .env | head -n 1)"
-docker volume ls --filter name=openclaw-lead-research-v3 \
+docker volume ls --quiet --filter name=openclaw-lead-research-v3 \
   --filter name="${runtime_config_volume:-openclaw-lead-research-v3_runtime-config}" \
   --filter name="${quarantine_volume:-openclaw-lead-research-v3_vc-quarantine}"
-# must return nothing. Run this before deleting .env below, or the two
+# must return nothing. `--quiet` is what makes that literally true: without it
+# `docker volume ls` always prints its `DRIVER  VOLUME NAME` header, so an
+# operator testing for empty output would read a fully decommissioned stack as
+# a failure. Run this before deleting .env below, or the two
 # overridable names are no longer available to substitute.
 ```
 

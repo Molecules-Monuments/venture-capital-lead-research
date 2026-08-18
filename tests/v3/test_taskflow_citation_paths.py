@@ -25,6 +25,11 @@ DOC = ROOT / "docs/TASKFLOW_LOBSTER_COMPATIBILITY.md"
 TEXT = DOC.read_text(encoding="utf-8")
 
 UPSTREAM_PREFIXES = ("upstream_openclaw/", "upstream_lobster/")
+# One constant for both methods. The classifier accepted any "@clawdbot/"
+# path while the header rule and the sibling test sanctioned only the
+# "@clawdbot/lobster/" subtree, so a citation into a different @clawdbot
+# package was silently classified as shipped-in-the-image.
+IMAGE_PACKAGE_PREFIX = "@clawdbot/lobster/"
 
 # A citation is a backticked path followed by one or more line ranges:
 # `upstream_lobster/src/workflows/file.ts:57-87,592-602,1261-1271`. The path
@@ -76,7 +81,7 @@ class TaskflowCitationPathTests(unittest.TestCase):
                 continue                       # 2. a file in this package
             if "/" not in path and upstream_paths_on(number):
                 continue                       # 3. bare name, repository named alongside
-            if path.startswith("@clawdbot/"):
+            if path.startswith(IMAGE_PACKAGE_PREFIX):
                 continue                       # 4. installed in the pinned image
             unclassified.append(f"{DOC.name}:{number} {text}")
         self.assertEqual(
@@ -93,16 +98,37 @@ class TaskflowCitationPathTests(unittest.TestCase):
         # Without this the prose the categories above encode could be deleted
         # while the enumeration stayed green, leaving the rule enforced but
         # unexplained to the reader it exists for.
-        header = TEXT.split("## Release verdict", 1)[0]
-        for required in (*UPSTREAM_PREFIXES, "@clawdbot/lobster/"):
+        # Pin the anchor before using it. `str.split` on an absent separator
+        # returns the whole document, so a renamed heading silently widened
+        # this check from the header to the entire file -- passing for the
+        # wrong reason instead of failing.
+        # `assertTrue(x in TEXT, ...)` rather than `assertIn(x, TEXT, ...)`:
+        # unittest's standard message renders the container, and TEXT is the
+        # whole 39 KB document. That failure measured 40,717 bytes against
+        # 1,023 for this form, and verify_offline.py keeps only the last
+        # 20,000 characters of the run as the operator-facing detail -- one
+        # renamed heading would have evicted every other failure from the
+        # gate's report.
+        anchor = "## Release verdict"
+        self.assertTrue(
+            anchor in TEXT,
+            f"{DOC.name} no longer contains {anchor!r}, so this test can no "
+            "longer tell the header from the body; restore the heading or "
+            "update the anchor",
+        )
+        header = TEXT.split(anchor, 1)[0]
+        # Same reason as above, at 1.5 KB a shot: the header is a document
+        # slice, and three subTests plus the closing check could spend 6 KB of
+        # the gate's 20,000-character detail budget re-printing it.
+        for required in (*UPSTREAM_PREFIXES, IMAGE_PACKAGE_PREFIX):
             with self.subTest(required=required):
-                self.assertIn(
-                    f"`{required}`", header,
+                self.assertTrue(
+                    f"`{required}`" in header,
                     f"the header no longer names {required}, but "
                     f"{Path(__file__).name} still admits citations on that basis",
                 )
-        self.assertIn(
-            Path(__file__).name, header,
+        self.assertTrue(
+            Path(__file__).name in header,
             "the header no longer points the reader at the suite that enforces "
             "its citation rule",
         )

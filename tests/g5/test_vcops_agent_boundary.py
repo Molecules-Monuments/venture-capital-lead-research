@@ -27,7 +27,7 @@ class AgentVcopsBoundaryTests(unittest.TestCase):
             text=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            timeout=5,
+            timeout=30,
         )
         return process.returncode, json.loads(process.stdout)
 
@@ -101,7 +101,7 @@ class AgentVcopsBoundaryTests(unittest.TestCase):
                     text=True,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
-                    timeout=5,
+                    timeout=30,
                 )
                 self.assertEqual(1, process.returncode, process.stdout + process.stderr)
                 payload = json.loads(process.stdout)

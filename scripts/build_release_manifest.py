@@ -7,6 +7,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import stat
 import sys
 from pathlib import Path
@@ -44,13 +45,103 @@ EXCLUDED_PREFIXES = {"_internal"}
 OPERATOR_DATA_ROOTS = {"inbox", "quarantine"}
 
 
+def tolerated(relative: str) -> bool:
+    """Whether a path this script cannot read is the operator's business, not tampering.
+
+    A path is only an integrity finding if it could have contributed to the
+    inventory: `_internal/` is excluded by contract and `inbox/`/`quarantine/`
+    below their own root hold operator payload that is never declared, so an odd
+    permission there is not a tamper signal. Refusing on those made an unreadable
+    directory under `inbox/` block every re-pin — the step CLAUDE.md makes
+    mandatory after any declared-file change — which is a worse failure than the
+    blind spot the guard closes.
+
+    verify_release.tolerated_unreadable() applies the same rule to the same
+    roots, and tests/g7/test_recovery_lifecycle.py runs both scripts over the
+    same fixture for every (root, directory mode) pair so the two cannot drift:
+    a disagreement between the two checkers is the tamper signal
+    docs/RUNBOOK.md §9 sends the operator to read.
+    """
+    root = relative.split("/", 1)[0]
+    if root in EXCLUDED_PREFIXES:
+        return True
+    return root in OPERATOR_DATA_ROOTS and relative != root
+
+
+def walk_package() -> list[tuple[Path, os.stat_result]]:
+    """Every path under the package with its own lstat, refusing to guess about what it cannot read.
+
+    os.walk with onerror, never Path.rglob: rglob swallows the PermissionError it
+    hits while descending, so an unreadable subtree would be omitted from the
+    inventory in silence — and a later `verify_release.py --pristine` would then
+    agree with a manifest that never saw those files, so both integrity signals
+    would pass over an undeclared payload. Omitting a subtree here is worse than
+    failing, so this raises instead.
+
+    The lstat is taken HERE rather than in inventory() so that exactly one place
+    can fail to read a path. There are two syscalls that can fail and only one of
+    them reaches os.walk's onerror: a directory that is readable but not
+    SEARCHABLE (mode 0444, 0644, `chmod a-x`) raises nothing during the walk —
+    it hands its names back in `filenames` — and inventory()'s former
+    `Path.is_file()` filter turned the resulting stat-level PermissionError into
+    a plain False, dropping the entry in silence. Measured: with `docs/` at mode
+    0444 the write path exited 0 reporting "Manifest written: 321 files" having
+    dropped all ten declared `docs/*` files from the release inventory, which is
+    precisely the omission the refusal below claims to prevent.
+    """
+    unreadable: list[str] = []
+
+    def record(filename: object, exc: OSError) -> None:
+        try:
+            where = Path(str(filename)).relative_to(PACKAGE).as_posix()
+        except (TypeError, ValueError):
+            unreadable.append(f"{filename}: {exc}")
+            return
+        if tolerated(where):
+            return
+        unreadable.append(f"{where}: {exc}")
+
+    def note(exc: OSError) -> None:
+        record(exc.filename, exc)
+
+    found: list[tuple[Path, os.stat_result]] = []
+    for directory, subdirectories, filenames in os.walk(PACKAGE, onerror=note):
+        base = Path(directory)
+        if base == PACKAGE and ".git" in subdirectories:
+            subdirectories.remove(".git")
+        for name in list(subdirectories) + filenames:
+            path = base / name
+            try:
+                found.append((path, path.lstat()))
+            except OSError as exc:
+                record(path, exc)
+    if unreadable:
+        raise SystemExit(
+            "cannot enumerate the package: "
+            + "; ".join(sorted(unreadable))
+            + ". Refusing to write a manifest that omits a subtree it could not "
+              "read — a silent omission here would make a later "
+              "`verify_release.py --pristine` agree with an inventory that never "
+              "saw those files (docs/RUNBOOK.md §9)."
+        )
+    return sorted(found, key=lambda pair: pair[0])
+
+
 def inventory() -> list[dict[str, Any]]:
     entries: list[dict[str, Any]] = []
-    for path in sorted(PACKAGE.rglob("*")):
+    for path, info in walk_package():
         relative = path.relative_to(PACKAGE).as_posix()
         if (
-            not path.is_file()
-            or path.is_symlink()
+            # Shape-filter on the lstat walk_package() already took, never on
+            # Path.is_file()/Path.is_symlink(): those re-stat the path and turn a
+            # PermissionError into a plain False, which is how files this script
+            # could not read were dropped from the inventory in silence.
+            # `S_ISREG` on an lstat is exactly the old `is_file() and not
+            # is_symlink()` — a symlink's own lstat is never S_ISREG — so
+            # symlinks, directories, fifos, sockets and devices are all excluded
+            # by this single test, and a path that could not be stat'd never
+            # reaches here because walk_package() refused.
+            not stat.S_ISREG(info.st_mode)
             or relative in EXCLUDED_FILES
             or relative.split("/", 1)[0] in EXCLUDED_PREFIXES
             # Match on the package-relative path. `path.parts` is absolute, so a
@@ -66,11 +157,22 @@ def inventory() -> list[dict[str, Any]]:
             )
         ):
             continue
-        info = path.stat()
+        try:
+            payload = path.read_bytes()
+        except OSError as exc:
+            # A regular file whose own mode denies the read stats perfectly well,
+            # so walk_package()'s guard cannot see it. Refusing here keeps the
+            # promise that no manifest is written over a path this script could
+            # not read; before this, the read raised an uncaught traceback.
+            raise SystemExit(
+                f"cannot read package file {relative}: {exc}. Refusing to write a "
+                "manifest that omits a file it could not read "
+                "(docs/RUNBOOK.md §9)."
+            ) from exc
         entries.append(
             {
                 "path": relative,
-                "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+                "sha256": hashlib.sha256(payload).hexdigest(),
                 "size": info.st_size,
                 # Only the executable bit is recorded. Git carries that bit and
                 # nothing else, so a manifest that pinned full permissions would
@@ -131,21 +233,52 @@ def expected_manifest() -> dict[str, Any]:
     }
 
 
-def manifest_differences(expected: dict[str, Any], limit: int = 20) -> list[str]:
-    """Summarize how the declared manifest differs from the current tree."""
+def manifest_delta(expected: dict[str, Any]) -> dict[str, list[str]] | None:
+    """Paths removed, added and changed against the declared manifest.
+
+    Returns None when manifest.json is missing or unreadable — that is an
+    informational state, not a delta, and callers must not read it as one.
+
+    The delta is exposed separately from the printable summary because the
+    summary is truncated: deciding anything from the printed lines makes
+    truncation decide it too. That is exactly how the removal warning below was
+    lost — see main().
+    """
     try:
         declared = json.loads(MANIFEST.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
-        return ["manifest.json is missing or unreadable"]
+        return None
     was = {entry["path"]: entry for entry in declared.get("files", [])}
     now = {entry["path"]: entry for entry in expected["files"]}
-    lines = [f"added: {path}" for path in sorted(set(now) - set(was))]
-    lines += [f"removed: {path}" for path in sorted(set(was) - set(now))]
-    lines += [
-        f"changed: {path}"
-        for path in sorted(set(was) & set(now))
-        if was[path] != now[path]
-    ]
+    return {
+        "removed": sorted(set(was) - set(now)),
+        "added": sorted(set(now) - set(was)),
+        "changed": sorted(
+            path for path in set(was) & set(now) if was[path] != now[path]
+        ),
+    }
+
+
+def manifest_differences(expected: dict[str, Any], limit: int = 20) -> list[str]:
+    """Summarize how the declared manifest differs from the current tree.
+
+    Six line kinds can come back and only three of them are delta lines:
+    `removed:`, `added:` and `changed:` paths, plus the informational
+    "manifest.json is missing or unreadable" and "file inventory matches; a
+    manifest header field differs", plus the "... and N more" truncation
+    marker. A caller that captions this list has to caption the three delta
+    kinds by name, not "each line above".
+    """
+    delta = manifest_delta(expected)
+    if delta is None:
+        return ["manifest.json is missing or unreadable"]
+    # Removals sort first because this list is truncated at `limit`. Building
+    # `added:` lines first meant any re-pin with 20 or more additions dropped
+    # every `removed:` line, so a deleted hash-pinned reviewed artifact was
+    # absorbed with nothing on screen naming it.
+    lines = [f"removed: {path}" for path in delta["removed"]]
+    lines += [f"added: {path}" for path in delta["added"]]
+    lines += [f"changed: {path}" for path in delta["changed"]]
     if not lines:
         return ["file inventory matches; a manifest header field differs"]
     return lines[:limit] + ([f"... and {len(lines) - limit} more"] if len(lines) > limit else [])
@@ -180,23 +313,46 @@ def main() -> int:
     # backup, note or editor artifact into declared release content — which is
     # exactly the debris `verify_release.py --pristine` rejected a moment
     # earlier. Compute the delta before overwriting the declared inventory.
-    changes = (
-        []
-        if MANIFEST.is_file() and MANIFEST.read_text(encoding="utf-8") == rendered
-        else manifest_differences(expected)
-    )
+    up_to_date = MANIFEST.is_file() and MANIFEST.read_text(encoding="utf-8") == rendered
+    # Both are read before the write, which overwrites what they measure against.
+    delta = None if up_to_date else manifest_delta(expected)
+    changes = [] if up_to_date else manifest_differences(expected)
     MANIFEST.write_text(rendered, encoding="utf-8")
     print(f"Manifest written: {expected['file_count']} files")
     if changes:
         print("Re-pinned against the current tree:", file=sys.stderr)
         for line in changes:
             print(f"  {line}", file=sys.stderr)
+        # The caption names the three delta kinds instead of saying "each line".
+        # "now declared release content" was wrong for `removed:` — a removed
+        # path is precisely what is no longer declared — and "each line" is
+        # wrong for the two informational lines manifest_differences can return
+        # ("manifest.json is missing or unreadable" on a first build, "file
+        # inventory matches; a manifest header field differs") and for the
+        # "... and N more" marker, none of which is an absorbed change.
         print(
-            "Each line above is now declared release content. If any of them is "
-            "not a change you made deliberately, treat it as an integrity "
+            "Each `removed:`, `added:` or `changed:` line above is a change this "
+            "re-pin has just absorbed into the declared inventory. If any of them "
+            "is not a change you made deliberately, treat it as an integrity "
             "finding (docs/RUNBOOK.md §9) rather than a re-pin.",
             file=sys.stderr,
         )
+        # Derived from the untruncated delta, never from `changes`. Keyed off the
+        # printed lines, this warning was suppressed by the very truncation it
+        # was printed from: a re-pin that added twenty files dropped every
+        # `removed:` line, so deleting a hash-pinned reviewed artifact — the
+        # highest-signal case CLAUDE.md makes reading this delta a binding step
+        # for — was absorbed in silence. Every removed path is named, uncapped:
+        # for the one delta kind that takes content away, completeness beats
+        # brevity.
+        if delta and delta["removed"]:
+            print(
+                "These paths are no longer declared at all; confirm you deleted "
+                "each one deliberately before trusting this manifest:",
+                file=sys.stderr,
+            )
+            for path in delta["removed"]:
+                print(f"  removed: {path}", file=sys.stderr)
     return 0
 
 

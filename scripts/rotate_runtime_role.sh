@@ -33,7 +33,7 @@ cleanup() {
   # Traps reset first, as in every sibling script: a second interrupt during
   # the compose stop below would otherwise re-enter this handler and abandon
   # the locks it exists to release.
-  trap - EXIT HUP INT TERM
+  trap - EXIT HUP INT QUIT TERM
   # Only a lock this run actually acquired is this run's to release — the
   # snapshot and lock directory belong to whoever holds them.
   if [ "$ROTATION_LOCK_OWNED" -eq 1 ]; then
@@ -52,7 +52,7 @@ cleanup() {
 # Armed before either lock is taken: an interrupt in the window between
 # acquiring a lock and installing the handler would otherwise leak it.
 trap cleanup EXIT
-trap 'exit 1' HUP INT TERM
+trap 'exit 1' HUP INT QUIT TERM
 
 if [ -n "${OPENCLAW_LIFECYCLE_LOCK_TOKEN:-}" ]; then
   if [ ! -f "$LIFECYCLE_LOCK_DIR/owner" ] || \

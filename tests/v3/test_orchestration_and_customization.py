@@ -18,9 +18,12 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 
 # Importing a script byte-compiles it into scripts/__pycache__, which
-# `verify_release.py --pristine` then reports as an undeclared file. Suppress it
-# the way tests/v3/test_doc_tree_consistency.py does, so this suite stays safe
-# to run even when someone omits `-B`.
+# `verify_release.py --pristine` then reports as an undeclared file. Suppress
+# that one source of debris, the way tests/v3/test_doc_tree_consistency.py
+# does. This does NOT make the suite safe to run without `-B`: the runner
+# still caches the test modules themselves into tests/v3/__pycache__, which
+# fails --pristine just as loudly. Run the suites with `-B`, as the offline
+# gate does.
 sys.dont_write_bytecode = True
 
 import check_env  # noqa: E402

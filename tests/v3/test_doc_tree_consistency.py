@@ -26,8 +26,10 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 # Importing a module by path byte-compiles it into scripts/__pycache__, which
 # `verify_release.py --pristine` then reports as an undeclared file. Suppress
-# it the way scripts/validate_workflows.py does, so this suite stays safe to
-# run even when someone omits `-B`.
+# that one source of debris, the way scripts/validate_workflows.py does. This
+# does NOT make the suite safe to run without `-B`: the runner still caches
+# the test modules themselves into tests/v3/__pycache__, which fails
+# --pristine just as loudly. Run the suites with `-B`, as the offline gate does.
 sys.dont_write_bytecode = True
 
 import check_env  # noqa: E402
@@ -853,7 +855,30 @@ class LifecycleLockOwnerFileTests(unittest.TestCase):
             for variable in re.findall(
                 rf'^([A-Z_]+)="{re.escape(self.LOCK_PATH)}"$', text, re.MULTILINE
             ):
-                for match in re.finditer(rf'mkdir "\${variable}"', text):
+                # Tolerate options on the mkdir. Keying on the bare
+                # `mkdir "$VAR"` spelling meant respelling an acquisition as
+                # `mkdir -m 0700 "$VAR"` silently removed that script from BOTH
+                # tests -- the set test failed naming the wrong remedy, and the
+                # ordering test simply stopped covering it.
+                #
+                # The option run consumes any unquoted token, not only tokens
+                # that start with `-`: `(?:\s+-\S+)*` broke on the detached
+                # argument in `mkdir -m 0700 "$VAR"`, i.e. on the one spelling
+                # the comment above offers as the reason for widening. `[ \t]`
+                # rather than `\s` keeps the run on the mkdir's own line, so an
+                # unrelated `mkdir` earlier in the file cannot reach forward
+                # across newlines and manufacture a match.
+                matches = list(
+                    re.finditer(rf'mkdir(?:[ \t]+[^"\s]+)*[ \t]+"\${variable}"', text)
+                )
+                if not matches:
+                    raise AssertionError(
+                        f"scripts/{script.name} assigns {variable} to "
+                        f"{self.LOCK_PATH} but this test can no longer see it "
+                        "create the directory. The detector has drifted -- widen "
+                        "it rather than letting the script leave coverage."
+                    )
+                for match in matches:
                     found.append((script.name, variable, text, match.start(), match.end()))
         return found
 
@@ -870,6 +895,74 @@ class LifecycleLockOwnerFileTests(unittest.TestCase):
             "change rather than relaxing this test.",
         )
 
+    def test_operations_names_every_script_that_takes_the_lifecycle_lock(self):
+        """The document is the comparand, not a literal restated in this file.
+
+        The sibling test pins the acquiring scripts against a set written here,
+        which proves the scripts agree with *this test* and says nothing about
+        docs/OPERATIONS.md — the document the class is named for and whose
+        stale-lock procedure is written for exactly those scripts. Both
+        enumerations in that document are read here instead: the prose sentence
+        that opens the lifecycle-lock paragraph, and the `ps | grep -E` recovery
+        command that tells the operator which processes to look for.
+        """
+        operations = (ROOT / "docs/OPERATIONS.md").read_text(encoding="utf-8")
+        acquiring = {name for name, _, _, _, _ in self._acquisitions()}
+
+        prose_names = {
+            "Backup": "backup.sh",
+            "restore": "restore.sh",
+            "update": "update.sh",
+            "bootstrap": "bootstrap.sh",
+            "direct role rotation": "rotate_runtime_role.sh",
+        }
+        sentence_start = operations.find("share `/tmp/openclaw-lead-research-v3-lifecycle.lock`")
+        self.assertNotEqual(
+            sentence_start, -1,
+            "docs/OPERATIONS.md no longer contains the lifecycle-lock sentence "
+            "this test reads; restore it or update the anchor",
+        )
+        # Bound the lookback at the paragraph, not at a character count. A fixed
+        # 240-character window reached 179 characters back into the PREVIOUS
+        # paragraph, so a script name occurring there satisfied this check for a
+        # sentence that no longer named it: dropping `restore` from the
+        # lifecycle-lock sentence while the paragraph above happened to mention
+        # a restore left the whole suite green.
+        paragraph_start = operations.rfind("\n\n", 0, sentence_start) + 2
+        sentence = operations[paragraph_start:sentence_start]
+        named = {script for word, script in prose_names.items() if word in sentence}
+        self.assertEqual(
+            named, acquiring,
+            "docs/OPERATIONS.md's lifecycle-lock sentence names "
+            f"{sorted(named)} but the scripts that actually take the lock are "
+            f"{sorted(acquiring)}. Update the sentence.",
+        )
+
+        scan = re.search(r"grep -E 'scripts/\(([^)]+)\)\\?\.sh'", operations)
+        if scan is None:
+            self.fail(
+                "docs/OPERATIONS.md no longer contains the `ps | grep -E "
+                "'scripts/(...)\\.sh'` recovery scan; an operator clearing a stale "
+                "lock has no way to check for a live holder"
+            )
+        scanned = {f"{name}.sh" for name in scan.group(1).split("|")}
+        # migrate.sh does not take this lock, but it mutates the production
+        # database, so the scan that decides whether a lock may be cleared must
+        # see it. Everything that takes the lock must be there too.
+        self.assertTrue(
+            acquiring <= scanned,
+            "docs/OPERATIONS.md's live-process scan does not look for "
+            f"{sorted(acquiring - scanned)}, so an operator would read a running "
+            "lifecycle script as absent and clear a live lock",
+        )
+        self.assertIn(
+            "migrate.sh", scanned,
+            "docs/OPERATIONS.md's live-process scan omits migrate.sh, the script "
+            "that applies migrations to the production database; a run in "
+            "progress would be invisible to the operator deciding whether to "
+            "clear a lock",
+        )
+
     def test_every_lifecycle_lock_acquisition_names_its_holder_after_the_mkdir(self):
         acquisitions = self._acquisitions()
         self.assertTrue(
@@ -880,21 +973,27 @@ class LifecycleLockOwnerFileTests(unittest.TestCase):
         for name, variable, text, start, end in acquisitions:
             with self.subTest(script=name):
                 owner_write = f'>"${variable}/owner"'
-                self.assertIn(
-                    owner_write, text[end:end + 400],
+                # Decide between the two failure modes BEFORE asserting. Written
+                # as assertIn-then-assertNotIn, a reordered acquisition failed on
+                # the first assertion, so the second one's message -- the only
+                # text that explains the ordering rule -- could never print.
+                after = owner_write in text[end:end + 400]
+                before = owner_write in text[:start]
+                if before and not after:
+                    self.fail(
+                        f"scripts/{name} writes {owner_write} before it creates the "
+                        "lock directory. docs/OPERATIONS.md explains a missing "
+                        "`owner` file by that write coming second; with this order "
+                        "the file can no longer be missing for the documented reason."
+                    )
+                self.assertTrue(
+                    after,
                     f"scripts/{name} creates the lifecycle lock but does not write "
                     f"{owner_write} within 400 characters after the mkdir. "
                     "docs/OPERATIONS.md tells the operator that a crash-left lock "
                     "names its holder in `owner`, and reads a missing `owner` file "
                     "as an acquisition interrupted between those two steps; an "
                     "acquisition that never writes one breaks both readings.",
-                )
-                self.assertNotIn(
-                    owner_write, text[:start],
-                    f"scripts/{name} writes {owner_write} before it creates the "
-                    "lock directory. docs/OPERATIONS.md explains a missing `owner` "
-                    "file by that write coming second; with this order the file "
-                    "can no longer be missing for the documented reason.",
                 )
 
 
@@ -997,6 +1096,28 @@ class HostUtilityEnumerationTests(unittest.TestCase):
         )
 
 
+# The scripts the documented-invocation scan reaches today, pinned as a set so
+# both directions of drift fail: a script that stops matching takes its
+# documented flags out of coverage with it, and a newly documented script has to
+# be added deliberately.
+COVERED_INVOCATION_SCRIPTS = frozenset({
+    "backup.sh",
+    "bootstrap.sh",
+    "build_release_manifest.py",
+    "check_customization.py",
+    "check_env.sh",
+    "init_customization.py",
+    "record_images.py",
+    "render_channel_config.py",
+    "restore.sh",
+    "run_g4.py",
+    "run_g6_image.py",
+    "update.sh",
+    "verify_offline.py",
+    "verify_release.py",
+})
+
+
 class DocumentedInvocationTests(unittest.TestCase):
     """Commands the documents tell the operator to run must be runnable.
 
@@ -1047,21 +1168,32 @@ class DocumentedInvocationTests(unittest.TestCase):
                 flat = re.sub(r"\\\n\s*", " ", block)
                 for match in self.INVOCATION.finditer(flat):
                     script, tail = match.group(1), match.group(2) or ""
-                    entry = found.setdefault(script, {"flags": set(), "docs": set()})
-                    entry["flags"].update(self.LONG_FLAG.findall(tail))
-                    entry["docs"].add(path.relative_to(ROOT).as_posix())
+                    entry = found.setdefault(script, {"flags": {}, "docs": set()})
+                    relative = path.relative_to(ROOT).as_posix()
+                    # Flags are keyed by the document that wrote them. Keeping a
+                    # flat set meant the offender line named every document that
+                    # invokes the script, sending the reader to files that do
+                    # not contain the flag.
+                    for flag in self.LONG_FLAG.findall(tail):
+                        entry["flags"].setdefault(flag, set()).add(relative)
+                    entry["docs"].add(relative)
         return found
 
     def test_every_documented_script_exists(self):
         found = self.documented_invocations()
-        # 14 distinct scripts are reached today, .py and .sh together. The floor
-        # is set just under that because the pattern shrinking silently is the
-        # defect this guard exists for: the pre-fix pattern admitted `.py` names
-        # only and saw 9, while its own docstring called the scan exact.
-        self.assertGreaterEqual(
-            len(found), 12,
-            f"the documented-invocation scan reaches only {len(found)} scripts; "
-            "it has stopped matching a form the documents use",
+        # The covered SET, not a floor. A floor two below the measured world let
+        # a reworded path prefix drop a script -- and any nonexistent flag it
+        # documented -- out of scope while the guard stayed green. This is the
+        # same shift COVERED_SKILL_COUNT_DOCUMENTS and OFFLINE_TOTAL_CLAIM_SITES
+        # already make: pin identity, so both directions of drift fail here.
+        self.assertEqual(
+            set(found), COVERED_INVOCATION_SCRIPTS,
+            "the documented-invocation scan's reach moved: "
+            f"gone {sorted(COVERED_INVOCATION_SCRIPTS - set(found))}, "
+            f"new {sorted(set(found) - COVERED_INVOCATION_SCRIPTS)}. A script "
+            "that silently leaves this set takes its documented flags out of "
+            "coverage with it; update the constant only when the change is "
+            "deliberate.",
         )
         missing = {
             script: sorted(entry["docs"])
@@ -1080,10 +1212,25 @@ class DocumentedInvocationTests(unittest.TestCase):
             if not source_path.is_file():
                 continue  # reported by the sibling test
             source = source_path.read_text(encoding="utf-8")
-            for flag in sorted(entry["flags"]):
-                if f'"{flag}"' not in source and f"'{flag}'" not in source:
+            if script.endswith(".py"):
+                # Build the oracle from the parser, not the file. A quoted-substring
+                # search over the whole source also matched a flag the script merely
+                # FORWARDS to a subprocess, so `verify_offline.py --pristine` -- which
+                # that script does not accept and which exits 2 -- was invisible here.
+                accepted = set(re.findall(r'add_argument\(\s*["\'](--[A-Za-z][\w-]*)', source))
+                accepted.add("--help")
+            else:
+                # Shell scripts need not quote the flags they parse, so the
+                # substring oracle stays for them; see the class docstring.
+                accepted = None
+            for flag, documents in sorted(entry["flags"].items()):
+                bad = (
+                    flag not in accepted if accepted is not None
+                    else (f'"{flag}"' not in source and f"'{flag}'" not in source)
+                )
+                if bad:
                     offenders.setdefault(script, []).append(
-                        f"{flag} (documented in {', '.join(sorted(entry['docs']))})"
+                        f"{flag} (documented in {', '.join(sorted(documents))})"
                     )
         self.assertEqual(
             offenders, {},

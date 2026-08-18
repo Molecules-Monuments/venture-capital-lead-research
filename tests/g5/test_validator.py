@@ -12,6 +12,26 @@ from unittest import mock
 
 PACKAGE = Path(__file__).resolve().parents[2]
 VALIDATOR_PATH = PACKAGE / "scripts/validate_workflows.py"
+
+# The reviewed workflow-lane wrapper allowlist, written out here INDEPENDENTLY of
+# the validator. `validate_workflows.WRAPPERS` is `frozenset(WRAPPER_COMMAND_SETS)`,
+# so comparing it against `_wrapper_command_sets()` compares the key set of one
+# dict with the key set of the same dict and cannot fail. Measured: with that as
+# the only scope check, adding `/workspaces/vc-chief/vc/bin/vcops-operator` to
+# WRAPPER_COMMAND_SETS passed the ENTIRE offline matrix with zero new failures,
+# and the validator then certified the operator lane inside a workflow — a
+# wrapper whose own header says "This path is for direct operator use and must
+# never appear in exec approvals".
+#
+# Admitting an executable to the workflow lane is a reviewed change. Editing this
+# set is how that review is recorded; if a genuine third wrapper is added, this
+# line changes in the same commit as the validator.
+REVIEWED_WORKFLOW_WRAPPERS = frozenset({
+    "/workspaces/vc-chief/vc/bin/agent/vcops",
+    "/workspaces/vc-chief/vc/bin/vcops-workflow",
+})
+# Must never be admitted: it sets VCOPS_OPERATOR_MODE=1.
+OPERATOR_ONLY_WRAPPER = "/workspaces/vc-chief/vc/bin/vcops-operator"
 SPEC = importlib.util.spec_from_file_location("validate_g5_tests", VALIDATOR_PATH)
 assert SPEC is not None and SPEC.loader is not None
 g5 = importlib.util.module_from_spec(SPEC)
@@ -29,6 +49,21 @@ assert SKILLS_SPEC is not None and SKILLS_SPEC.loader is not None
 skills = importlib.util.module_from_spec(SKILLS_SPEC)
 sys.modules[SKILLS_SPEC.name] = skills
 SKILLS_SPEC.loader.exec_module(skills)
+
+# Load the reviewed runtime module independently of the validator, the same way
+# tests/g5/test_vcrun.py loads it for PREFERENCE_VALUES. The wrapper-scope test
+# below claims the validator derives its per-wrapper command sets from vcops;
+# reading those sets back through the validator alone compared the derivation
+# with itself. Measured: replacing the derivation with a set carrying two extra
+# operator-lane commands (`fact-add`, `source-add`) moved both sides of every
+# comparison together, the whole file still reported `Ran 18 tests ... OK`, and
+# the mutant validator certified `vcops-workflow fact-add` with zero findings.
+VCOPS_SPEC = importlib.util.spec_from_file_location(
+    "vcops_g5_validator_tests", PACKAGE / "workspaces/vc-chief/vc/bin/vcops.py"
+)
+assert VCOPS_SPEC is not None and VCOPS_SPEC.loader is not None
+vcops = importlib.util.module_from_spec(VCOPS_SPEC)
+VCOPS_SPEC.loader.exec_module(vcops)
 
 
 class WorkflowValidatorTests(unittest.TestCase):
@@ -69,6 +104,139 @@ class WorkflowValidatorTests(unittest.TestCase):
         )
         self.assertIn("command_unknown", unknown_command)
         self.assertIn("option_unknown", unknown_option)
+
+    def wrapper_step(self, wrapper: str, command: str) -> set[str]:
+        """Validate a one-step workflow whose only step runs `wrapper command`."""
+        return self.validate(
+            f"name: fixture\nsteps:\n  - id: probe\n    run: {wrapper} {command}\n    timeout_ms: 1000\n"
+        )
+
+    def test_wrapper_scope_is_derived_from_the_runtime_command_sets(self) -> None:
+        """`command_wrapper_scope` must cover exactly what the wrapper's mode refuses.
+
+        Each wrapper `exec`s vcops with one mode flag, and vcops refuses any
+        command outside that mode's own set. The parser-wide subcommand
+        inventory is therefore not the world a workflow step can reach:
+        validating against the parser alone accepted every command in the gap
+        between the two, `data-erase-lead` included. Assert the covered set by
+        identity against the runtime's own sets rather than spot-checking
+        members, so a command that later moves between the sets — or a
+        derivation quietly replaced by a hardcoded list — fails here. The
+        second half of that claim rests entirely on the vcops identity check
+        inside the loop: without it both sides of the enforcement comparison
+        are read from the validator and drift together.
+        """
+        parser_commands = set(g5._command_parsers(self.parser))
+        permitted = g5._wrapper_command_sets()
+        # SCOPE. Which executables may appear in a workflow step at all, against
+        # an independent literal. `WRAPPERS` is derived from
+        # `WRAPPER_COMMAND_SETS`, so the derivation check below cannot answer this
+        # question: both of its sides are the key set of the same dict.
+        self.assertEqual(
+            REVIEWED_WORKFLOW_WRAPPERS, frozenset(g5.WRAPPERS),
+            "the workflow-lane wrapper allowlist changed. Admitting an executable "
+            "here lets a workflow step run it under the reviewed lane, so it is a "
+            "reviewed change: update REVIEWED_WORKFLOW_WRAPPERS in the same commit, "
+            "and never admit the operator wrapper, which sets VCOPS_OPERATOR_MODE=1",
+        )
+        self.assertNotIn(
+            OPERATOR_ONLY_WRAPPER, g5.WRAPPERS,
+            "the operator wrapper must never be reachable from a workflow step",
+        )
+        for wrapper in sorted(REVIEWED_WORKFLOW_WRAPPERS | {OPERATOR_ONLY_WRAPPER}):
+            # Every path named above must be a shipped executable, so this test
+            # cannot be satisfied by a literal that no longer exists.
+            shipped = PACKAGE / wrapper.lstrip("/")
+            self.assertTrue(shipped.is_file(), f"{wrapper} is not a shipped file")
+            self.assertTrue(
+                shipped.stat().st_mode & 0o111, f"{wrapper} is not executable"
+            )
+        # DERIVATION. Each admitted wrapper must resolve to a runtime command set.
+        # This is a real check of `_wrapper_command_sets()`'s completeness over the
+        # mapping, and it is NOT a scope check; keep both.
+        self.assertEqual(
+            set(permitted), set(g5.WRAPPERS),
+            "every reviewed wrapper must resolve to a runtime command set",
+        )
+        for wrapper in sorted(permitted):
+            attribute = g5.WRAPPER_COMMAND_SETS[wrapper]
+            # Pin the derivation to vcops before using it. `outside` and
+            # `fired` below are both computed from `permitted`, so a validator
+            # that answered from a stale hardcoded copy moved both sides
+            # together and still balanced -- this assertion is the only thing
+            # in the test that the runtime, rather than the validator, decides.
+            # assertEqual on two frozensets dispatches to assertSetEqual, which
+            # reports only the differing members, not both whole sets.
+            # Name a rename before comparing: with the attribute gone the
+            # comparison would be against the empty set and would print all
+            # thirty-odd command names instead of the one fact that matters.
+            self.assertTrue(
+                hasattr(vcops, attribute),
+                f"vcops no longer defines {attribute}, the set {wrapper}'s "
+                "wrapper-scope rule is derived from",
+            )
+            runtime_set = frozenset(getattr(vcops, attribute, ()))
+            self.assertEqual(
+                permitted[wrapper], runtime_set,
+                f"{wrapper}'s accepted command set is no longer vcops.{attribute} "
+                "itself; the validator gates the workflow lane against a set the "
+                "runtime does not enforce",
+            )
+            outside = parser_commands - permitted[wrapper]
+            self.assertTrue(
+                outside,
+                f"vcops.{attribute} covers the whole parser, so this test would "
+                f"prove nothing about {wrapper}",
+            )
+            fired = {
+                command
+                for command in sorted(parser_commands)
+                if "command_wrapper_scope" in self.wrapper_step(wrapper, command)
+            }
+            uncovered = sorted(outside - fired)
+            over_reached = sorted(fired - outside)
+            self.assertFalse(
+                bool(uncovered),
+                f"{wrapper} accepted {uncovered}, which vcops.{attribute} does not "
+                "permit and the runtime refuses",
+            )
+            self.assertFalse(
+                bool(over_reached),
+                f"{wrapper} rejected {over_reached}, which vcops.{attribute} permits",
+            )
+
+    def test_operator_lane_commands_are_rejected_in_the_workflow_lane(self) -> None:
+        """Named exemplars of each gap set, plus a positive control per wrapper."""
+        parser_commands = set(g5._command_parsers(self.parser))
+        permitted = g5._wrapper_command_sets()
+        agent = "/workspaces/vc-chief/vc/bin/agent/vcops"
+        workflow = "/workspaces/vc-chief/vc/bin/vcops-workflow"
+        for wrapper, command in ((workflow, "data-erase-lead"), (agent, "workflow-start")):
+            with self.subTest(wrapper=wrapper, command=command):
+                self.assertTrue(
+                    command in parser_commands,
+                    f"the probe no longer names a vcops command: {command}",
+                )
+                self.assertFalse(
+                    command in permitted[wrapper],
+                    f"{command} is now inside {g5.WRAPPER_COMMAND_SETS[wrapper]}, so this "
+                    "probe no longer exercises the wrapper-scope rule",
+                )
+                self.assertIn(
+                    "command_wrapper_scope", self.wrapper_step(wrapper, command),
+                    f"{wrapper} {command} is refused by vcops at runtime, so the gate must "
+                    "not certify a workflow that contains it",
+                )
+        for wrapper, command in ((workflow, "source-scan"), (agent, "lead-show")):
+            with self.subTest(wrapper=wrapper, command=command):
+                self.assertTrue(
+                    command in permitted[wrapper],
+                    f"the positive control no longer names a command {wrapper} permits: {command}",
+                )
+                self.assertNotIn(
+                    "command_wrapper_scope", self.wrapper_step(wrapper, command),
+                    f"{wrapper} {command} is inside the wrapper's own command set and must pass",
+                )
 
     def test_shell_and_raw_argument_injection_are_rejected(self) -> None:
         command_substitution = self.validate(
@@ -364,6 +532,59 @@ steps:
         )
         self.assertNotIn("shell_operator", quoted_literal)
         self.assertNotIn("raw_env", quoted_literal)
+
+    def test_pathname_and_tilde_expansion_are_rejected(self) -> None:
+        """Word expansions the operator and `$VAR` scans both miss.
+
+        Glob is the sharper of the two because it changes the argv WORD COUNT
+        rather than a word's value: `--path "$LOBSTER_ARG_DOCUMENT_PATH"*` puts
+        the reference inside a double-quoted region, so `arg_unquoted` certifies
+        it as unsplittable, and the trailing unquoted `*` hands the whole word
+        back to pathname expansion anyway. Tilde is the same class one step
+        earlier: `sh` rewrites `~/x.pdf` to a home directory before vcops sees
+        argv. Both are inert inside either quote style, so the rules scan
+        shell-active text and an ordinary quoted argument stays usable.
+        """
+        workflow = "/workspaces/vc-chief/vc/bin/vcops-workflow"
+        step = "name: fixture\nsteps:\n  - id: probe\n    run: '{command}'\n    timeout_ms: 1000\n"
+        for command, code in (
+            (f"{workflow} document-preview --path /inbox/*", "glob_expansion"),
+            (f'{workflow} document-preview --path "$LOBSTER_ARG_DOCUMENT_PATH"*', "glob_expansion"),
+            (f"{workflow} document-preview --path /inbox/report?.pdf", "glob_expansion"),
+            (f"{workflow} document-preview --path /inbox/[a-z].pdf", "glob_expansion"),
+            (f"{workflow} document-preview --path ~/x.pdf", "tilde_expansion"),
+            (f"{workflow} document-preview --path ~node/x.pdf", "tilde_expansion"),
+        ):
+            with self.subTest(command=command):
+                codes = self.validate(step.format(command=command))
+                self.assertNotIn(
+                    "yaml_parse", codes,
+                    f"the fixture for {command} did not parse, so the rule was never exercised",
+                )
+                self.assertIn(
+                    code, codes,
+                    f"the shell expands this word before vcops sees argv: {command}",
+                )
+        # Positive controls. The first is the spelling every shipped `--path`
+        # step uses; the second is an ordinary reviewed argument whose `*` and
+        # `~` are quoted literals the shell cannot act on. Either being flagged
+        # makes the rules unusable, which is how a rule gets widened away. The
+        # second is written with the `~` preceded by a space inside the quotes
+        # on purpose: a rule that scanned the raw command text instead of the
+        # shell-active text would pass a control spelled `"~a.example"`, whose
+        # preceding byte is a quote, and fail only on this one.
+        for command in (
+            f'{workflow} document-preview --path "$LOBSTER_ARG_DOCUMENT_PATH"',
+            f'{workflow} company-upsert --name "A*B ~ C"',
+        ):
+            with self.subTest(command=command):
+                codes = self.validate(step.format(command=command))
+                self.assertNotIn(
+                    "yaml_parse", codes,
+                    f"the fixture for {command} did not parse, so the control proves nothing",
+                )
+                self.assertNotIn("glob_expansion", codes, f"quoted text cannot glob: {command}")
+                self.assertNotIn("tilde_expansion", codes, f"quoted text cannot tilde-expand: {command}")
 
     def test_release_workflows_have_no_static_findings(self) -> None:
         for path in sorted(g5.WORKFLOWS.glob("*.lobster")):
