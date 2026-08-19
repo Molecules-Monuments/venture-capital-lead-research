@@ -159,17 +159,17 @@ PACKAGE_INBOX="$(CDPATH= cd -- "$PACKAGE_DIR/inbox" && pwd -P)"
 # Byte-exact, and deliberately NOT `case "$PACKAGE_INBOX" in *[[:cntrl:]]*)`.
 # A `case` pattern is matched in the script's own locale and cannot be scoped to
 # C, and the classification of a byte varies by locale AND by platform.
-# Measured across both shells and both locales, and the variance is real in
-# BOTH directions: bash refuses a CJK path under ISO-8859-15 and accepts it
-# under UTF-8, while dash accepts it under both; and a raw 0x97 is refused by
-# bash under UTF-8 but accepted by dash. These scripts are `#!/bin/sh`, so on
-# Debian they run under dash and the CJK case does NOT reproduce there -- an
-# earlier version of this comment claimed it did, transplanting a measurement
-# taken with `find` (which the inbox probe below uses, and where it does hold)
-# onto a `case` pattern. What remains true, and is reason enough, is that the
-# verdict depends on the interpreter and the locale at all: an operator running
-# `bash scripts/backup.sh`, or a host whose /bin/sh is bash, gets a different
-# answer for the same path. Deleting the bytes and comparing is locale-proof:
+# The verdict of `case "$p" in *[[:cntrl:]]*)` depends on the interpreter, the
+# locale AND the platform, which is reason enough not to use it here. Measured,
+# with each claim tied to where it was taken: on Debian bookworm, dash accepts a
+# CJK path and a raw 0x97 under every locale tried, and bash refuses the CJK
+# path under ISO-8859-15 while accepting it under UTF-8; on macOS 15.7, /bin/sh
+# refuses a raw 0x97 under en_US.UTF-8 and accepts it under ISO-8859-15. Two
+# earlier versions of this comment each over-generalised one of those rows to a
+# platform where it does not hold -- the first transplanting a `find`
+# measurement (where it DOES hold, which is why the probe below uses LC_ALL=C)
+# onto a `case`, the second dropping the macOS qualifier. Deleting the bytes and
+# comparing is locale-proof and platform-proof:
 # `tr` under LC_ALL=C sees exactly 0x01-0x1F and 0x7F. Verified identical
 # verdicts under en_US.UTF-8, ca_FR.ISO8859-15 and C: plain, CJK and raw-0x97
 # paths accepted; newline and tab refused.
@@ -328,7 +328,7 @@ inbox_reject=""
 # the recovery point would not contain. Stopping here is pre-quiesce and
 # reversible; discovering it during the archive is neither.
 inbox_scan_output=""
-if ! inbox_scan_output="$(LC_ALL=C find "$PACKAGE_INBOX" -mindepth 1 -name '*[[:cntrl:]]*' -print 2>&1)"; then
+if ! inbox_scan_output="$(LC_ALL=C find "$PACKAGE_INBOX" -mindepth 1 -name '*[[:cntrl:]]*' -print 2>/dev/null)"; then
   # find's OWN diagnostic, not a generic sentence. Every other class in this
   # guard names the offending entry, and docs/RUNBOOK.md section 8 promises the
   # operator exactly that; discarding stderr made this the one refusal that
@@ -345,7 +345,16 @@ if ! inbox_scan_output="$(LC_ALL=C find "$PACKAGE_INBOX" -mindepth 1 -name '*[[:
   # DIRECTORIES only. What is certainly true, and is reason enough to stop
   # pre-quiesce, is that the five checks below were not applied to every entry,
   # so this run cannot certify the inbox at all.
-  inbox_reject="the inbox could not be fully enumerated, so the checks below were not applied to every entry -- correct the permissions rather than removing anything: ${inbox_scan_output}"
+  #
+  # stderr is DISCARDED, deliberately. An earlier version merged it with `2>&1`
+  # so the refusal could name the offending path -- but this probe's stdout is
+  # BY CONSTRUCTION only names matching `*[[:cntrl:]]*`, so merging printed raw
+  # control bytes and terminal escape sequences from operator-supplied filenames
+  # straight into the operator's terminal. docs/RUNBOOK.md section 8 says that
+  # must never happen for this class, and prescribes exactly what the message
+  # below does instead: hand over the command, so the operator sees the failure
+  # in their own terminal on their own terms.
+  inbox_reject="the inbox could not be fully enumerated, so the checks below were not applied to every entry; re-run this to see which entry and why: LC_ALL=C find $PACKAGE_INBOX -mindepth 1"
 elif [ -n "$inbox_scan_output" ]; then
   inbox_reject="an entry name holds a control character; list them with: LC_ALL=C find $PACKAGE_INBOX -mindepth 1 -name '*[[:cntrl:]]*'"
 fi
@@ -424,7 +433,7 @@ HARDLINK_SCAN
 fi
 if [ -n "$inbox_reject" ]; then
   printf '%s\n' "package inbox holds an entry a recovery archive cannot represent: $inbox_reject" >&2
-  echo "remove or relocate it before backing up; nothing has been stopped." >&2
+  echo "correct it before backing up; nothing has been stopped." >&2
   exit 1
 fi
 

@@ -2243,10 +2243,10 @@ class RecoveryLifecycleContractTests(unittest.TestCase):
                 if line.strip() and not line.strip().startswith("#")
             ]
 
-        authority_body = code_lines("backup.sh", "remove or relocate it before backing up")
+        authority_body = code_lines("backup.sh", "correct it before backing up")
         mirror_body = [
             line.replace("before updating", "before backing up")
-            for line in code_lines("update.sh", "remove or relocate it before updating")
+            for line in code_lines("update.sh", "correct it before updating")
         ]
         if authority_body != mirror_body:
             difference = "\n".join(
@@ -2335,8 +2335,8 @@ class RecoveryLifecycleContractTests(unittest.TestCase):
             return text[start:cursor]
 
         guards = {
-            "backup.sh": guard_source("backup.sh", "remove or relocate it before backing up"),
-            "update.sh": guard_source("update.sh", "remove or relocate it before updating"),
+            "backup.sh": guard_source("backup.sh", "correct it before backing up"),
+            "update.sh": guard_source("update.sh", "correct it before updating"),
         }
         for name, source in guards.items():
             self.assertIn("[[:cntrl:]]", source, f"{name}: the guard lost its control-character probe")
@@ -2657,13 +2657,30 @@ class RecoveryLifecycleContractTests(unittest.TestCase):
                         f"{name} refused a failed enumeration without telling the "
                         f"operator the deployment is untouched: {output}",
                     )
+                    # A WAY TO FIND IT, not the bytes. The first version of this
+                    # assertion demanded find's diagnostic appear in the message,
+                    # and satisfying it required merging the probe's stdout --
+                    # which by construction holds names matching
+                    # `*[[:cntrl:]]*` -- into text printed to the operator's
+                    # terminal. docs/RUNBOOK.md section 8 forbids exactly that
+                    # for this class and prescribes handing over the command
+                    # instead, which is what the guard now does. So assert the
+                    # contract the document actually states.
                     self.assertIn(
-                        "Permission denied", output,
-                        f"{name} discarded find's own diagnostic, so the refusal "
-                        f"names neither the offending entry nor a way to find it -- "
-                        f"the only class in this guard that identifies nothing. "
-                        f"docs/RUNBOOK.md promises the refusal names the entry: "
-                        f"{output}",
+                        "find ", output,
+                        f"{name} refused a failed enumeration without giving the "
+                        f"operator any way to locate the entry -- neither naming "
+                        f"it nor handing over a command that would. This is the "
+                        f"one class whose name cannot safely be quoted, so the "
+                        f"command IS the remedy docs/RUNBOOK.md section 8 "
+                        f"promises: {output}",
+                    )
+                    self.assertNotIn(
+                        "\x01", output,
+                        f"{name} printed a raw control byte from an inbox entry "
+                        f"name into the operator's terminal. That is the failure "
+                        f"docs/RUNBOOK.md section 8 says must never happen for "
+                        f"this class: {output!r}",
                     )
 
         # The unreadable-inbox class, which no fixture above can plant: it is a
