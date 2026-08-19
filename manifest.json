@@ -210,8 +210,8 @@
     {
       "executable": false,
       "path": "docs/PRODUCTION_READINESS.md",
-      "sha256": "d7831adbdcbeb3566621b145caa42b97bf07bb83ffb8032fc30b196c8bace31c",
-      "size": 15604
+      "sha256": "65889b02e23f333dcfbf0f64d50c59bdb903a0d7199f063c0dbc6f500e92c007",
+      "size": 15598
     },
     {
       "executable": false,
@@ -234,8 +234,8 @@
     {
       "executable": false,
       "path": "docs/V3_RELEASE_EVIDENCE.md",
-      "sha256": "9b94ab9cf7c045a88aaf495402a0bda3428c66fc5170ee941b54e3a2e05d86a5",
-      "size": 13983
+      "sha256": "b25af991473aa78fbb5d01a4b68bd1fa416d9ef1d9545549551f310c50ffbb33",
+      "size": 13982
     },
     {
       "executable": false,
@@ -246,7 +246,7 @@
     {
       "executable": false,
       "path": "evals/V3_EVAL_RESULTS.md",
-      "sha256": "545eeea77970c2f5b63739dc442065bac5fc83fc6ea5fc9b75bc16186663ea13",
+      "sha256": "6a51f587ab20bfbc08fdabf890ccac5819280da72cc5881eb2529ec0b3564366",
       "size": 11138
     },
     {
@@ -534,8 +534,8 @@
     {
       "executable": true,
       "path": "scripts/backup.sh",
-      "sha256": "ab1d780a404f46d94886fa81cb479e2e74edcc98ed46b0e719be1d1b86c3bb6a",
-      "size": 29348
+      "sha256": "010d80b1180ea44f9118aec48140de9b95e1ccdc725a485094ca1749e9df4732",
+      "size": 29930
     },
     {
       "executable": true,
@@ -648,8 +648,8 @@
     {
       "executable": true,
       "path": "scripts/update.sh",
-      "sha256": "395c0a77ad2072aab9becf1ef06a0ef8afc209eb270695fa3488158035b77084",
-      "size": 24884
+      "sha256": "fad2230b93df4b14c4108d5aea2fc9b649f91a04d2665f5e4ec02c9f2403b2cd",
+      "size": 25466
     },
     {
       "executable": true,
@@ -828,8 +828,8 @@
     {
       "executable": false,
       "path": "tests/g7/test_recovery_lifecycle.py",
-      "sha256": "d35cc42f9c30e136ade4ee61fe8cc398b03f2349d587a20c57a8a40f9d7bbdfe",
-      "size": 182001
+      "sha256": "6f25544c2b9e6e9225a4e92c0a3c10c3ee1dcadacad783ef647dc3e17001e805",
+      "size": 183104
     },
     {
       "executable": false,
@@ -882,8 +882,8 @@
     {
       "executable": false,
       "path": "tests/v3/test_orchestration_and_customization.py",
-      "sha256": "644c8ba4ca786e0d8e1f92562682a0b0df6c213d0ce7fb54f1d73a74a7ec1448",
-      "size": 63888
+      "sha256": "7fd8741fcd547d2a9f1eba95531414bda9dd4efc25287b9b739050787bbba7bb",
+      "size": 44040
     },
     {
       "executable": false,
