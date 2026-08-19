@@ -534,8 +534,8 @@
     {
       "executable": true,
       "path": "scripts/backup.sh",
-      "sha256": "3800975e01833fa7118c1dcad988ca2ca4e62a8ebc17a086d21c6920ffae038f",
-      "size": 25468
+      "sha256": "d58249d8d558534e8e3d917f662157e9e427989306959916725a1e4e8b01c4c5",
+      "size": 27367
     },
     {
       "executable": true,
@@ -648,8 +648,8 @@
     {
       "executable": true,
       "path": "scripts/update.sh",
-      "sha256": "b1ec9f97a27648c638dba891f5a95505555e188b6aa63a577dc471e62f0b82f0",
-      "size": 21004
+      "sha256": "7fceaa5dba35930f274d1347e55930a6a621d3f05cd0c7815c982b275406fcf7",
+      "size": 22903
     },
     {
       "executable": true,
@@ -828,8 +828,8 @@
     {
       "executable": false,
       "path": "tests/g7/test_recovery_lifecycle.py",
-      "sha256": "b189e5bfdbb4a8c8496807ad17d379c170ccb0976f828efb21c2b60d54ce0de1",
-      "size": 164789
+      "sha256": "148bb43c557239760a29ea38a9c96d1d2eb7f2b584d1ccd4ca7186afc63470d5",
+      "size": 171911
     },
     {
       "executable": false,

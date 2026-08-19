@@ -156,18 +156,28 @@ if [ ! -d "$PACKAGE_DIR/inbox" ] || [ -L "$PACKAGE_DIR/inbox" ]; then
   exit 1
 fi
 PACKAGE_INBOX="$(CDPATH= cd -- "$PACKAGE_DIR/inbox" && pwd -P)"
-case "$PACKAGE_INBOX" in
-  *[[:cntrl:]]*)
-    echo "the package directory's own path contains a control character:" >&2
-    echo "  $PACKAGE_DIR" >&2
-    echo "Every entry this script enumerates is read from newline-delimited" >&2
-    echo "find output, so a newline in the package path splits each entry into" >&2
-    echo "fragments and the inbox check below would refuse every backup while" >&2
-    echo "naming paths that do not exist. Move the package to a path without" >&2
-    echo "control characters. Nothing has been stopped." >&2
-    exit 1
-    ;;
-esac
+# Byte-exact, and deliberately NOT `case "$PACKAGE_INBOX" in *[[:cntrl:]]*)`.
+# A `case` pattern is matched in the script's own locale and cannot be scoped to
+# C, and the classification of a byte varies by locale AND by platform.
+# Measured: a raw 0x97 in the path is refused by macOS /bin/sh under
+# en_US.UTF-8 and accepted under ca_FR.ISO8859-15, while on Debian the UTF-8
+# bytes of an ordinary CJK path name are C1 controls under ISO-8859-15 and are
+# refused. A package installed at a non-ASCII path would then have every backup
+# refused on a legal host. Deleting the bytes and comparing is locale-proof:
+# `tr` under LC_ALL=C sees exactly 0x01-0x1F and 0x7F. Verified identical
+# verdicts under en_US.UTF-8, ca_FR.ISO8859-15 and C: plain, CJK and raw-0x97
+# paths accepted; newline and tab refused.
+package_inbox_stripped="$(printf '%s' "$PACKAGE_INBOX" | LC_ALL=C tr -d '\001-\037\177')"
+if [ "$package_inbox_stripped" != "$PACKAGE_INBOX" ]; then
+  echo "the package directory's own path contains a control character:" >&2
+  echo "  $PACKAGE_DIR" >&2
+  echo "Every entry this script enumerates is read from newline-delimited" >&2
+  echo "find output, so a newline in the package path splits each entry into" >&2
+  echo "fragments and the inbox check below would refuse every backup while" >&2
+  echo "naming paths that do not exist. Move the package to a path without" >&2
+  echo "control characters. Nothing has been stopped." >&2
+  exit 1
+fi
 
 if [ -n "${OPENCLAW_LIFECYCLE_LOCK_TOKEN:-}" ]; then
   if [ ! -f "$LOCK_DIR/owner" ] || [ -L "$LOCK_DIR/owner" ] || \
@@ -297,11 +307,24 @@ inbox_reject=""
 # validator it exists to anticipate now agree on every host, whatever its
 # locale.
 #
-# Assigned on its own line, not tested inside `[ -n "$(...)" ]`: the test's own
-# exit status masks a `find` failure there, so an unreadable subtree read as a
-# clean inbox. As an assignment, `set -e` aborts on it.
-inbox_control_hits="$(LC_ALL=C find "$PACKAGE_INBOX" -mindepth 1 -name '*[[:cntrl:]]*' -print)"
-if [ -n "$inbox_control_hits" ]; then
+# The status is INSPECTED, not discarded and not left to `set -e`. Written as
+# `[ -n "$(find ...)" ]` the test's own exit status masks a find failure, so an
+# unreadable subtree read as a clean inbox. Written as a bare assignment,
+# `set -e` kills the script with nothing but find's stderr -- no class, no
+# "nothing has been stopped", and an unreadable directory under the inbox is a
+# state the two integrity checkers deliberately TOLERATE as ordinary operator
+# data, so it is reachable on a healthy deployment. Both are wrong. Inside an
+# `if` condition `set -e` is suspended, so the failure becomes a refusal with a
+# message like every other class.
+#
+# Refusing is the correct outcome, not merely the safe one: this script tars the
+# whole inbox into the recovery point, so a subtree it cannot read is a subtree
+# the recovery point would not contain. Stopping here is pre-quiesce and
+# reversible; discovering it during the archive is neither.
+inbox_control_hits=""
+if ! inbox_control_hits="$(LC_ALL=C find "$PACKAGE_INBOX" -mindepth 1 -name '*[[:cntrl:]]*' -print 2>/dev/null)"; then
+  inbox_reject="the inbox could not be fully enumerated (unreadable entry: not a permissions problem this script may skip, because whatever it cannot read it cannot archive); check directory permissions under $PACKAGE_INBOX"
+elif [ -n "$inbox_control_hits" ]; then
   inbox_reject="an entry name holds a control character; list them with: LC_ALL=C find $PACKAGE_INBOX -mindepth 1 -name '*[[:cntrl:]]*'"
 fi
 # Enumerate on its own line so `set -e` aborts when find itself fails; a
