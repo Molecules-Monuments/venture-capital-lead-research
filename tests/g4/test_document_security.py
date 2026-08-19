@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: 0BSD
+import importlib.util
 import json
 import hashlib
 import os
@@ -12,6 +13,7 @@ from pathlib import Path
 
 
 HERE = Path(__file__).resolve().parent
+SCRIPTS = HERE.parents[1] / "scripts"
 # document_cases.json carries only the environment bounds this suite injects.
 # The accepted/rejected inventory lives in the tests themselves as executable
 # assertions — a passive filename list here once drifted from the executed
@@ -566,25 +568,35 @@ class DocumentSecurityTests(unittest.TestCase):
 
         published = [item for item in self.quarantine.rglob("*") if item.is_file()]
         self.assertTrue(published, "nothing reached quarantine, so this proves nothing")
+
+        # Ask the validator, do not restate it. The rule lived in four places --
+        # vcops's sanitiser, both shell inbox guards, and this assertion -- each a
+        # separate copy of "no backslash, no control character, 255 bytes". Four
+        # copies of a rule drift; and the copy that matters is the one backup.sh
+        # actually runs, so run THAT one over what quarantine actually holds.
+        spec = importlib.util.spec_from_file_location(
+            "g4_recovery_archive_validator", SCRIPTS / "validate_recovery_archive.py"
+        )
+        assert spec is not None and spec.loader is not None
+        validator = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(validator)
+
         for item in published:
+            member = "quarantine/" + item.relative_to(self.quarantine).as_posix()
             with self.subTest(quarantined=item.name):
-                self.assertNotIn(
-                    "\\", item.name,
-                    f"quarantine holds {item.name!r}; validate_recovery_archive.py "
-                    f"refuses a member name containing a backslash, so backup.sh "
-                    f"would fail on this volume from now on",
-                )
-                self.assertFalse(
-                    any(ord(character) < 32 or ord(character) == 127 for character in item.name),
-                    f"quarantine holds {item.name!r}, whose name carries a control "
-                    f"character; validate_recovery_archive.py refuses that member "
-                    f"and every later backup and update fails after the quiesce",
-                )
-                self.assertLessEqual(
-                    len(item.name.encode("utf-8")), 255,
-                    f"quarantine holds {item.name!r}, which exceeds the 255-byte "
-                    f"filename limit",
-                )
+                try:
+                    validator.normalized_name(member)
+                except validator.ArchiveError as exc:
+                    self.fail(
+                        f"quarantine holds {item.name!r}, which "
+                        f"scripts/validate_recovery_archive.py refuses as an "
+                        f"archive member ({exc}). scripts/backup.sh tars the whole "
+                        f"quarantine volume through that validator, so this copy "
+                        f"sits there permanently and fails every later backup and "
+                        f"update -- and on the update path that failure lands "
+                        f"AFTER MUTATION_STARTED, with production stopped and no "
+                        f"recovery point written."
+                    )
 
 
 if __name__ == "__main__":

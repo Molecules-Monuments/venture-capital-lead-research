@@ -39,6 +39,278 @@ def unique_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
     return result
 
 
+# Every shipped artifact that encodes the recommendation band EDGES, and what
+# CUSTOMIZATION.md must say about it. The world is derived from the rubric's own
+# interval minima below, so this map is a set of DISPOSITIONS, not the world
+# itself: an artifact that starts naming an edge and is in neither the row nor
+# this map fails the test until someone categorises it consciously. That is the
+# erasure-gap pattern from CLAUDE.md, applied to band edges.
+#
+# The row omitted eval_fixtures.md, tests/g3/README.md and docs/DATA_MODEL.md,
+# and an operator who followed it end to end shipped three artifacts still
+# stating 50/66/82 with every offline suite green.
+BAND_EDGE_DISPOSITIONS = {
+    # Superseded: 004 drops 001's inline CHECK and adds its own; 007 drops and
+    # recreates 004's `evaluations_score_band_check`. Only 007's edges are live.
+    # These files must NOT be listed as things to edit -- `migrate.sh` compares
+    # each applied migration against its recorded checksum and fails closed.
+    "migrations/001_initial_v2.sql": "superseded",
+    "migrations/004_domain_contract_hardening.sql": "superseded",
+    # Derives the edges from the rubric at runtime; its literals are worked
+    # examples in a docstring, re-derived by the test body itself.
+    "tests/g4/test_semantics.py": "derived",
+}
+
+
+class BandEdgeCustomizationSurfaceTests(unittest.TestCase):
+    """Everything that hard-codes a band edge is either in the procedure or dispositioned.
+
+    The bands are `sample_only_must_customize` and CUSTOMIZATION.md carries the
+    procedure for changing them. A shipped artifact that states the shipped edges
+    but is absent from that procedure is a trap: the operator follows the row to
+    the end, every offline suite passes, and their deployment still documents
+    bands it no longer uses.
+
+    Walked end to end on a scratch copy at ed23f35 -- edited both rubric files to
+    40/60/80, edited the CHECK in 007, re-cut all eight rows of
+    scoring_boundary_cases.jsonl and all six edge cases in semantic_cases.json --
+    and all nine offline suites went green with three artifacts still stating the
+    old edges.
+    """
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        rubric = json.loads(
+            (ROOT / "workspaces/vc-chief/vc/scoring-rubric.v3.json").read_text(encoding="utf-8")
+        )
+        intervals = rubric["recommendation_intervals"]
+        cls.edges = sorted({int(i["minimum"]) for i in intervals if int(i["minimum"]) > 0})
+        cls.band_names = sorted({str(i["name"]) for i in intervals})
+        cls.row = next(
+            (line for line in (ROOT / "CUSTOMIZATION.md").read_text(encoding="utf-8").split("\n")
+             if line.startswith("| Scoring criteria, weights, missingness, thresholds |")),
+            "",
+        )
+
+    def test_the_band_row_names_every_artifact_that_encodes_an_edge(self) -> None:
+        self.assertTrue(self.edges, "the rubric declares no interior band edge")
+        self.assertTrue(
+            self.row, "CUSTOMIZATION.md's scoring row has been retitled; this binding is blind"
+        )
+
+        # An edge value is only interesting where it sits with a band name (the
+        # arithmetic), where it appears as an interval endpoint (the notation), or
+        # as the just-below probe value fixtures use. Matching the bare integer
+        # would collect `MAX_SHEETS = 50` and say nothing.
+        edge_pattern = re.compile(
+            r"(?<![\d.])(" + "|".join(str(edge) for edge in self.edges) + r")(?![\d])"
+        )
+        probe_pattern = re.compile(
+            r"(?<![\d.])(" + "|".join(f"{edge - 1}\\.999" for edge in self.edges) + r")"
+        )
+        # 'pass' and 'watch' are ordinary English words; the two compound band
+        # names are not, so they identify a band context without false hits.
+        name_pattern = re.compile(
+            "|".join(re.escape(name) for name in self.band_names if "_" in name)
+        )
+        # `\[\d+, ` on the closing side, not a bare `, 50)`: vcops.py's
+        # `int(os.environ.get("VCOPS_MAX_SHEETS", 50))` is not an interval, and a
+        # detector that says it is trains the reader to ignore this test.
+        interval_pattern = re.compile(
+            "|".join(
+                rf"\[{edge},|\[\d+, {edge}\)" for edge in self.edges
+            )
+        )
+
+        world: dict[str, list[str]] = {}
+        for path in sorted(ROOT.rglob("*")):
+            relative = path.relative_to(ROOT).as_posix()
+            if (
+                not path.is_file()
+                or relative.startswith("_internal/")
+                or ".git/" in relative
+                or "__pycache__" in relative
+                or path.suffix not in {".md", ".json", ".jsonl", ".sql", ".py"}
+            ):
+                continue
+            try:
+                text = path.read_text(encoding="utf-8")
+            except (OSError, UnicodeDecodeError):
+                continue
+            reasons = set()
+            for line in text.split("\n"):
+                if probe_pattern.search(line):
+                    reasons.add("boundary probe value")
+                if edge_pattern.search(line) and name_pattern.search(line):
+                    reasons.add("edge beside a band name")
+                if interval_pattern.search(line):
+                    reasons.add("edge as an interval endpoint")
+            if reasons:
+                world[relative] = sorted(reasons)
+
+        self.assertGreaterEqual(
+            len(world), 8,
+            f"only {len(world)} artifacts matched; the detector has rotted and "
+            f"would pass while naming almost nothing",
+        )
+        # CUSTOMIZATION.md itself now quotes the values while telling operators
+        # what to change, which is the procedure, not a drifted artifact.
+        world.pop("CUSTOMIZATION.md", None)
+
+        undocumented = {
+            relative: reasons for relative, reasons in world.items()
+            if relative not in self.row and relative not in BAND_EDGE_DISPOSITIONS
+        }
+        self.assertEqual(
+            {}, undocumented,
+            f"these shipped artifacts encode the band edges {self.edges} but "
+            f"CUSTOMIZATION.md's band-change row never names them, and they carry "
+            f"no disposition: {json.dumps(undocumented, indent=2, sort_keys=True)}. "
+            f"An operator who follows that row end to end passes every offline "
+            f"suite with these still stating the shipped edges. Either add the "
+            f"path to the row, or add it to BAND_EDGE_DISPOSITIONS with the reason "
+            f"its edges need no change.",
+        )
+
+        stale = [
+            relative for relative in BAND_EDGE_DISPOSITIONS
+            if relative not in world and (ROOT / relative).exists()
+        ]
+        self.assertEqual(
+            [], stale,
+            f"{stale} carry a band-edge disposition but no longer encode an edge; "
+            f"a disposition that describes nothing hides the next real one",
+        )
+        missing = [
+            relative for relative in BAND_EDGE_DISPOSITIONS
+            if not (ROOT / relative).exists()
+        ]
+        self.assertEqual([], missing, f"dispositioned paths that no longer exist: {missing}")
+
+    def test_no_document_claims_a_file_is_reviewed_when_it_is_not(self) -> None:
+        """"One of the twenty hash-pinned reviewed artifacts" must be true of the file it names.
+
+        CUSTOMIZATION.md carried that sentence attached to
+        `tests/g4/semantic_cases.json`, which is not one of the twenty. The
+        consequence is not cosmetic: it tells an operator their edit fails closed
+        at the next lifecycle run when nothing checks that file's hash at all, so
+        they skip the coverage they actually have (re-cutting it for the
+        g4-semantics suite) believing a gate has them covered.
+
+        The eighteenth pass's round-6 repair then REWROTE that sentence and
+        preserved the false half, which is why this is a test and not a fix.
+        `check_customization.py` owns the real list, so read it from there.
+        """
+        import check_customization
+
+        reviewed = set(check_customization.REQUIRED_REVIEWED_ARTIFACTS)
+        self.assertEqual(
+            20, len(reviewed),
+            f"the reviewed-artifact set is {len(reviewed)}, not twenty; every "
+            f"document that says 'the twenty' is now wrong",
+        )
+        # Work in CLAUSES, not in a lookahead window. The first version of this
+        # check used `[^.`]{0,120}` between the path and the claim, and a
+        # backtick in that span -- i.e. any second path named in the same
+        # sentence -- ended the match. Measured: restoring the exact false claim
+        # this test exists for left it GREEN, because the true path sat between
+        # the false one and the words "among the twenty".
+        claim = re.compile(r"(?:one of the twenty|among the twenty)")
+        negation = re.compile(r"\b(?:not|never|neither)\b", re.IGNORECASE)
+        # A bare path, not a command line: `scripts/init_customization.py
+        # --update-hashes` names a file but is an instruction, not a claim about
+        # membership, so require a single whitespace-free token with a suffix.
+        path_token = re.compile(r"`([A-Za-z0-9_./-]+\.[A-Za-z0-9]+)`")
+
+        offenders: list[str] = []
+        checked = 0
+        for name in ("CUSTOMIZATION.md", "docs/RUNBOOK.md", "docs/OPERATIONS.md", "README.md"):
+            document = ROOT / name
+            if not document.is_file():
+                continue
+            for line in document.read_text(encoding="utf-8").split("\n"):
+                for clause in re.split(r"(?<=[.;])\s+", line):
+                    if not claim.search(clause) or negation.search(clause):
+                        continue
+                    for candidate in path_token.findall(clause):
+                        if "/" not in candidate:
+                            continue
+                        checked += 1
+                        if candidate not in reviewed:
+                            offenders.append(f"{name}: {candidate}")
+        self.assertGreater(
+            checked, 0,
+            "no document names a file alongside the twenty-reviewed-artifacts "
+            "claim; either the phrasing moved or this check is now blind",
+        )
+        self.assertEqual(
+            [], offenders,
+            f"these documents call a file one of the twenty hash-pinned reviewed "
+            f"artifacts when check_customization.py does not list it: {offenders}. "
+            f"An operator reads that as 'my edit fails closed if I forget to "
+            f"re-pin', and skips the coverage that actually applies.",
+        )
+
+    def test_the_two_superseded_migrations_really_are_superseded(self) -> None:
+        """The disposition above is an arithmetic claim about the migration series.
+
+        If it is wrong, CUSTOMIZATION.md now tells operators NOT to edit a file
+        whose CHECK is still live, and their own bands would violate it at
+        persistence. So verify the supersession rather than asserting it in a
+        comment: the constraint each earlier migration adds must be dropped by a
+        later one, and the last migration to add a band-edge CHECK is the one the
+        row sends the operator to.
+        """
+        series = sorted((ROOT / "migrations").glob("*.sql"))
+        self.assertTrue(series, "no migrations found")
+        adds: list[tuple[str, str]] = []
+        drops: dict[str, list[str]] = {}
+        for path in series:
+            text = path.read_text(encoding="utf-8")
+            for match in re.finditer(
+                r"ADD CONSTRAINT (\w+) CHECK", text, re.IGNORECASE
+            ):
+                name = match.group(1)
+                start = match.end()
+                clause = text[start:start + 1200]
+                if any(f"total_score >= {edge}" in clause for edge in self.edges):
+                    adds.append((path.name, name))
+            for match in re.finditer(
+                r"DROP CONSTRAINT IF EXISTS (\w+)", text, re.IGNORECASE
+            ):
+                drops.setdefault(match.group(1), []).append(path.name)
+
+        self.assertTrue(adds, "no migration adds a band-edge CHECK; the detector has rotted")
+        # 001's edge CHECK is inline and unnamed; PostgreSQL names it
+        # `evaluations_check`, which is what 004 drops.
+        inline_dropped_by = drops.get("evaluations_check", [])
+        self.assertTrue(
+            inline_dropped_by,
+            "no migration drops `evaluations_check`, so 001's inline band-edge "
+            "CHECK is still live and an operator editing only 007 gets rows that "
+            "violate it",
+        )
+        for source, name in adds[:-1]:
+            with self.subTest(migration=source, constraint=name):
+                later = [
+                    other for other in drops.get(name, [])
+                    if other > source
+                ]
+                self.assertTrue(
+                    later,
+                    f"{source} adds band-edge CHECK {name} and no later migration "
+                    f"drops it, so its edges are still enforced. "
+                    f"CUSTOMIZATION.md tells the operator to edit only "
+                    f"{adds[-1][0]}, which would leave their own bands failing at "
+                    f"persistence.",
+                )
+        self.assertIn(
+            adds[-1][0], self.row,
+            f"the last migration to add a band-edge CHECK is {adds[-1][0]}, but "
+            f"CUSTOMIZATION.md's row does not name it",
+        )
+
+
 class Version3ContractTests(unittest.TestCase):
     def setUp(self) -> None:
         self.config = json.loads((ROOT / "config/openclaw.json").read_text(encoding="utf-8"))
@@ -774,6 +1046,12 @@ class Version3ContractTests(unittest.TestCase):
                 "tests/g3/scoring_boundary_cases.jsonl",
                 "workspaces/outbound-scout/USER.md",
                 "workspaces/vc-chief/USER.md",
+                # Joined the overlap in the eighteenth pass's round 6: the band row
+                # referred to it only as "its machine JSON", so an operator had to
+                # guess the filename and the row's fails-closed sentence covered
+                # only semantic_cases.json. Both are profile-pinned; the row now
+                # names both.
+                "workspaces/vc-chief/vc/scoring-rubric.v3.json",
                 "workspaces/vc-chief/vc/thesis.md",
             ],
             "the overlap between CUSTOMIZATION.md's `workspaces/` full-path mentions "
@@ -784,10 +1062,17 @@ class Version3ContractTests(unittest.TestCase):
         self.assertEqual(
             sorted(named - required),
             [
+                # Added by the eighteenth pass's round-6 repair: the band-change
+                # procedure named neither, and an operator who followed it end to
+                # end left both stating the shipped edges with every offline suite
+                # green. BandEdgeCustomizationSurfaceTests derives that world from
+                # the rubric, so the omission cannot recur silently.
+                "tests/g3/README.md",
                 "workspaces/shared-skills/memo-writing/SKILL.md",
                 "workspaces/shared-skills/research-depth-control/SKILL.md",
                 "workspaces/vc-chief/vc/RESOLVER.md",
                 "workspaces/vc-chief/vc/bin/vcops.py",
+                "workspaces/vc-chief/vc/eval_fixtures.md",
                 "workspaces/vc-chief/vc/governance_lint.md",
                 "workspaces/vc-chief/vc/scoring-rubric.md",
                 "workspaces/vc-chief/vc/workflows/evaluate-lead.lobster",

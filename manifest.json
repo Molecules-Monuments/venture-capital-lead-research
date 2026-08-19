@@ -72,8 +72,8 @@
     {
       "executable": false,
       "path": "CUSTOMIZATION.md",
-      "sha256": "e62cc2564f977b345efba297d0c5871f9b39f15da7c4ffddd07eb203bb7d29ad",
-      "size": 32306
+      "sha256": "7a0cc8d0882d37b49074d9a483cf0794e651d2ddf7ae64bb3d524d57fd9b7bad",
+      "size": 33596
     },
     {
       "executable": false,
@@ -198,20 +198,20 @@
     {
       "executable": false,
       "path": "docs/OPERATIONS.md",
-      "sha256": "d6aa72beabe9e903ca1071a4fad9592ac2b92b64046126ee70bbb07471ff786d",
-      "size": 35699
+      "sha256": "4eed3fbf8f09b9f2c58cc390dcc16094b1aa4ccde4ebf98b635c091ea2c11b82",
+      "size": 36413
     },
     {
       "executable": false,
       "path": "docs/PRODUCTION_READINESS.md",
-      "sha256": "dd0776f73f9ca240c4a76d3eaf486c2b408523646c5e4ac69ce9327b7f7f0f06",
-      "size": 15374
+      "sha256": "8a5c1fc00a211c06355934046881bff75d0b60f8c97ce43da3a634df7667d2e0",
+      "size": 15602
     },
     {
       "executable": false,
       "path": "docs/RUNBOOK.md",
-      "sha256": "927fde31ae4a862d7b2e6083e29d7398a9a606abeee97e67030e6e9bf7346be0",
-      "size": 98618
+      "sha256": "3e1c64324d68567ed5da0df3a08c2637df8f95864d9f93586a0b9bb4835e10c1",
+      "size": 98836
     },
     {
       "executable": false,
@@ -228,7 +228,7 @@
     {
       "executable": false,
       "path": "docs/V3_RELEASE_EVIDENCE.md",
-      "sha256": "9a5c52d49da3432e763611446e7fd3c9bc6b624c89259c77f2b9662423c3e1ca",
+      "sha256": "920bfa1323f21597111312322b1f545eeab798d909bfeb7ca58376c0637d879a",
       "size": 13981
     },
     {
@@ -240,7 +240,7 @@
     {
       "executable": false,
       "path": "evals/V3_EVAL_RESULTS.md",
-      "sha256": "2d60b756719eade001d0286cf9b90dd58df0315d530295f3c7a11362193a5662",
+      "sha256": "177201edb98d44167da087acc799ee6ace1ade1902262fa2b07df33ad3423cd9",
       "size": 11138
     },
     {
@@ -528,8 +528,8 @@
     {
       "executable": true,
       "path": "scripts/backup.sh",
-      "sha256": "a7852bcc8a5bcb2baede02e82292a069641fc7908ee1658b5d6906971bc7364c",
-      "size": 23589
+      "sha256": "3800975e01833fa7118c1dcad988ca2ca4e62a8ebc17a086d21c6920ffae038f",
+      "size": 25468
     },
     {
       "executable": true,
@@ -642,8 +642,8 @@
     {
       "executable": true,
       "path": "scripts/update.sh",
-      "sha256": "88210d95a0dd5f166c10113cb069a97be227c554842d20cdf44c9348be71f2dc",
-      "size": 19263
+      "sha256": "b1ec9f97a27648c638dba891f5a95505555e188b6aa63a577dc471e62f0b82f0",
+      "size": 21004
     },
     {
       "executable": true,
@@ -744,8 +744,8 @@
     {
       "executable": false,
       "path": "tests/g4/test_document_security.py",
-      "sha256": "0e2fb902eb17c143a4f27ebd751f88c0aae8f3878866e0d39d8e643975b87e19",
-      "size": 33116
+      "sha256": "1668e9020a7b5bcf8c165a4acdfdae117d1fb8cd6dc10f9dbda510dd2e02b0fb",
+      "size": 33814
     },
     {
       "executable": false,
@@ -762,8 +762,8 @@
     {
       "executable": false,
       "path": "tests/g4/test_semantics.py",
-      "sha256": "0dd4d3bced2dfaac90a4db256799fe5f90565bcc15d51dca8efb2c1c8c27377b",
-      "size": 18976
+      "sha256": "741e90eb0d8eab1dae3911592125349fbf9dced0b2e3d0634f3b0ed3db2a4dca",
+      "size": 20856
     },
     {
       "executable": false,
@@ -792,8 +792,8 @@
     {
       "executable": false,
       "path": "tests/g5/test_vcops_agent_boundary.py",
-      "sha256": "37968cd70c2e1312db958ea19b3677533026b70cd4e69c8b60ead3790fdc9651",
-      "size": 12718
+      "sha256": "a1912d3ec7b43efb37dcec56035ab78ebae0b189f4a7117a9995f231951167ee",
+      "size": 15598
     },
     {
       "executable": false,
@@ -822,8 +822,8 @@
     {
       "executable": false,
       "path": "tests/g7/test_recovery_lifecycle.py",
-      "sha256": "454ced0f9f4eddaea2ff5ae295cb9456c67dfaa2466d707eb228c3642940d121",
-      "size": 146109
+      "sha256": "b189e5bfdbb4a8c8496807ad17d379c170ccb0976f828efb21c2b60d54ce0de1",
+      "size": 164789
     },
     {
       "executable": false,
@@ -864,8 +864,8 @@
     {
       "executable": false,
       "path": "tests/v3/test_evidence_doc_consistency.py",
-      "sha256": "1031b245588ce8651c7e97c1aa9b6d295ce8b88972cc0b142ad39aee9fd96e2c",
-      "size": 26047
+      "sha256": "9003c2bfffe91db01069fc18df27ffebddc1c67ced0daaeb7b0c6784089838a8",
+      "size": 27249
     },
     {
       "executable": false,
@@ -876,8 +876,8 @@
     {
       "executable": false,
       "path": "tests/v3/test_orchestration_and_customization.py",
-      "sha256": "893abee783a6de87341294e88301383e665202b6346eda1daf14fbaf4c5f84eb",
-      "size": 41487
+      "sha256": "b01852f2a94e52fd314695a2a29b792e649dfe66c2f4639c71d50dcd81b63885",
+      "size": 55985
     },
     {
       "executable": false,
