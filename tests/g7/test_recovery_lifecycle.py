@@ -2230,7 +2230,12 @@ class RecoveryLifecycleContractTests(unittest.TestCase):
         def code_lines(name: str, remedy: str) -> list[str]:
             text = body(name)
             start = text.index('inbox_reject=""')
-            end = text.index(remedy)
+            # rindex, not index: the remedy sentence is the guards' house
+            # wording, so a refusal added AHEAD of the shared reporter that
+            # reuses it truncated the extract 40 lines early -- and the test
+            # then reported 'the guard lost its hard-link scan' about a scan
+            # that was still there, sending a maintainer after a phantom.
+            end = text.rindex(remedy)
             end = text.index("\n", text.index("\n", end) + 1) + 1
             return [
                 line.rstrip()
@@ -2440,6 +2445,23 @@ class RecoveryLifecycleContractTests(unittest.TestCase):
             # the exact defect this whole round was about.
             classes = set(re.findall(r'inbox_reject="([^"]+)"', source))
             self.assertTrue(classes, f"{name}: no refusal class found; the derivation has rotted")
+            # PIN THE WORLD rather than widen the detector. This derivation reads
+            # one spelling -- `inbox_reject=` -- and the same scripts refuse in a
+            # second idiom elsewhere (`echo ... >&2; exit 1`, as the package-path
+            # guard does). A seventh class written that way inside this block was
+            # invisible to the derivation AND to every case below, so the guards
+            # gained a refusal nothing exercised. Requiring a single exit point
+            # makes the derivation total by construction: any new class must set
+            # inbox_reject, and setting it is what this test reads.
+            exits = len(re.findall(r"^\s*exit\s+1\s*$", source, re.MULTILINE))
+            self.assertEqual(
+                1, exits,
+                f"{name}'s inbox guard has {exits} `exit 1` statements. It must "
+                f"have exactly one -- the shared refusal at the end -- so that "
+                f"every class goes through `inbox_reject` and is therefore "
+                f"visible to this derivation and required to have a case below. "
+                f"A refusal that exits directly is a class no fixture exercises.",
+            )
             self.assertGreaterEqual(
                 len(classes), 6,
                 f"{name}: only {len(classes)} refusal messages found {sorted(classes)}; "
@@ -2572,6 +2594,78 @@ class RecoveryLifecycleContractTests(unittest.TestCase):
                                     f"deployment: {output}",
                                 )
 
+        # The enumeration-failure class, tested by making `find` FAIL rather than
+        # by chmod. Mode bits do not deny root, and the offline suites run as uid
+        # 0 in every container, so the chmod fixture below silently provides zero
+        # cover exactly where this regression would ship. A stub `find` earlier on
+        # PATH reproduces the contract -- "if the enumeration fails, refuse with
+        # this class" -- deterministically for any user.
+        #
+        # This is the assertion that catches the actual regression: written as a
+        # bare `inbox_control_hits="$(find ...)"`, a find failure kills the script
+        # under `set -e` with nothing but find's stderr, and an unreadable
+        # directory under inbox/ is a state both integrity checkers deliberately
+        # tolerate, so it is reachable on a healthy deployment.
+        for shell in shells:
+            for name, source in sorted(guards.items()):
+                with self.subTest(shell=shell, script=name, case="find fails"):
+                    with tempfile.TemporaryDirectory(prefix="g7-guard-findfail-") as raw:
+                        package = Path(raw)
+                        (package / "scripts").mkdir()
+                        (package / "VERSION").write_text("3.0.0\n", encoding="utf-8")
+                        inbox = package / "inbox"
+                        inbox.mkdir()
+                        (inbox / "ok.pdf").write_text("x\n", encoding="utf-8")
+                        stub_dir = package / "stub"
+                        stub_dir.mkdir()
+                        stub = stub_dir / "find"
+                        stub.write_text(
+                            "#!/bin/sh\n"
+                            'echo "find: /inbox/locked: Permission denied" >&2\n'
+                            "exit 1\n",
+                            encoding="utf-8",
+                        )
+                        stub.chmod(0o755)
+                        runner = package / "guard.sh"
+                        runner.write_text(
+                            "set -eu\n"
+                            f'PATH="{stub_dir}:$PATH"\n'
+                            f'PACKAGE_INBOX="{inbox}"\n'
+                            f"{source}"
+                            'echo "GUARD ACCEPTED"\n',
+                            encoding="utf-8",
+                        )
+                        done = subprocess.run(
+                            [shell, str(runner)],
+                            cwd=package, text=True, capture_output=True, timeout=60,
+                        )
+                    output = done.stdout + done.stderr
+                    self.assertNotEqual(
+                        0, done.returncode,
+                        f"{name} accepted an inbox whose enumeration FAILED. What "
+                        f"find could not list, tar cannot archive, so the recovery "
+                        f"point would silently omit it: {output}",
+                    )
+                    self.assertIn(
+                        "could not be fully enumerated", output,
+                        f"{name} stopped on a failed enumeration without naming the "
+                        f"class. Written as a bare assignment this died under "
+                        f"`set -e` with nothing but find's stderr: {output}",
+                    )
+                    self.assertIn(
+                        "nothing has been stopped", output,
+                        f"{name} refused a failed enumeration without telling the "
+                        f"operator the deployment is untouched: {output}",
+                    )
+                    self.assertIn(
+                        "Permission denied", output,
+                        f"{name} discarded find's own diagnostic, so the refusal "
+                        f"names neither the offending entry nor a way to find it -- "
+                        f"the only class in this guard that identifies nothing. "
+                        f"docs/RUNBOOK.md promises the refusal names the entry: "
+                        f"{output}",
+                    )
+
         # The unreadable-inbox class, which no fixture above can plant: it is a
         # permission state, not a name. Mode bits do not deny root, so probe what
         # this process can actually do rather than assuming the chmod denied it.
@@ -2683,6 +2777,61 @@ class RecoveryLifecycleContractTests(unittest.TestCase):
                             f"{done.stdout}{done.stderr}",
                         )
 
+    def test_runbook_enumerates_exactly_the_refusal_classes_the_guards_have(self) -> None:
+        """docs/RUNBOOK.md's inbox-refusal enumeration must match the guards themselves.
+
+        §8 enumerated FIVE classes and stated that
+        `validate_recovery_archive.py` "rejects all five" — a universal about a
+        world the document does not derive. The eighteenth pass then added a
+        sixth (could not be fully enumerated), and both sentences silently became
+        false: the count was wrong, and the validator cannot see the new class at
+        all, because an unreadable entry produces no malformed member name.
+
+        An operator reading §8 counts the classes to know what to look for. So
+        derive the count from the guards and bind the document to it, rather than
+        trusting prose to be updated alongside a shell edit.
+        """
+        classes = set()
+        for name in ("backup.sh", "update.sh"):
+            classes |= set(re.findall(r'inbox_reject="([^"]+)"', body(name)))
+        self.assertGreaterEqual(
+            len(classes), 6,
+            f"only {len(classes)} refusal messages found {sorted(classes)}; the "
+            f"derivation has rotted and this binding is blind",
+        )
+
+        runbook = (PACKAGE / "docs/RUNBOOK.md").read_text(encoding="utf-8")
+        start = runbook.index("Copy the contents as plain files.")
+        section = runbook[start:start + 2600]
+        spelled = {
+            "one": 1, "two": 2, "three": 3, "four": 4, "five": 5,
+            "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10,
+        }
+        stated = {
+            spelled[word]
+            for word in re.findall(
+                r"\b(one|two|three|four|five|six|seven|eight|nine|ten)\b(?=[^.]{0,60}class)",
+                section,
+            )
+        }
+        self.assertTrue(
+            stated,
+            "docs/RUNBOOK.md §8 no longer states how many refusal classes the "
+            "guards have; the enumeration an operator reads is unbound again",
+        )
+        # The LARGEST count the section states is the total. Sub-counts are
+        # legitimate and useful prose -- "five of the six classes are about the
+        # entry's name" tells an operator something true -- so binding every
+        # number would forbid the clearest way to write this.
+        self.assertEqual(
+            len(classes), max(stated),
+            f"docs/RUNBOOK.md §8 states at most {max(stated)} refusal classes; "
+            f"the guards have {len(classes)}: {sorted(classes)}. An operator "
+            f"counts these to know what to look for before a backup or an "
+            f"update, and a sixth class nobody documented is one they will meet "
+            f"for the first time when a lifecycle run stops.",
+        )
+
     def test_both_scripts_refuse_a_package_path_holding_a_control_character(self) -> None:
         """A newline in the PACKAGE path must be named as such, not blamed on the inbox.
 
@@ -2749,7 +2898,16 @@ class RecoveryLifecycleContractTests(unittest.TestCase):
                     )
                     with tempfile.TemporaryDirectory(prefix="g7-pkgpath-") as raw:
                         script = Path(raw) / "probe.sh"
-                        script.write_text(runner, encoding="utf-8")
+                        # write_bytes, and fold U+0097 back to a RAW 0x97: the
+                        # case is named "a raw C1 byte" and `write_text` handed
+                        # the shell the two-byte UTF-8 encoding instead, which is
+                        # a different input to a byte-oriented guard. Measured:
+                        # the old `case` form accepts the two-byte form under
+                        # en_US.UTF-8 and refuses the raw byte, so the fixture
+                        # was not exercising what it claimed.
+                        script.write_bytes(
+                            runner.encode("utf-8").replace(b"\xc2\x97", b"\x97")
+                        )
                         done = subprocess.run(
                             ["/bin/sh", str(script)],
                             text=True, capture_output=True, timeout=60,
@@ -2917,16 +3075,33 @@ class RecoveryLifecycleContractTests(unittest.TestCase):
                 for line in path.read_text(encoding="utf-8").split("\n")
             )
             written = len(word.findall(code))
-            # Blanking quotes would hide `eval "trap ... HUP"`, which IS a live
-            # handler and which trap_commands() cannot see either. Nothing ships
-            # like that; assert it rather than assume it.
-            self.assertNotIn(
-                "eval", "\n".join(
-                    line for line in path.read_text(encoding="utf-8").split("\n")
-                    if "trap" in line and "eval" in shell_code_only(line)
-                ),
-                f"{path.name} passes a trap through eval, where neither "
-                f"trap_commands() nor this counter can see it",
+            # Blanking quotes hides a handler passed to a shell as a quoted
+            # STRING, which trap_commands() cannot see either. The first version
+            # of this compensating assertion named `eval` alone -- one construct
+            # out of many. Measured: `/bin/sh -c "trap 'rm -rf ...' HUP; sleep 0"`
+            # planted a live handler naming only HUP, the exact shape the
+            # fatal-signal-set test forbids, and every suite stayed green.
+            #
+            # So forbid the whole class rather than enumerate its members: no
+            # shipped line may contain the word `trap` inside a quoted span at
+            # all. That is checkable without parsing shell, and nothing ships
+            # like it today.
+            # `word`, not the substring: "Bootstrap failed ..." contains "trap"
+            # and is an operator message, not a handler.
+            quoted_traps = [
+                line.strip()
+                for line in path.read_text(encoding="utf-8").split("\n")
+                if word.search(line)
+                and not word.search(shell_code_only(line))
+                and not line.lstrip().startswith("#")
+            ]
+            self.assertEqual(
+                [], quoted_traps,
+                f"{path.name} carries `trap` inside a quoted string: "
+                f"{quoted_traps}. Whatever shell that string is handed to -- "
+                f"`eval`, `sh -c`, `docker ... sh -c` -- installs a handler that "
+                f"neither trap_commands() nor the counter above can see, so the "
+                f"fatal-signal-set contract silently does not apply to it.",
             )
             seen = len(trap_commands(path))
             if written != seen:

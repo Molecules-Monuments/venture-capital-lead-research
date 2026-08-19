@@ -19,6 +19,7 @@ import contextlib
 import io
 import json
 import os
+import importlib.util
 import re
 import subprocess
 import sys
@@ -460,117 +461,191 @@ class EvidenceCountConsistencyTests(unittest.TestCase):
             )
 
     def test_readiness_growth_chain_is_arithmetically_consistent(self):
-        """Every step of the narrative chain must add up, from its stated baseline to discovery.
+        """Every growth chain in every evidence document must add up, step by step.
 
-        docs/PRODUCTION_READINESS.md's offline-suites cell narrates how the total
-        reached its current value: a baseline, then a sequence of
-        "added <word> more ... moving it to N" steps. Only the cell's LEADING
-        figure was bound by a pattern, so the narrative could say anything.
-        Measured at 06b307a: rewriting a delta word, a mid-chain waypoint and the
-        final waypoint together left all nine suites green.
+        The chain narrates how the offline total reached its current value: a
+        baseline, then a sequence of "added <word> more ... moving it to N".
+        Only the LEADING figure was bound by a pattern, so the narrative could
+        say anything; the first version of this test then bound only the last two
+        of seven steps.
 
-        The first version of THIS test then bound only the last two of the chain's
-        seven steps, because it collected waypoints and deltas as two independent
-        lists and aligned them from the end: five steps used a different phrasing,
-        matched no delta, and were silently dropped. A test that binds a subset of
-        the class it names is worse than none, because the docstring is then the
-        thing that is wrong.
+        Two gaps survived that repair, and both are closed here.
 
-        So the chain is read as STEPS, not as two lists, and the count of steps
-        must equal the count of waypoints. That equality is the whole point: a
-        step reworded into a phrasing this pattern cannot read makes the test
-        FAIL rather than quietly bind less. The cell was normalised to one
-        spelling so that a total parse is possible at all.
+        First, the test read ONE hard-coded document while
+        `set_evidence_execution_date.EVIDENCE_DOCS` lists four, and
+        docs/V3_RELEASE_EVIDENCE.md already restates the same total — a chain
+        planted there whose every step was wrong left the suite green.
+
+        Second, the step/waypoint count equality only fires for a claim that
+        matches one of the two patterns. A claim matching NEITHER changed neither
+        count, so "the sixteenth pass added ninety-nine more;" with no waypoint
+        was unbound. So the world is now the SEGMENTS of the chain: every
+        semicolon-delimited segment that makes a chain claim at all must parse as
+        exactly one step, which is a property of the text rather than of the
+        patterns that read it.
         """
-        cell = next(
-            (line for line in
-             EVIDENCE_TEXT["docs/PRODUCTION_READINESS.md"].split("\n")
-             if "Complete aggregate offline suites" in line),
-            None,
+        claimish = re.compile(
+            r"added [a-z][a-z\- ]*? more|mov(?:ed|ing) it to \d+|the baseline was \d+"
         )
-        self.assertIsNotNone(
-            cell, "the offline-suites cell has been reworded away; this binding is blind"
+        step_pattern = re.compile(
+            r"added ([a-z][a-z\- ]*?) more[^;]*?mov(?:ed|ing) it to (\d+)"
         )
-        assert cell is not None
-
-        # One pattern, one pass, in document order: each step is its delta word and
-        # the waypoint that delta reaches. `[^;]` keeps a step from reaching across
-        # the semicolon that ends it and pairing with the NEXT step's waypoint.
-        steps = re.findall(
-            r"added ([a-z][a-z\- ]*?) more[^;]*?mov(?:ed|ing) it to (\d+)", cell
-        )
-        waypoints = [int(value) for value in re.findall(r"mov(?:ed|ing) it to (\d+)", cell)]
-        self.assertGreaterEqual(
-            len(waypoints), 7, f"the growth chain has rotted; found waypoints {waypoints}"
-        )
-        self.assertEqual(
-            len(waypoints), len(steps),
-            f"the cell states {len(waypoints)} waypoints but only {len(steps)} of "
-            f"them carry a delta this test can read "
-            f"{[(word, value) for word, value in steps]}. Every step must be "
-            f"phrased 'added <word> more ... moving it to N'; a step in any other "
-            f"spelling is unbound, which is how the earlier version of this test "
-            f"checked two steps while claiming to check all of them.",
-        )
-
-        baseline_claim = re.search(r"the baseline was (\d+)", cell)
-        self.assertIsNotNone(
-            baseline_claim,
-            "the cell no longer states the baseline its chain grows from, so the "
-            "first step's arithmetic cannot be checked",
-        )
-        assert baseline_claim is not None
-
-        # Invert the module's own number_word() rather than writing a second
-        # spelling table: the two could disagree, and this one would be wrong.
+        baseline_pattern = re.compile(r"the baseline was (\d+)")
         word_to_int = {number_word(value): value for value in range(1000)}
-        unknown = [word for word, _ in steps if word not in word_to_int]
-        self.assertEqual(
-            [], unknown,
-            f"delta word(s) {unknown} are not English number-words this module can "
-            f"read; the chain cannot be checked",
-        )
 
-        self.assertEqual(
-            sorted(waypoints), waypoints,
-            f"the growth chain's waypoints are not increasing: {waypoints}. The "
-            f"cell narrates how the total grew, so a waypoint that goes backwards "
-            f"is either a typo or a rewritten history.",
-        )
-        self.assertEqual(
-            len(set(waypoints)), len(waypoints),
-            f"the growth chain repeats a waypoint: {waypoints}",
-        )
+        chains = 0
+        for relative, text in EVIDENCE_TEXT.items():
+            for line in text.split("\n"):
+                if not baseline_pattern.search(line) or not step_pattern.search(line):
+                    continue
+                chains += 1
+                segments = line.split(";")
+                steps: list[tuple[str, str]] = []
+                for index, segment in enumerate(segments):
+                    if not claimish.search(segment):
+                        continue
+                    found = step_pattern.findall(segment)
+                    if not found and baseline_pattern.search(segment) and not re.search(
+                        r"added [a-z][a-z\- ]*? more|mov(?:ed|ing) it to \d+", segment
+                    ):
+                        continue  # a segment that only states the baseline
+                    with self.subTest(document=relative, segment=index):
+                        self.assertEqual(
+                            1, len(found),
+                            f"{relative}: this segment of the growth chain makes a "
+                            f"claim but does not parse as exactly one step "
+                            f"(found {found}): {' '.join(segment.split())[:160]!r}. "
+                            f"Every step must read 'added <word> more ... moving "
+                            f"it to N'; a claim in any other shape is unbound, "
+                            f"which is how a chain with a delta and no waypoint "
+                            f"passed.",
+                        )
+                    steps.extend(found)
 
-        # Walk the whole chain from the stated baseline. Every step is checked;
-        # nothing is aligned from the end and nothing is skipped.
-        running = int(baseline_claim.group(1))
-        for word, stated in steps:
-            after = int(stated)
-            with self.subTest(step=f"{running} + {word}"):
+                waypoints = [int(v) for v in re.findall(r"mov(?:ed|ing) it to (\d+)", line)]
                 self.assertEqual(
-                    running + word_to_int[word], after,
-                    f"docs/PRODUCTION_READINESS.md says {running} plus '{word}' "
-                    f"({word_to_int[word]}) reaches {after}; that is "
-                    f"{running + word_to_int[word]}. The chain is the document's "
-                    f"own account of how the total was reached, so an operator "
-                    f"reconciling it finds arithmetic that does not close.",
+                    len(waypoints), len(steps),
+                    f"{relative}: {len(waypoints)} waypoints but {len(steps)} "
+                    f"readable steps {steps}",
                 )
-            running = after
+                unknown = [word for word, _ in steps if word not in word_to_int]
+                self.assertEqual(
+                    [], unknown,
+                    f"{relative}: delta word(s) {unknown} are not English "
+                    f"number-words this module can read",
+                )
+                self.assertEqual(
+                    sorted(waypoints), waypoints,
+                    f"{relative}: the growth chain's waypoints are not increasing: "
+                    f"{waypoints}",
+                )
+                self.assertEqual(
+                    len(set(waypoints)), len(waypoints),
+                    f"{relative}: the growth chain repeats a waypoint: {waypoints}",
+                )
 
-        self.assertEqual(
-            self.offline_tests, waypoints[-1],
-            f"the growth chain ends at {waypoints[-1]} but discovery counts "
-            f"{self.offline_tests}",
+                baseline = baseline_pattern.search(line)
+                assert baseline is not None  # guarded by the loop condition above
+                running = int(baseline.group(1))
+                for word, stated in steps:
+                    after = int(stated)
+                    with self.subTest(document=relative, step=f"{running} + {word}"):
+                        self.assertEqual(
+                            running + word_to_int[word], after,
+                            f"{relative} says {running} plus '{word}' "
+                            f"({word_to_int[word]}) reaches {after}; that is "
+                            f"{running + word_to_int[word]}. The chain is the "
+                            f"document's own account of how the total was "
+                            f"reached, so an operator reconciling it finds "
+                            f"arithmetic that does not close.",
+                        )
+                    running = after
+
+                self.assertEqual(
+                    self.offline_tests, waypoints[-1],
+                    f"{relative}: the growth chain ends at {waypoints[-1]} but "
+                    f"discovery counts {self.offline_tests}",
+                )
+
+        self.assertTrue(
+            chains,
+            "no evidence document carries a growth chain any more; this binding "
+            "is blind. It must find at least the offline-suites cell.",
         )
-        leading = re.search(r"\| (\d+) tests passed", cell)
-        self.assertIsNotNone(leading, "the cell's leading figure has been reworded away")
-        assert leading is not None
-        self.assertEqual(
-            waypoints[-1], int(leading.group(1)),
-            "the cell's leading figure and the end of its own narrative chain "
-            "disagree",
-        )
+
+    def test_opt_in_gate_figures_are_derived_not_asserted(self):
+        """The opt-in gates' own check counts must match what the documents claim.
+
+        The offline totals are bound to discovery, but the figures for the gates
+        that need Docker or a database were bound by nothing: measured, the full
+        offline gate PASSED with G6 restated as 9/9, G8 as "six checks", and the
+        retrieval-scale total as any number at all. Every one of them happens to
+        be correct today, which is exactly when an unbound figure is cheapest to
+        pin and most likely to rot later.
+
+        Each is derivable from a constant in the script that produces it, so read
+        it from there rather than re-stating it.
+        """
+        # IMPORT run_g6_image rather than parse it: EXPECTED_CHECK_NAMES
+        # star-unpacks a generator over PROFILES, so counting quoted literals in
+        # the source sees 3 of the 8 names. The module imports cleanly (it needs
+        # no database driver), so ask it.
+        def load(name: str):
+            spec = importlib.util.spec_from_file_location(
+                f"evidence_probe_{name}", ROOT / "scripts" / f"{name}.py"
+            )
+            assert spec is not None and spec.loader is not None
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+            return module
+
+        g6_checks = len(load("run_g6_image").EXPECTED_CHECK_NAMES)
+
+        # G8 declares no constant; its checks are appended one call at a time,
+        # and importing it is not free of side effects, so count the call sites.
+        g8_source = (ROOT / "scripts" / "run_g8_deployment.py").read_text(encoding="utf-8")
+        g8_checks = len(re.findall(r'checks\.append\(check\("[a-z-]+"', g8_source))
+
+        # Parsed, not imported: run_retrieval_scale imports psycopg at module
+        # level, which the offline suites deliberately do not require.
+        scale_source = (ROOT / "scripts" / "run_retrieval_scale.py").read_text(encoding="utf-8")
+        fuzzy = re.search(r"^FUZZY_CASES = (\d+)", scale_source, re.M)
+        exact = re.search(r"^EXACT_CASES = (\d+)", scale_source, re.M)
+        self.assertIsNotNone(fuzzy, "run_retrieval_scale.py no longer declares FUZZY_CASES")
+        self.assertIsNotNone(exact, "run_retrieval_scale.py no longer declares EXACT_CASES")
+        assert fuzzy is not None and exact is not None
+        scale_cases = int(fuzzy.group(1)) + int(exact.group(1))
+
+        for label, measured, patterns in (
+            ("G6 image gate", g6_checks, (r"\*\*(\d+)/\d+\*\*.{0,80}?image rebuilt",
+                                          r"run_g6_image\.py` \(\*\*(\d+)/\d+\*\*",
+                                          r"gate \(G6\) passes (\d+)/\d+")),
+            ("G8 deployment gate", g8_checks, (r"run_g8_deployment\.py` \(\*\*PASS\*\* — (\w+) checks",)),
+            ("retrieval-scale gate", scale_cases, (r"run_retrieval_scale\.py` \(\*\*(\d+)/\d+\*\*",
+                                                   r"retrieval-scale gate passes (\d+)/\d+")),
+        ):
+            found = 0
+            for relative, text in EVIDENCE_TEXT.items():
+                for pattern in patterns:
+                    for match in re.finditer(pattern, text, re.S):
+                        raw = match.group(1)
+                        stated = int(raw) if raw.isdigit() else {
+                            "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7,
+                        }.get(raw.lower())
+                        found += 1
+                        with self.subTest(gate=label, document=relative):
+                            self.assertEqual(
+                                measured, stated,
+                                f"{relative} states {raw} for the {label}; the "
+                                f"script itself declares {measured}",
+                            )
+            with self.subTest(gate=label):
+                self.assertTrue(
+                    found,
+                    f"no evidence document states a figure for the {label} in a "
+                    f"shape this test can read; the binding is blind",
+                )
+
     def test_manifest_count_is_internally_coherent(self):
         manifest = json.loads((ROOT / "manifest.json").read_text(encoding="utf-8"))
         self.assertEqual(manifest["file_count"], len(manifest["files"]))

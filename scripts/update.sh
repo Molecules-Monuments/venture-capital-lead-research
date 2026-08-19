@@ -109,11 +109,17 @@ PACKAGE_INBOX="$(CDPATH= cd -- "$PACKAGE_DIR/inbox" && pwd -P)"
 # Byte-exact, and deliberately NOT `case "$PACKAGE_INBOX" in *[[:cntrl:]]*)`.
 # A `case` pattern is matched in the script's own locale and cannot be scoped to
 # C, and the classification of a byte varies by locale AND by platform.
-# Measured: a raw 0x97 in the path is refused by macOS /bin/sh under
-# en_US.UTF-8 and accepted under ca_FR.ISO8859-15, while on Debian the UTF-8
-# bytes of an ordinary CJK path name are C1 controls under ISO-8859-15 and are
-# refused. A package installed at a non-ASCII path would then have every update
-# refused on a legal host. Deleting the bytes and comparing is locale-proof:
+# Measured across both shells and both locales, and the variance is real in
+# BOTH directions: bash refuses a CJK path under ISO-8859-15 and accepts it
+# under UTF-8, while dash accepts it under both; and a raw 0x97 is refused by
+# bash under UTF-8 but accepted by dash. These scripts are `#!/bin/sh`, so on
+# Debian they run under dash and the CJK case does NOT reproduce there -- an
+# earlier version of this comment claimed it did, transplanting a measurement
+# taken with `find` (which the inbox probe below uses, and where it does hold)
+# onto a `case` pattern. What remains true, and is reason enough, is that the
+# verdict depends on the interpreter and the locale at all: an operator running
+# `bash scripts/backup.sh`, or a host whose /bin/sh is bash, gets a different
+# answer for the same path. Deleting the bytes and comparing is locale-proof:
 # `tr` under LC_ALL=C sees exactly 0x01-0x1F and 0x7F. Verified identical
 # verdicts under en_US.UTF-8, ca_FR.ISO8859-15 and C: plain, CJK and raw-0x97
 # paths accepted; newline and tab refused.
@@ -276,15 +282,37 @@ inbox_reject=""
 # whole inbox into the recovery point, so a subtree it cannot read is a subtree
 # the recovery point would not contain. Stopping here is pre-quiesce and
 # reversible; discovering it during the archive is neither.
-inbox_control_hits=""
-if ! inbox_control_hits="$(LC_ALL=C find "$PACKAGE_INBOX" -mindepth 1 -name '*[[:cntrl:]]*' -print 2>/dev/null)"; then
-  inbox_reject="the inbox could not be fully enumerated (unreadable entry: not a permissions problem this script may skip, because whatever it cannot read it cannot archive); check directory permissions under $PACKAGE_INBOX"
-elif [ -n "$inbox_control_hits" ]; then
+inbox_scan_output=""
+if ! inbox_scan_output="$(LC_ALL=C find "$PACKAGE_INBOX" -mindepth 1 -name '*[[:cntrl:]]*' -print 2>&1)"; then
+  # find's OWN diagnostic, not a generic sentence. Every other class in this
+  # guard names the offending entry, and docs/RUNBOOK.md section 8 promises the
+  # operator exactly that; discarding stderr made this the one refusal that
+  # identified neither the entry nor a way to list it. `2>&1` rather than a
+  # temporary file: on success find writes nothing to stderr, so the variable
+  # still holds only the matches read by the branch below.
+  #
+  # Claim ONLY what this establishes. An earlier wording said "whatever it
+  # cannot read it cannot archive", which is not something this probe can know:
+  # `find` runs as the invoking operator and never opens file contents, while
+  # the archiver is `tar` inside openclaw-cli as uid 1000 with the inbox
+  # bind-mounted read-only -- so host-unreadable does not imply
+  # archive-incomplete, nor the reverse, and the probe sees unreadable
+  # DIRECTORIES only. What is certainly true, and is reason enough to stop
+  # pre-quiesce, is that the five checks below were not applied to every entry,
+  # so this run cannot certify the inbox at all.
+  inbox_reject="the inbox could not be fully enumerated, so the checks below were not applied to every entry -- correct the permissions rather than removing anything: ${inbox_scan_output}"
+elif [ -n "$inbox_scan_output" ]; then
   inbox_reject="an entry name holds a control character; list them with: LC_ALL=C find $PACKAGE_INBOX -mindepth 1 -name '*[[:cntrl:]]*'"
 fi
-# Enumerate on its own line so `set -e` aborts when find itself fails; a
-# command substitution inside the here-document swallowed that, and an
-# unreadable subtree then read as a clean inbox.
+# Enumerate on its own line, never inside the here-document: a command
+# substitution there swallowed find's failure and an unreadable subtree read as
+# a clean inbox. Note this is NOT the bare-assignment shape the probe above
+# rejects. That probe runs first over the same tree, so by the time these two
+# enumerations run, find has already succeeded on it; they are reached only when
+# the tree is known to be enumerable, and `set -e` on them is a backstop rather
+# than the primary path. The probe needs `if !` precisely because it is the
+# first to touch the tree and must turn a failure into an operator-facing
+# refusal instead of a bare abort.
 # Only enumerate if the probe above found nothing. The probe is terminal for the
 # class it detects: a name containing a newline splits into fragments that the
 # loop below judges individually, so letting the loop run would overwrite the

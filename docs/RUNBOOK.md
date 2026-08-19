@@ -912,14 +912,21 @@ holds when `update.sh` runs. Operator payload under `inbox/` is excluded from
 across does not affect the re-pin below.
 
 Copy the contents as plain files. `update.sh` and `backup.sh` both refuse, before
-touching anything, an inbox entry a recovery archive cannot represent: a control
-character or a backslash in the path, a symlink, anything that is not a regular
-file or directory, and a **hard link** — which `cp -al` and
-`rsync --link-dest` produce and `cp -a` preserves from the source. The refusal
-names the entry and ends `nothing has been stopped`, so the deployment is
-untouched and you can correct it and re-run. The one exception is a control
-character in a name: such a name cannot be printed usefully and would corrupt
-the terminal, so that refusal gives you the `find` command that lists the
+touching anything, an inbox entry a recovery archive cannot represent. Five of
+the six classes are about the entry's NAME or KIND: a control character or a
+backslash in the path, a symlink, anything that is not a regular file or
+directory, and a **hard link** — which `cp -al` and `rsync --link-dest` produce
+and `cp -a` preserves from the source. The sixth is different in kind: an entry
+the scripts cannot READ, which makes the enumeration itself fail. That one is
+not a malformed name — the recovery point would simply not contain those bytes —
+so it is refused here rather than discovered during the archive, and its message
+carries the enumerator's own diagnostic naming the path. Correct its permissions;
+do not remove it.
+
+The refusal names the entry and ends `nothing has been stopped`, so the
+deployment is untouched and you can correct it and re-run. The one exception is a
+control character in a name: such a name cannot be printed usefully and would
+corrupt the terminal, so that refusal gives you the `find` command that lists the
 offenders instead of quoting them. To detach a hard-linked entry
 without changing its bytes:
 
@@ -927,8 +934,12 @@ without changing its bytes:
 cp inbox/<entry> inbox/<entry>.detached && mv inbox/<entry>.detached inbox/<entry>
 ```
 
-`validate_recovery_archive.py` rejects all five classes when it verifies the
-recovery point, so the guard refuses early rather than after the quiesce.
+`validate_recovery_archive.py` rejects all five NAME-and-kind classes when it
+verifies the recovery point, so the guard refuses early rather than after the
+quiesce. It cannot see the sixth: an unreadable entry produces no malformed
+member name, it produces a recovery point that silently lacks those bytes, which
+is why the guard is the only thing standing between that state and a backup you
+would trust.
 
 So re-pin afterwards. First run
 `python3 -B scripts/check_customization.py config/customization-profile.json .env`

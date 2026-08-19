@@ -50,16 +50,30 @@ def unique_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
 # and an operator who followed it end to end shipped three artifacts still
 # stating 50/66/82 with every offline suite green.
 BAND_EDGE_DISPOSITIONS = {
-    # Superseded: 004 drops 001's inline CHECK and adds its own; 007 drops and
-    # recreates 004's `evaluations_score_band_check`. Only 007's edges are live.
-    # These files must NOT be listed as things to edit -- `migrate.sh` compares
-    # each applied migration against its recorded checksum and fails closed.
-    "migrations/001_initial_v2.sql": "superseded",
-    "migrations/004_domain_contract_hardening.sql": "superseded",
     # Derives the edges from the rubric at runtime; its literals are worked
     # examples in a docstring, re-derived by the test body itself.
     "tests/g4/test_semantics.py": "derived",
+    # These three name a band beside a number that is not a band edge. They are
+    # dispositioned rather than excluded by narrowing the detector: the detector
+    # must stay sensitive enough to see a band table written as prose, and the
+    # cost of that is naming its false positives here, consciously.
+    "research/agents/09-qualification-analyst.md": "agent inventory, not a band edge",
+    "workspaces/vc-chief/vc/prequalification.md": "band names in prose, no edge stated",
+    # "high-priority action stale 3 business days" -- an adjective and a
+    # staleness threshold in days, not a band and not an edge.
+    "workspaces/vc-chief/vc/system_health.md": "staleness thresholds, not band edges",
 }
+
+# `migrations/` is deliberately OUTSIDE the world below, and owned by
+# test_the_two_superseded_migrations_really_are_superseded instead. Enumerating
+# migrations here made the gate fail on the very procedure the row documents:
+# post-bootstrap, CUSTOMIZATION.md tells the operator to "add a new numbered
+# forward migration" carrying their own bands, and that migration is by
+# construction not named in the row, so the row-membership assertion refused it.
+# The migration surface has its own invariant -- every band-edge CHECK but the
+# last is dropped by a later migration -- which holds for an operator's forward
+# migration and does not depend on what the row happens to name.
+MIGRATION_ROOT = "migrations/"
 
 
 class BandEdgeCustomizationSurfaceTests(unittest.TestCase):
@@ -98,28 +112,41 @@ class BandEdgeCustomizationSurfaceTests(unittest.TestCase):
             self.row, "CUSTOMIZATION.md's scoring row has been retitled; this binding is blind"
         )
 
-        # An edge value is only interesting where it sits with a band name (the
-        # arithmetic), where it appears as an interval endpoint (the notation), or
-        # as the just-below probe value fixtures use. Matching the bare integer
-        # would collect `MAX_SHEETS = 50` and say nothing.
-        edge_pattern = re.compile(
-            r"(?<![\d.])(" + "|".join(str(edge) for edge in self.edges) + r")(?![\d])"
-        )
-        probe_pattern = re.compile(
-            r"(?<![\d.])(" + "|".join(f"{edge - 1}\\.999" for edge in self.edges) + r")"
-        )
+        # THE DETECTOR MUST NOT KEY ON THE EDGE VALUES. Its first version built
+        # every pattern from the rubric's current minima, so the moment an
+        # operator changed the bands -- the single edit this row exists for --
+        # the world collapsed and the gate failed with "the detector has rotted".
+        # Measured on the frozen tree: editing only scoring-rubric.v3.json to
+        # 40/60/80 dropped the world from eleven artifacts to one and failed two
+        # tests, and the only way to green them was to edit applied migrations,
+        # which the same row forbids. A check that fails on the procedure it
+        # protects is worse than no check.
+        #
+        # Key on the SHAPE of edge arithmetic instead, which is invariant under
+        # customisation. Bare integers are NOT a signal: `high_priority`: 100%
+        # in an eval document and a numbered list beside a band name are not band
+        # edges, and a detector that says they are trains the reader to ignore it.
+        interval_pattern = re.compile(r"\[\d{1,3},\s*\d{1,3}[)\]]")
+        probe_pattern = re.compile(r"(?<![\d.])\d{1,3}\.999(?![\d])")
+        comparison_pattern = re.compile(r"(?:>=|<=|>|<)\s*\d{1,3}(?![\d.])")
+        plain_integer = re.compile(r"(?<![\d.\w])\d{1,3}(?![\d.%])")
+        # The rubric's own machine form: one interval object per line.
+        rubric_object_pattern = re.compile(r'"minimum"\s*:\s*\d{1,3}')
         # 'pass' and 'watch' are ordinary English words; the two compound band
         # names are not, so they identify a band context without false hits.
+        # Match every separator prose uses for them: governance_lint.md writes
+        # "high-priority" and OPERATIONS-style prose writes "high priority", and
+        # a detector that knows only the underscore form misses both. Measured:
+        # a planted band table using the hyphenated spelling passed.
+        # Underscore or hyphen, and CASE-SENSITIVE. A space separator plus
+        # ignore-case matches ordinary English -- a memo fixture containing the
+        # sentence "Research deeper." was collected as a band reference, which
+        # is the kind of false hit that teaches a reader to ignore this test.
+        # The hyphenated form is the one prose actually uses for the band
+        # (governance_lint.md writes "high-priority"), and it is lowercase.
+        compound = [name for name in self.band_names if "_" in name]
         name_pattern = re.compile(
-            "|".join(re.escape(name) for name in self.band_names if "_" in name)
-        )
-        # `\[\d+, ` on the closing side, not a bare `, 50)`: vcops.py's
-        # `int(os.environ.get("VCOPS_MAX_SHEETS", 50))` is not an interval, and a
-        # detector that says it is trains the reader to ignore this test.
-        interval_pattern = re.compile(
-            "|".join(
-                rf"\[{edge},|\[\d+, {edge}\)" for edge in self.edges
-            )
+            "|".join(re.escape(name).replace("_", "[_-]") for name in compound)
         )
 
         world: dict[str, list[str]] = {}
@@ -127,9 +154,12 @@ class BandEdgeCustomizationSurfaceTests(unittest.TestCase):
             relative = path.relative_to(ROOT).as_posix()
             if (
                 not path.is_file()
-                or relative.startswith("_internal/")
                 or ".git/" in relative
                 or "__pycache__" in relative
+                # This module IS the detector; its comments quote band prose as
+                # worked examples, and collecting itself proves nothing.
+                or relative in {"tests/v3/test_orchestration_and_customization.py"}
+                or relative.startswith((MIGRATION_ROOT, "_internal/"))
                 or path.suffix not in {".md", ".json", ".jsonl", ".sql", ".py"}
             ):
                 continue
@@ -141,18 +171,41 @@ class BandEdgeCustomizationSurfaceTests(unittest.TestCase):
             for line in text.split("\n"):
                 if probe_pattern.search(line):
                     reasons.add("boundary probe value")
-                if edge_pattern.search(line) and name_pattern.search(line):
-                    reasons.add("edge beside a band name")
+                if comparison_pattern.search(line) and name_pattern.search(line):
+                    reasons.add("edge arithmetic beside a band name")
+                # Prose states edges without operators -- "a lead whose
+                # final_100 is 82 or above is high-priority; 66 up to 82 is
+                # research-deeper" is a band table in a sentence, and it drifts
+                # exactly like a table does. So ANY integer beside a band name
+                # counts. That is deliberately over-sensitive: the three shipped
+                # files it over-collects are dispositioned by name below, which
+                # is the erasure-gap pattern -- categorise consciously rather
+                # than narrow the detector until it stops seeing things.
+                if plain_integer.search(line) and name_pattern.search(line):
+                    reasons.add("integer beside a band name")
+                if rubric_object_pattern.search(line) and name_pattern.search(line):
+                    reasons.add("rubric interval object")
                 if interval_pattern.search(line):
                     reasons.add("edge as an interval endpoint")
             if reasons:
                 world[relative] = sorted(reasons)
 
-        self.assertGreaterEqual(
-            len(world), 8,
-            f"only {len(world)} artifacts matched; the detector has rotted and "
-            f"would pass while naming almost nothing",
-        )
+        # Named members, not a count. A count is wrong twice over: it drifts with
+        # ordinary edits, and it collapses under a legal customisation -- which is
+        # how the first version of this test failed the procedure it protects.
+        # These four ARE the band surface, whatever the edges happen to be.
+        for required in (
+            "workspaces/vc-chief/vc/scoring-rubric.md",
+            "workspaces/vc-chief/vc/scoring-rubric.v3.json",
+            "tests/g3/scoring_boundary_cases.jsonl",
+            "docs/DATA_MODEL.md",
+        ):
+            self.assertIn(
+                required, world,
+                f"{required} no longer looks like it encodes a band edge, so the "
+                f"detector has rotted and would pass while naming almost nothing. "
+                f"World: {sorted(world)}",
+            )
         # CUSTOMIZATION.md itself now quotes the values while telling operators
         # what to change, which is the procedure, not a drifted artifact.
         world.pop("CUSTOMIZATION.md", None)
@@ -228,16 +281,35 @@ class BandEdgeCustomizationSurfaceTests(unittest.TestCase):
             document = ROOT / name
             if not document.is_file():
                 continue
-            for line in document.read_text(encoding="utf-8").split("\n"):
-                for clause in re.split(r"(?<=[.;])\s+", line):
-                    if not claim.search(clause) or negation.search(clause):
+            # PARAGRAPHS, not physical lines. RUNBOOK/OPERATIONS/README are
+            # hard-wrapped at ~78 columns, so a per-line scan saw exactly two
+            # claims in the whole tree -- both on one giant markdown-table line
+            # -- while the two real prose claims in RUNBOOK (§4 and §9) were
+            # unbound, and the defect this test exists for passed when planted
+            # in ordinary wrapped prose.
+            raw = document.read_text(encoding="utf-8")
+            for paragraph in re.split(r"\n\s*\n", raw):
+                joined = " ".join(paragraph.split())
+                for clause in re.split(r"(?<=[.;])\s+", joined):
+                    if negation.search(clause):
                         continue
-                    for candidate in path_token.findall(clause):
-                        if "/" not in candidate:
-                            continue
-                        checked += 1
-                        if candidate not in reviewed:
-                            offenders.append(f"{name}: {candidate}")
+                    for hit in claim.finditer(clause):
+                        # Only the paths NEAR the claim are its subjects.
+                        # Measured over every claim site in the shipped tree:
+                        # true subjects sit 7, 8, 20, 31 and 85 characters
+                        # before the phrase, while the nearest path that is NOT
+                        # the subject is 187 away (RUNBOOK §4 names
+                        # docs/PRODUCTION_READINESS.md earlier in the same
+                        # sentence, and the claim is about config/openclaw.json).
+                        # Taking every path in the clause flagged that true
+                        # sentence as a falsehood.
+                        window = clause[max(0, hit.start() - 120):hit.start()]
+                        for candidate in path_token.findall(window):
+                            if "/" not in candidate:
+                                continue
+                            checked += 1
+                            if candidate not in reviewed:
+                                offenders.append(f"{name}: {candidate}")
         self.assertGreater(
             checked, 0,
             "no document names a file alongside the twenty-reviewed-artifacts "
@@ -267,13 +339,31 @@ class BandEdgeCustomizationSurfaceTests(unittest.TestCase):
         drops: dict[str, list[str]] = {}
         for path in series:
             text = path.read_text(encoding="utf-8")
+            # `\s+`, not a space: only 004:46 and 007:11 keep the name and the
+            # CHECK keyword on one line. The house style in migrations/ breaks
+            # it (005, 008, 012, 013, 018 all do), so the same-line form made a
+            # pure whitespace reformat of 007 delete it from the world entirely
+            # -- and the test's closing assertion then spoke about 004, whose
+            # CHECK is not the live one.
             for match in re.finditer(
-                r"ADD CONSTRAINT (\w+) CHECK", text, re.IGNORECASE
+                r"ADD CONSTRAINT\s+(\w+)\s+CHECK", text, re.IGNORECASE
             ):
                 name = match.group(1)
                 start = match.end()
-                clause = text[start:start + 1200]
-                if any(f"total_score >= {edge}" in clause for edge in self.edges):
+                # Bound the clause to this statement. A fixed 1200-char window
+                # bled into the NEXT statement once the name/CHECK match was
+                # allowed to span a newline, so unrelated constraints inherited
+                # a `total_score >=` from a later ALTER and were reported as
+                # never-dropped band-edge CHECKs.
+                terminator = text.find(";", start)
+                clause = text[start:terminator if terminator != -1 else start + 1200]
+                # Edge-VALUE-independent: a band-edge CHECK is one that compares
+                # total_score against a bound and names a band. Keying on the
+                # rubric's current minima meant that an operator who customised
+                # their bands got "no migration adds a band-edge CHECK; the
+                # detector has rotted" -- the gate failing on the documented
+                # procedure rather than on a defect.
+                if re.search(r"total_score\s*>=\s*\d", clause) and "recommendation_band" in clause:
                     adds.append((path.name, name))
             for match in re.finditer(
                 r"DROP CONSTRAINT IF EXISTS (\w+)", text, re.IGNORECASE
@@ -304,10 +394,27 @@ class BandEdgeCustomizationSurfaceTests(unittest.TestCase):
                     f"{adds[-1][0]}, which would leave their own bands failing at "
                     f"persistence.",
                 )
-        self.assertIn(
-            adds[-1][0], self.row,
-            f"the last migration to add a band-edge CHECK is {adds[-1][0]}, but "
-            f"CUSTOMIZATION.md's row does not name it",
+        # The last adder is NOT required to be named in CUSTOMIZATION.md. On a
+        # bootstrapped deployment the row itself instructs the operator to "add a
+        # new numbered forward migration", so on a customised deployment the last
+        # adder is theirs and could not be named here. What must hold is that the
+        # shipped procedure still points at the last SHIPPED adder, so check that
+        # instead: of the migrations the row names, the highest-numbered one must
+        # be the last shipped adder.
+        named_adders = [source for source, _ in adds if source in self.row]
+        self.assertTrue(
+            named_adders,
+            f"CUSTOMIZATION.md's band row names none of the migrations that add a "
+            f"band-edge CHECK {[source for source, _ in adds]}; the operator is "
+            f"given no starting point",
+        )
+        shipped_adders = [source for source, _ in adds if source <= max(named_adders)]
+        self.assertEqual(
+            max(named_adders), shipped_adders[-1],
+            f"the row sends the operator to {max(named_adders)}, but the last "
+            f"shipped migration to add a band-edge CHECK is {shipped_adders[-1]}; "
+            f"editing the one the row names would leave a later CHECK enforcing "
+            f"the old bands",
         )
 
 
