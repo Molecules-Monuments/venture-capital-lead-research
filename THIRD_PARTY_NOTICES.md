@@ -142,7 +142,8 @@ under `/opt/yarn-v1.22.22`, `/usr/local/lib/node_modules`, and
 unbounded, not depth-limited — whenever the base image pin or the build moves:
 the layout and the counts are properties of those, not guarantees of this
 document.
-The Debian layer beneath it is **not** permissive-only: it
+
+The Debian material in this image is **not** permissive-only: it
 contains substantial GPL/LGPL material — `poppler-utils` is GPL-2/GPL-3, and
 the majority of the shipped Debian packages declare a GPL, LGPL, or MPL
 licence. Redistributing the built image therefore carries copyleft source-offer

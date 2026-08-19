@@ -843,7 +843,7 @@ class NewSelectorContractTests(unittest.TestCase):
 
 
 class IdentifierCeilingTests(unittest.TestCase):
-    """Every identifier-shaped argument is bounded before the run row is created.
+    """Every contract argument is classified before the run row is created.
 
     `vcrun` enforced the PostgreSQL BIGINT ceiling for `lead_id` alone; the other
     identifier arguments accepted an in-shape value above 9223372036854775807 and
@@ -867,8 +867,8 @@ class IdentifierCeilingTests(unittest.TestCase):
     def test_no_identifier_argument_is_left_unclassified(self) -> None:
         self.assertEqual(
             set(), set(vcrun.UNCLASSIFIED_ID_ARG_KEYS),
-            "these identifier-shaped arguments are declared neither bigint nor "
-            "opaque text, so no ceiling applies to them: "
+            "these contract arguments are not classified as bigint, opaque "
+            "text or non-identifier: "
             f"{sorted(vcrun.UNCLASSIFIED_ID_ARG_KEYS)}. Classify each one.",
         )
 

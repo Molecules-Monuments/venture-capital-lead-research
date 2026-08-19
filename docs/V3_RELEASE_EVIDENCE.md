@@ -1,7 +1,7 @@
 # Version 3.0 release evidence
 
 Date: 2026-07-23 (final-audit session; supersedes the earlier 2026-07-23 and 2026-07-22 evidence)
-Last full re-execution: **2026-08-18** — see "Count re-verification" below. Counts here are that run's measurement unless the sentence quoting one names a different source — the `c72d8b9` baseline under "Count re-verification", and the latency figure under "Image digests — regenerate at deployment", which is a property of the measuring host rather than of this tree.
+Last full re-execution: **2026-08-19** — see "Count re-verification" below. Counts here are that run's measurement unless the sentence quoting one names a different source — the `c72d8b9` baseline under "Count re-verification", and the latency figure under "Image digests — regenerate at deployment", which is a property of the measuring host rather than of this tree.
 Package version: `3.0.0`
 Status: **Deterministic package + deployment path VERIFIED; live-model behavioral gates BLOCKED (not run). See `PRODUCTION_READINESS.md` for the exact boundary.**
 
@@ -9,10 +9,9 @@ Count re-verification: the suites grew across the remediation sessions that
 followed the 2026-07-23 evidence, so the counts below are what this tree
 produces rather than figures carried forward, except where a sentence names the
 commit or host a figure came from. **The full matrix was last re-executed on
-2026-08-18**, against this tree and against the derived
+2026-08-19**, against this tree and against the derived
 image rebuilt from it with `docker build --no-cache --pull` on **2026-08-18**,
-after that day's edits to the image-baked `workspaces/` files, the trusted-context extension, `Dockerfile.openclaw` itself, and the host-side recovery-lifecycle and workflow-validation scripts. The image is
-therefore derived from exactly this tree rather than reused. Earlier in the same
+after that day's edits to the image-baked `workspaces/` files, `Dockerfile.openclaw` itself, and the host-side recovery-lifecycle and workflow-validation scripts. Earlier in the same
 session `bootstrap.sh` also built the image during the live channel exercise,
 and the G8 deployment gate's own bootstrap built and tore down another. The gates: `verify_offline.py`
 (**355 tests, 30/30** base checks), and each opt-in gate individually —
@@ -86,7 +85,7 @@ by audit passes outside this package boundary; see
 `docs/PRODUCTION_READINESS.md`, "Exercised against a live model". No gate below
 invokes a model.
 
-## Passing evidence (executed 2026-07-23; last re-executed 2026-08-18)
+## Passing evidence (executed 2026-07-23; last re-executed 2026-08-19)
 
 | Surface | Result | Reproducible command |
 | --- | ---: | --- |
@@ -138,8 +137,8 @@ The local image ID is host-specific: `bootstrap.sh` rebuilds
 the resulting digest in `deployment-lock.json` at install time. The G6 gate was
 re-run on 2026-08-18 against an image rebuilt from this tree with `docker build
 --no-cache --pull` (8/8), and the retrieval-scale gate was re-run on 2026-08-06,
-2026-08-07, 2026-08-08, 2026-08-09, 2026-08-10, 2026-08-11, 2026-08-16 and
-2026-08-18 (160/160 cases
+2026-08-07, 2026-08-08, 2026-08-09, 2026-08-10, 2026-08-11, 2026-08-16,
+2026-08-18 and 2026-08-19 (160/160 cases
 every time).
 
 **The retrieval p95 is the one figure in this document that is not a stable

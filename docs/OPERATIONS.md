@@ -87,9 +87,9 @@ retrying causes two writers to overlap. The probe below is deliberately not
 scoped to the `openclaw` database, and connects through `postgres`: `restore.sh`
 does part of its work in its own `openclaw_restore_validate_%` database and part
 through the `postgres` maintenance database (`dropdb --force openclaw` followed
-by `createdb openclaw`), so a `datname = 'openclaw'` filter reports nothing
-while a crashed restore is still streaming, and a connection to `openclaw` can
-itself fail because that database is momentarily gone. `pg_stat_activity` is
+by `createdb openclaw`), so a `datname = 'openclaw'` filter misses the
+validation restore and the drop/create window entirely, and a connection to
+`openclaw` can itself fail because that database is momentarily gone. `pg_stat_activity` is
 server-wide, and `usename = 'openclaw_owner'` already excludes the background
 workers and the gateway runtime role:
 

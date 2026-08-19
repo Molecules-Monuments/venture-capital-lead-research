@@ -162,9 +162,9 @@ positive BIGINT strings — no leading zeros, no sign, no UUIDs, and not above
 `0`. `vcrun` refuses both a malformed shape **and** an in-shape value above the
 maximum before Lobster starts, so an out-of-range identifier commits no run row
 and costs no idempotency key. Which arguments are bounded is read off each
-workflow's own key set rather than listed per workflow, and an identifier-shaped
-key that is classified as neither bigint nor opaque text is itself refused — so a
-new identifier cannot be added without a decision about its bound.
+workflow's own key set rather than listed per workflow, and any contract key
+that no classification covers is itself refused — so a new identifier cannot be
+added without a decision about its bound.
 
 `company_domain` must be a bare DNS domain (no scheme, no path), and
 `evidence_hash` a lowercase 64-character SHA-256 digest.

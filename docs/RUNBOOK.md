@@ -240,8 +240,7 @@ The recorder itself is a writer, not a reporter. A no-argument
 current tree — re-stamping `baked_sources_sha256` from the host artifacts below
 and `release_manifest_sha256` from `manifest.json`, without comparing either
 against the lock it replaces — and prints just the lock's path, never its
-contents. It therefore belongs immediately after a `compose build`, which is
-where `bootstrap.sh` and `update.sh` already invoke it. Run it standalone after
+contents. Run it standalone after
 an edit to an image-baked artifact and it re-stamps the very digest the
 `--validate-baked-sources` assertion below reads, so that assertion then reports
 `PASS` against an image that was not rebuilt; the same run also clears the
@@ -920,14 +919,15 @@ and `cp -a` preserves from the source. The sixth is different in kind: an entry
 the scripts cannot READ, which makes the enumeration itself fail. That one is
 not a malformed name — the recovery point would simply not contain those bytes —
 so it is refused here rather than discovered during the archive, and its message
-carries the enumerator's own diagnostic naming the path. Correct its permissions;
-do not remove it.
+hands you the `find` command to run yourself. Correct the permissions of what
+it reports; do not remove it.
 
-The refusal names the entry and ends `nothing has been stopped`, so the
-deployment is untouched and you can correct it and re-run. The one exception is a
-control character in a name: such a name cannot be printed usefully and would
-corrupt the terminal, so that refusal gives you the `find` command that lists the
-offenders instead of quoting them. To detach a hard-linked entry
+The refusal ends `nothing has been stopped`, so the deployment is untouched
+and you can correct it and re-run. Most name the entry. A control character in a
+name and a failed enumeration do not: such a name cannot be printed usefully and
+would corrupt the terminal, and a failed enumeration never learned which entry
+stopped it, so those refusals give you the `find` command to run instead of
+quoting anything. To detach a hard-linked entry
 without changing its bytes:
 
 ```sh
@@ -964,7 +964,7 @@ Then run:
 
 The update holds a lifecycle lock, creates an atomically published recovery
 point while consumers are quiesced, and keeps them stopped through the same
-credential, role, migration, readiness, and consumer reconciliation. It records
+credential, role, migration, consumer, and readiness reconciliation. It records
 new image IDs only after those checks pass. If any later step fails, consumers
 remain stopped; restore the verified pre-update recovery point or repair the
 reviewed release. If the failure landed after the migrations applied, the
