@@ -78,7 +78,7 @@
     {
       "executable": false,
       "path": "Dockerfile.openclaw",
-      "sha256": "c5268f81d3e1a1f08a244f3036cb6dad201145f1724f126bfa8a1877a5f53b3b",
+      "sha256": "355bdfa39f2f1dca1349aa539935ded4f2a14f1ca147e5ed29be07194cc5100c",
       "size": 14115
     },
     {
@@ -204,13 +204,13 @@
     {
       "executable": false,
       "path": "docs/PRODUCTION_READINESS.md",
-      "sha256": "e6d95527f39946665f8303cc8a6a2e005e7772413f1e2b7e8a2626988e0f9300",
-      "size": 15519
+      "sha256": "b04dbf2b170f26bea5d07eb3dd0cf5330ca77e05f6eee1b9a3050230f53c84fc",
+      "size": 15495
     },
     {
       "executable": false,
       "path": "docs/RUNBOOK.md",
-      "sha256": "c5d5aad31ee70dd71f503e5e2e2b8124e6439970aec290db12be86ef2f908dca",
+      "sha256": "60d43464734fd0bbff246907b339bf0d871f83950a77fa94aec849ef3f2e2f9a",
       "size": 99484
     },
     {
@@ -228,8 +228,8 @@
     {
       "executable": false,
       "path": "docs/V3_RELEASE_EVIDENCE.md",
-      "sha256": "c03ec7f34d1ccf1d5b83277386e381198db37e8055f9647105d3379cb7469db2",
-      "size": 13889
+      "sha256": "9ca4dd6df8c996f983a9a7e5dd29b35cf9ee6abc69cd84860371e4b3af0deebe",
+      "size": 13865
     },
     {
       "executable": false,
@@ -240,8 +240,8 @@
     {
       "executable": false,
       "path": "evals/V3_EVAL_RESULTS.md",
-      "sha256": "ef7ff0a4d608f2a7a937a81fbf61749f8e9ac590f1c33fcf1706575158cc7716",
-      "size": 11056
+      "sha256": "32f462b47640a804cdd13e3b5c6f650ec558945c56aa4582b28a4005f6d97008",
+      "size": 11032
     },
     {
       "executable": false,
@@ -1872,8 +1872,8 @@
     {
       "executable": false,
       "path": "workspaces/vc-chief/vc/third_party_connectors.md",
-      "sha256": "f33ea3dfcaefae8156603c3e002100c8dece71ca67b5673aa3446350b361a9ff",
-      "size": 4067
+      "sha256": "f93cd0e436de0517ebc6fe95f9ab8fc3e115aabded150f6b4d2ce810819aa8fd",
+      "size": 4298
     },
     {
       "executable": false,
