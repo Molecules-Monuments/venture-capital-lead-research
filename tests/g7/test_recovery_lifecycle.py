@@ -259,6 +259,12 @@ BACKSLASH_BEARING_LINES: dict[str, tuple[str, ...]] = {
         'printf \'127.0.0.1:5432:openclaw:openclaw_owner:%s\\n\' "$invalid_password" >> "$invalid_passfile"',
     ),
     'scripts/backup.sh': (
+        # Reviewed: the backslashes are inside a SINGLE-QUOTED `tr` argument,
+        # so the shell never touches them and `tr` performs its own octal
+        # expansion. This is not an `echo` argument, which is the dash-escape
+        # class this pin exists for. The explicit ranges are what make the
+        # check locale-proof; `[[:cntrl:]]` in a `case` is not.
+        'package_inbox_stripped="$(printf \'%s\' "$PACKAGE_INBOX" | LC_ALL=C tr -d \'\\001-\\037\\177\')"',
         'tab="$(printf \'\\t\')"',
         'printf \'%s\\n\' "$CHECK_ENV_REPORT" >&2',
         'printf \'%s\\n\' "$LOCK_TOKEN" >"$LOCK_DIR/owner"',
@@ -331,6 +337,12 @@ BACKSLASH_BEARING_LINES: dict[str, tuple[str, ...]] = {
         'printf \'%s\\n\' "$LIFECYCLE_LOCK_TOKEN" >"$LIFECYCLE_LOCK_DIR/owner"',
     ),
     'scripts/update.sh': (
+        # Reviewed: the backslashes are inside a SINGLE-QUOTED `tr` argument,
+        # so the shell never touches them and `tr` performs its own octal
+        # expansion. This is not an `echo` argument, which is the dash-escape
+        # class this pin exists for. The explicit ranges are what make the
+        # check locale-proof; `[[:cntrl:]]` in a `case` is not.
+        'package_inbox_stripped="$(printf \'%s\' "$PACKAGE_INBOX" | LC_ALL=C tr -d \'\\001-\\037\\177\')"',
         'printf \'%s\\n\' "$LOCK_TOKEN" >"$LOCK_DIR/owner"',
         "printf '%s\\n' '\\set ON_ERROR_STOP on'",
         'printf \'%s\\n\' "SELECT (to_regclass(\'public.schema_migrations\') IS NOT NULL) AS ledger_exists \\\\gset"',
@@ -2339,7 +2351,13 @@ class RecoveryLifecycleContractTests(unittest.TestCase):
             # pattern cannot be scoped to a locale, so the ONLY admissible
             # spelling is inside a command prefixed with LC_ALL=C. Every
             # occurrence is checked, so a second one added later is caught.
-            for line in source.split("\n"):
+            # The WHOLE script, not just the extracted guard. The first version
+            # of this pin scanned `source` -- the lifted inbox-guard block -- and
+            # so could not see the package-path guard near the top of the file,
+            # which was written as a bare `case ... *[[:cntrl:]]*)` and carried
+            # exactly the defect this pin exists to prevent. A pin that covers
+            # less than the file it is about is the round's recurring defect.
+            for line in body(name).split("\n"):
                 if "[[:cntrl:]]" not in line or line.lstrip().startswith("#"):
                     continue
                 with self.subTest(script=name, line=line.strip()[:70]):
@@ -2414,16 +2432,21 @@ class RecoveryLifecycleContractTests(unittest.TestCase):
         # on passing under a name that says "every class". So derive the world
         # from the guard text and require each class to be claimed by a case.
         for name, source in sorted(guards.items()):
-            classes = {
-                match.group(1)
-                for match in re.finditer(r'inbox_reject="[^"]*?\(([^)]+)\)"', source)
-            }
-            classes |= {
-                "control character"
-                for _ in re.finditer(r"an entry name holds a control character", source)
-            }
+            # Derive from EVERY `inbox_reject=` message, not from those matching a
+            # particular shape. The first version keyed on a trailing "(...)"
+            # group, so a class whose message parenthesises mid-sentence -- the
+            # unreadable-inbox refusal below -- was silently outside the derived
+            # world and needed no case. A derivation that quietly covers less is
+            # the exact defect this whole round was about.
+            classes = set(re.findall(r'inbox_reject="([^"]+)"', source))
             self.assertTrue(classes, f"{name}: no refusal class found; the derivation has rotted")
+            self.assertGreaterEqual(
+                len(classes), 6,
+                f"{name}: only {len(classes)} refusal messages found {sorted(classes)}; "
+                f"the guard has lost a class or the derivation has rotted",
+            )
             expected_fragments = {expected for _, _, must, expected in cases if must}
+            expected_fragments.add("could not be fully enumerated")
             unexercised = sorted(
                 refusal for refusal in classes
                 if not any(fragment in refusal for fragment in expected_fragments)
@@ -2549,6 +2572,73 @@ class RecoveryLifecycleContractTests(unittest.TestCase):
                                     f"deployment: {output}",
                                 )
 
+        # The unreadable-inbox class, which no fixture above can plant: it is a
+        # permission state, not a name. Mode bits do not deny root, so probe what
+        # this process can actually do rather than assuming the chmod denied it.
+        for shell in shells:
+            for name, source in sorted(guards.items()):
+                with self.subTest(shell=shell, script=name, case="an unreadable subtree"):
+                    with tempfile.TemporaryDirectory(prefix="g7-guard-unreadable-") as raw:
+                        package = Path(raw)
+                        (package / "scripts").mkdir()
+                        (package / "VERSION").write_text("3.0.0\n", encoding="utf-8")
+                        inbox = package / "inbox"
+                        inbox.mkdir()
+                        (inbox / "ok.pdf").write_text("x\n", encoding="utf-8")
+                        locked = inbox / "locked"
+                        locked.mkdir()
+                        (locked / "payload.pdf").write_text("x\n", encoding="utf-8")
+                        locked.chmod(0o000)
+                        try:
+                            try:
+                                os.listdir(locked)
+                                denied = False
+                            except OSError:
+                                denied = True
+                            runner = package / "guard.sh"
+                            runner.write_text(
+                                "set -eu\n"
+                                f'PACKAGE_INBOX="{inbox}"\n'
+                                f"{source}"
+                                'echo "GUARD ACCEPTED"\n',
+                                encoding="utf-8",
+                            )
+                            done = subprocess.run(
+                                [shell, str(runner)],
+                                cwd=package, text=True, capture_output=True, timeout=60,
+                            )
+                        finally:
+                            locked.chmod(0o755)
+                    output = done.stdout + done.stderr
+                    if denied:
+                        self.assertNotEqual(
+                            0, done.returncode,
+                            f"{name} accepted an inbox holding a subtree it cannot "
+                            f"read. It tars that inbox into the recovery point, so "
+                            f"the archive would silently omit it: {output}",
+                        )
+                        self.assertIn(
+                            "could not be fully enumerated", output,
+                            f"{name} stopped on an unreadable subtree without naming "
+                            f"the class. Written as a bare assignment this died under "
+                            f"`set -e` with nothing but find's stderr, and an "
+                            f"unreadable directory under the inbox is a state the two "
+                            f"integrity checkers deliberately tolerate, so it is "
+                            f"reachable on a healthy deployment: {output}",
+                        )
+                        self.assertIn(
+                            "nothing has been stopped", output,
+                            f"{name} refused an unreadable subtree without telling the "
+                            f"operator the deployment is untouched: {output}",
+                        )
+                    else:
+                        self.assertEqual(
+                            0, done.returncode,
+                            f"{name} refused an inbox this process can read perfectly "
+                            f"well (running as root, where mode bits do not deny): "
+                            f"{output}",
+                        )
+
         for shell in shells:
             for name, source in sorted(guards.items()):
                 for candidate, refused in sorted(validator_refuses.items()):
@@ -2610,16 +2700,31 @@ class RecoveryLifecycleContractTests(unittest.TestCase):
             source = body(name)
             with self.subTest(script=name):
                 self.assertIn(
-                    'case "$PACKAGE_INBOX" in', source,
+                    "package_inbox_stripped=", source,
                     f"{name} no longer checks its own package path before "
                     f"enumerating entries under it",
+                )
+                # Non-comment lines only: the guard's own comment names the
+                # construct it deliberately avoids, and matching that would make
+                # this assertion forbid its own explanation.
+                code_lines = "\n".join(
+                    line for line in source.split("\n")
+                    if not line.lstrip().startswith("#")
+                )
+                self.assertNotIn(
+                    'case "$PACKAGE_INBOX" in', code_lines,
+                    f"{name} checks its own path with a `case` pattern again. A "
+                    f"case is matched in the script's own locale and cannot be "
+                    f"scoped to C, so the verdict varies by locale and platform: "
+                    f"measured, a raw 0x97 is refused under en_US.UTF-8 and "
+                    f"accepted under ca_FR.ISO8859-15 on the same host.",
                 )
 
         extracted = {}
         for name in ("backup.sh", "update.sh"):
             text = body(name)
-            start = text.index('case "$PACKAGE_INBOX" in')
-            end = text.index("\nesac", start) + len("\nesac\n")
+            start = text.index("package_inbox_stripped=")
+            end = text.index("\nfi\n", start) + len("\nfi\n")
             extracted[name] = text[start:end]
 
         for name, source in sorted(extracted.items()):
@@ -2627,6 +2732,12 @@ class RecoveryLifecycleContractTests(unittest.TestCase):
                 ("a clean package path", "/srv/openclaw", False),
                 ("a newline in the package path", "/srv/open\nclaw", True),
                 ("a tab in the package path", "/srv/open\tclaw", True),
+                # Must be ACCEPTED: these are ordinary paths, and the earlier
+                # `case` form refused them on some locale/platform pairs, which
+                # blocks every backup and every update on that deployment.
+                ("a CJK package path", "/srv/\u65e5\u672c\u8a9e/openclaw", False),
+                ("an accented package path", "/srv/M\u00fcller/openclaw", False),
+                ("a raw C1 byte in the package path", "/srv/a\u0097b/openclaw", False),
             ):
                 with self.subTest(script=name, case=label):
                     runner = (
