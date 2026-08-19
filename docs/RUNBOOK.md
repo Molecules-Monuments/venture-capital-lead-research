@@ -915,12 +915,13 @@ touching anything, an inbox entry a recovery archive cannot represent. Five of
 the six classes are about the entry's NAME or KIND: a control character or a
 backslash in the path, a symlink, anything that is not a regular file or
 directory, and a **hard link** — which `cp -al` and `rsync --link-dest` produce
-and `cp -a` preserves from the source. The sixth is different in kind: an entry
-the scripts cannot READ, which makes the enumeration itself fail. That one is
-not a malformed name — the recovery point would simply not contain those bytes —
-so it is refused here rather than discovered during the archive, and its message
-hands you the `find` command to run yourself. Correct the permissions of what
-it reports; do not remove it.
+and `cp -a` preserves from the source. The sixth is different in kind: a directory
+the scripts cannot descend, which makes the enumeration itself fail. That one is
+not a malformed name — it means the checks above were not applied to every
+entry, so the run cannot certify the inbox — and its message hands you the
+`find` command to run yourself. Correct the permissions of what it reports; do
+not remove it. An unreadable regular *file* is a different case and is not
+caught here: `tar` reports it and the backup fails during the archive instead.
 
 The refusal ends `nothing has been stopped`, so the deployment is untouched
 and you can correct it and re-run. Most name the entry. A control character in a
@@ -936,10 +937,10 @@ cp inbox/<entry> inbox/<entry>.detached && mv inbox/<entry>.detached inbox/<entr
 
 `validate_recovery_archive.py` rejects all five NAME-and-kind classes when it
 verifies the recovery point, so the guard refuses early rather than after the
-quiesce. It cannot see the sixth: an unreadable entry produces no malformed
-member name, it produces a recovery point that silently lacks those bytes, which
-is why the guard is the only thing standing between that state and a backup you
-would trust.
+quiesce. It cannot see the sixth: a directory that cannot be
+descended produces no malformed member name at all, so the validator has nothing
+to reject. The guard stops before the quiesce instead, because a run whose
+enumeration failed cannot certify the inbox.
 
 So re-pin afterwards. First run
 `python3 -B scripts/check_customization.py config/customization-profile.json .env`

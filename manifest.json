@@ -210,8 +210,8 @@
     {
       "executable": false,
       "path": "docs/RUNBOOK.md",
-      "sha256": "60d43464734fd0bbff246907b339bf0d871f83950a77fa94aec849ef3f2e2f9a",
-      "size": 99484
+      "sha256": "0fefb4c6df6b3f4a779ad8e9f07d3fa36f090f5ab6131ebcfa7bb4754a73814d",
+      "size": 99615
     },
     {
       "executable": false,
@@ -528,8 +528,8 @@
     {
       "executable": true,
       "path": "scripts/backup.sh",
-      "sha256": "8354f8f372208e2c60936fba7f7fcb2536cc15f319cc575e6205d85d94076da4",
-      "size": 29484
+      "sha256": "25f69717b5ae9085c3429499ecce1e994a0bf090402d98306cca33a5f359fcbb",
+      "size": 30838
     },
     {
       "executable": true,
@@ -642,8 +642,8 @@
     {
       "executable": true,
       "path": "scripts/update.sh",
-      "sha256": "79cf34ca958629b1e58517062ad8f9d3e567806b79467672aa4f4601562345c4",
-      "size": 25022
+      "sha256": "81c3c6946da71f2f648681fe7f86420e7dfa76abf7847133f849dda51ff90b53",
+      "size": 26376
     },
     {
       "executable": true,
