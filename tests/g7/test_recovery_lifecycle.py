@@ -66,6 +66,34 @@ SHELL_COMMAND_PREFIXES = frozenset({
 })
 
 
+def shell_code_only(line: str) -> str:
+    """One shell line with quoted text and any trailing comment blanked out.
+
+    The trap inventory counts `trap` WORDS to keep its world closed. Counting the
+    raw line makes an operator message the gate's business: `echo "this looks like
+    a trap"` or a trailing `# not a trap` both raise the count, and the release
+    gate then fails claiming a handler is hidden from trap_commands() when none
+    exists. Blank rather than delete, so nothing shifts position.
+    """
+    out = []
+    quote = ""
+    for index, character in enumerate(line):
+        if quote:
+            out.append(" ")
+            if character == quote:
+                quote = ""
+            continue
+        if character in "'\"":
+            quote = character
+            out.append(" ")
+            continue
+        if character == "#" and (index == 0 or line[index - 1].isspace()):
+            out.append(" " * (len(line) - index))
+            break
+        out.append(character)
+    return "".join(out)
+
+
 def echo_arguments(line: str) -> list[str]:
     """Every `echo` command's argument text on one shell line.
 
@@ -1514,6 +1542,60 @@ class RecoveryLifecycleContractTests(unittest.TestCase):
                             f"--pristine agree with an inventory that never saw it.",
                         )
 
+            # The cell that distinguishes the two rules by NAME rather than by
+            # permission: an operator drops a repository checkout into `inbox/`
+            # and it carries its own `.gitkeep`. `verify_release.py` asks whether
+            # the path is DECLARED; `build_release_manifest.py` cannot (it is
+            # writing the declaration), so it carries the equivalent set
+            # explicitly. Round 5 replaced its BASENAME rule with the exact
+            # relative paths -- and nothing failed when that was reverted, because
+            # every existing row here plants at depth 1, where the two rules agree.
+            # Depth 2 is the only input that separates them.
+            checkout = package / "inbox" / "repo"
+            checkout.mkdir()
+            (checkout / ".gitkeep").write_text("", encoding="utf-8")
+            (checkout / "README.md").write_text("operator's own checkout\n", encoding="utf-8")
+            baseline = json.loads(manifest.read_text(encoding="utf-8"))
+            verified = rc(verifier, "--pristine")
+            checked = rc(builder, "--check")
+            self.assertEqual(
+                verified == 0, checked == 0,
+                f"the two integrity checkers disagree about an operator checkout "
+                f"carrying inbox/repo/.gitkeep: --pristine returned {verified}, "
+                f"--check returned {checked}. docs/RUNBOOK.md §9 tells the "
+                f"operator to read that disagreement as tampering, and this is a "
+                f"deployment doing exactly what inbox/ is for.",
+            )
+            self.assertEqual(
+                0, verified,
+                "an operator checkout under inbox/ carrying its own .gitkeep "
+                "raised the RUNBOOK §9 tamper signal; inbox/ holds operator data "
+                "whose names are THEIRS to choose",
+            )
+            rebuilt = subprocess.run(
+                [sys.executable, "-B", str(builder)],
+                text=True, capture_output=True, timeout=60,
+            )
+            self.assertEqual(
+                0, rebuilt.returncode,
+                f"a re-pin failed over an operator checkout under inbox/: "
+                f"{rebuilt.stdout}{rebuilt.stderr}",
+            )
+            repinned = json.loads(manifest.read_text(encoding="utf-8"))
+            self.assertEqual(
+                baseline["files"], repinned["files"],
+                "a re-pin absorbed the operator's own inbox/repo/.gitkeep into "
+                "the declared inventory. The next operator to add or remove a "
+                "file there fails --pristine, and CLAUDE.md's re-pin step becomes "
+                "a way to certify operator payload as package content.",
+            )
+            self.assertIn(
+                "inbox/.gitkeep", [entry["path"] for entry in repinned["files"]],
+                "the root placeholder inbox/.gitkeep left the inventory; the "
+                "tolerance widened from 'this exact path' to 'anything named "
+                "\'.gitkeep\'' in the other direction",
+            )
+
     def test_deployment_lock_binds_release_and_migrations(self) -> None:
         recorder = body("record_images.py")
         for contract_field in (
@@ -2207,8 +2289,15 @@ class RecoveryLifecycleContractTests(unittest.TestCase):
         after the quiesce.
 
         So execute the shipped block. Each guard is lifted verbatim, given a
-        fixture inbox, and run under the gate host's `/bin/sh`; the dash matrix in
-        the release evidence covers the other shell. A refusal must name its class
+        fixture inbox, and run under EVERY POSIX shell present on the host --
+        `/bin/sh` plus whichever of `dash` and `bash` is installed. A single shell
+        would not do: `/bin/sh` is dash on the Debian deployment and bash-in-sh-mode
+        on the macOS gate host, so a bashism in both copies passes every gate here
+        and kills every backup and every update there, and `sh -n` does not catch
+        one (it parses `[[ ]]` under bash). An earlier draft of this docstring
+        claimed "the dash matrix in the release evidence covers the other shell";
+        no such artifact exists -- docs/V3_RELEASE_EVIDENCE.md does not contain the
+        word. A refusal must name its class
         and say nothing has been stopped; a legal inbox must be accepted, because
         a guard that over-refuses blocks every backup and every update on that
         deployment.
@@ -2236,12 +2325,48 @@ class RecoveryLifecycleContractTests(unittest.TestCase):
             self.assertIn("[[:cntrl:]]", source, f"{name}: the guard lost its control-character probe")
             self.assertIn("-links +1", source, f"{name}: the guard lost its hard-link scan")
 
+            # Every control-character classification must be locale-independent.
+            # `[[:cntrl:]]` is resolved against the caller's LC_CTYPE, and the
+            # UTF-8 bytes of an ordinary CJK filename include 0x97, 0x9C and
+            # 0x9E -- all C1 controls in ISO-8859-15. Measured on Debian under
+            # LC_ALL=en_US.ISO-8859-15: the guard refused a clean inbox, which
+            # blocks EVERY backup and EVERY update on that deployment. Under
+            # LC_ALL=C the class is exactly 0x00-0x1F and 0x7F, which is what
+            # scripts/validate_recovery_archive.py refuses -- so the guard and
+            # the validator agree on every host.
+            #
+            # Pin the enumerable world rather than widening a detector: a `case`
+            # pattern cannot be scoped to a locale, so the ONLY admissible
+            # spelling is inside a command prefixed with LC_ALL=C. Every
+            # occurrence is checked, so a second one added later is caught.
+            for line in source.split("\n"):
+                if "[[:cntrl:]]" not in line or line.lstrip().startswith("#"):
+                    continue
+                with self.subTest(script=name, line=line.strip()[:70]):
+                    self.assertIn(
+                        "LC_ALL=C", line,
+                        f"{name} classifies control characters without LC_ALL=C: "
+                        f"{line.strip()!r}. The verdict then depends on the "
+                        f"operator's LANG -- under ISO-8859-15 the UTF-8 bytes of "
+                        f"a CJK filename read as C1 controls and the guard "
+                        f"refuses a clean inbox, stopping every backup and every "
+                        f"update on that deployment.",
+                    )
+
         # (label, builder, must_refuse, expected fragment of the reason)
         def plant_clean(inbox: Path) -> None:
             (inbox / "deck.pdf").write_text("x\n", encoding="utf-8")
             (inbox / "two words.pdf").write_text("x\n", encoding="utf-8")
-            (inbox / "M\u00fcller.pdf").write_text("x\n", encoding="utf-8")
-            (inbox / "\u65e5\u672c\u8a9e.pdf").write_text("x\n", encoding="utf-8")
+            # Through BYTES paths. `write_text`'s encoding= governs the CONTENT;
+            # the FILENAME goes through sys.getfilesystemencoding(), which follows
+            # the locale. Measured on the deployed floor (python:3.11-slim,
+            # LC_ALL=en_US.ISO-8859-15 -> fsencoding iso8859-15): the str form
+            # raises UnicodeEncodeError and this test errors, so the release gate
+            # fails on a legal host. The guards read bytes from `find`, so what
+            # matters is the bytes on disk, not the locale that named them.
+            for raw_name in ("M\u00fcller.pdf", "\u65e5\u672c\u8a9e.pdf"):
+                with open(os.path.join(os.fsencode(inbox), raw_name.encode("utf-8")), "wb") as handle:
+                    handle.write(b"x\n")
             nested = inbox / "sub"
             nested.mkdir()
             (nested / "deck.pdf").write_text("x\n", encoding="utf-8")
@@ -2284,62 +2409,264 @@ class RecoveryLifecycleContractTests(unittest.TestCase):
             ("a hard link", plant_hardlink, True, "hard link"),
         )
 
+        # The nine cases below are hand-written; the guard's class set is not. If
+        # a class is added to the scripts and no case exercises it, this test goes
+        # on passing under a name that says "every class". So derive the world
+        # from the guard text and require each class to be claimed by a case.
         for name, source in sorted(guards.items()):
-            for label, plant, must_refuse, expected in cases:
+            classes = {
+                match.group(1)
+                for match in re.finditer(r'inbox_reject="[^"]*?\(([^)]+)\)"', source)
+            }
+            classes |= {
+                "control character"
+                for _ in re.finditer(r"an entry name holds a control character", source)
+            }
+            self.assertTrue(classes, f"{name}: no refusal class found; the derivation has rotted")
+            expected_fragments = {expected for _, _, must, expected in cases if must}
+            unexercised = sorted(
+                refusal for refusal in classes
+                if not any(fragment in refusal for fragment in expected_fragments)
+            )
+            self.assertEqual(
+                [], unexercised,
+                f"{name} refuses {unexercised}, and no case below exercises that "
+                f"class. This test is named ..._refuse_every_class_..., so a class "
+                f"the scripts have and the fixtures do not is exactly the gap the "
+                f"name denies. Add a case per class.",
+            )
+
+        # Differential: the guard exists to refuse, BEFORE the quiesce, exactly
+        # what scripts/validate_recovery_archive.py would refuse after it. Ask
+        # the validator rather than restating its rule a fifth time, and compare
+        # verdicts name by name. This is what proves LC_ALL=C is the right
+        # classification and not merely a different one: the C locale's cntrl
+        # class is 0x00-0x1F and 0x7F, and so is the validator's.
+        spec = importlib.util.spec_from_file_location(
+            "g7_archive_validator", SCRIPTS / "validate_recovery_archive.py"
+        )
+        assert spec is not None and spec.loader is not None
+        archive_validator = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(archive_validator)
+
+        differential = (
+            "plain.pdf",
+            "two words.pdf",
+            "M\u00fcller.pdf",
+            "\u65e5\u672c\u8a9e.pdf",   # UTF-8 bytes include 0x97/0x9C/0x9E
+            "a\u0085b.pdf",              # C1 NEL: accepted by BOTH, and the
+            "a\u0097b.pdf",              # locale-dependent guard refused these
+            "a\x01b.pdf",
+            "a\x7fb.pdf",
+        )
+        validator_refuses = {}
+        for candidate in differential:
+            try:
+                archive_validator.normalized_name(f"inbox/{candidate}")
+                validator_refuses[candidate] = False
+            except archive_validator.ArchiveError:
+                validator_refuses[candidate] = True
+        self.assertTrue(
+            any(validator_refuses.values()) and not all(validator_refuses.values()),
+            f"the differential set no longer separates the two verdicts: "
+            f"{validator_refuses}",
+        )
+
+        shells = [
+            candidate
+            for candidate in ("/bin/sh", shutil.which("dash"), shutil.which("bash"))
+            if candidate and Path(candidate).exists()
+        ]
+        # De-duplicate by resolved target: /bin/sh is frequently a link to one of
+        # the others, and running the same binary twice is not a matrix.
+        seen_shells: dict[str, str] = {}
+        for candidate in shells:
+            seen_shells.setdefault(str(Path(candidate).resolve()), candidate)
+        shells = sorted(seen_shells.values())
+        self.assertTrue(
+            shells,
+            "no POSIX shell found to execute the guards with; this test would "
+            "otherwise pass without running anything",
+        )
+
+        for shell in shells:
+            for name, source in sorted(guards.items()):
+                for label, plant, must_refuse, expected in cases:
+                    with self.subTest(shell=shell, script=name, case=label):
+                        with tempfile.TemporaryDirectory(prefix="g7-guard-exec-") as raw:
+                            package = Path(raw)
+                            # A `scripts` directory and a VERSION file, so a fragment
+                            # of a split name can resolve against the package the way
+                            # it does on a real deployment.
+                            (package / "scripts").mkdir()
+                            (package / "VERSION").write_text("3.0.0\n", encoding="utf-8")
+                            inbox = package / "inbox"
+                            inbox.mkdir()
+                            plant(inbox)
+                            runner = package / "guard.sh"
+                            runner.write_text(
+                                # Invoked as `<shell> guard.sh`, so this line is inert;
+                            # the matrix above decides the interpreter.
+                            "set -eu\n"
+                                f'PACKAGE_INBOX="{inbox}"\n'
+                                f"{source}"
+                                'echo "GUARD ACCEPTED"\n',
+                                encoding="utf-8",
+                            )
+                            done = subprocess.run(
+                                [shell, str(runner)],
+                                cwd=package, text=True, capture_output=True, timeout=60,
+                            )
+                            output = done.stdout + done.stderr
+                            if must_refuse:
+                                self.assertNotEqual(
+                                    0, done.returncode,
+                                    f"{name} ACCEPTED {label}. That entry reaches "
+                                    f"validate_recovery_archive.py, which refuses it "
+                                    f"after the quiesce with production stopped and no "
+                                    f"recovery point written: {output}",
+                                )
+                                self.assertIn(
+                                    "a recovery archive cannot represent", output,
+                                    f"{name} refused {label} without the operator-facing "
+                                    f"message: {output}",
+                                )
+                                self.assertIn(
+                                    expected, output,
+                                    f"{name} refused {label} but named the wrong class; "
+                                    f"the operator is sent after the wrong entry: {output}",
+                                )
+                                self.assertIn(
+                                    "nothing has been stopped", output,
+                                    f"{name} refused {label} without telling the operator "
+                                    f"the deployment is untouched: {output}",
+                                )
+                            else:
+                                self.assertEqual(
+                                    0, done.returncode,
+                                    f"{name} REFUSED {label}. A guard that over-refuses "
+                                    f"blocks every backup and every update on that "
+                                    f"deployment: {output}",
+                                )
+
+        for shell in shells:
+            for name, source in sorted(guards.items()):
+                for candidate, refused in sorted(validator_refuses.items()):
+                    with self.subTest(shell=shell, script=name, differential=candidate):
+                        with tempfile.TemporaryDirectory(prefix="g7-guard-diff-") as raw:
+                            package = Path(raw)
+                            (package / "scripts").mkdir()
+                            (package / "VERSION").write_text("3.0.0\n", encoding="utf-8")
+                            inbox = package / "inbox"
+                            inbox.mkdir()
+                            # Bytes path: the name must land on disk as these
+                            # exact bytes whatever the locale is.
+                            target = os.path.join(
+                                os.fsencode(inbox), candidate.encode("utf-8")
+                            )
+                            with open(target, "wb") as handle:
+                                handle.write(b"x\n")
+                            runner = package / "guard.sh"
+                            runner.write_text(
+                                "set -eu\n"
+                                f'PACKAGE_INBOX="{inbox}"\n'
+                                f"{source}"
+                                'echo "GUARD ACCEPTED"\n',
+                                encoding="utf-8",
+                            )
+                            done = subprocess.run(
+                                [shell, str(runner)],
+                                cwd=package, text=True, capture_output=True, timeout=60,
+                            )
+                        self.assertEqual(
+                            refused, done.returncode != 0,
+                            f"{name} and validate_recovery_archive.py DISAGREE about "
+                            f"{candidate!r}: the validator "
+                            f"{'refuses' if refused else 'accepts'} it, the guard "
+                            f"{'refused' if done.returncode else 'accepted'} it. The "
+                            f"guard exists to refuse before the quiesce exactly what "
+                            f"the validator refuses after it. Refusing more blocks "
+                            f"every backup and every update on a legal deployment; "
+                            f"refusing less lets the failure land after "
+                            f"MUTATION_STARTED, with production stopped and no "
+                            f"recovery point written. Output: "
+                            f"{done.stdout}{done.stderr}",
+                        )
+
+    def test_both_scripts_refuse_a_package_path_holding_a_control_character(self) -> None:
+        """A newline in the PACKAGE path must be named as such, not blamed on the inbox.
+
+        Both guards enumerate entries from newline-delimited `find` output. If the
+        package directory's own path holds a newline, every entry splits into
+        fragments: the inbox check then refuses every backup and every update,
+        names paths that do not exist, and reports "control character in path"
+        against an entry whose name is clean. The operator is sent to correct the
+        inbox, which is not where the problem is.
+
+        The guard is at the top of each script, outside the block the executing
+        test lifts, so it needs its own cover.
+        """
+        for name in ("backup.sh", "update.sh"):
+            source = body(name)
+            with self.subTest(script=name):
+                self.assertIn(
+                    'case "$PACKAGE_INBOX" in', source,
+                    f"{name} no longer checks its own package path before "
+                    f"enumerating entries under it",
+                )
+
+        extracted = {}
+        for name in ("backup.sh", "update.sh"):
+            text = body(name)
+            start = text.index('case "$PACKAGE_INBOX" in')
+            end = text.index("\nesac", start) + len("\nesac\n")
+            extracted[name] = text[start:end]
+
+        for name, source in sorted(extracted.items()):
+            for label, package_dir, must_refuse in (
+                ("a clean package path", "/srv/openclaw", False),
+                ("a newline in the package path", "/srv/open\nclaw", True),
+                ("a tab in the package path", "/srv/open\tclaw", True),
+            ):
                 with self.subTest(script=name, case=label):
-                    with tempfile.TemporaryDirectory(prefix="g7-guard-exec-") as raw:
-                        package = Path(raw)
-                        # A `scripts` directory and a VERSION file, so a fragment
-                        # of a split name can resolve against the package the way
-                        # it does on a real deployment.
-                        (package / "scripts").mkdir()
-                        (package / "VERSION").write_text("3.0.0\n", encoding="utf-8")
-                        inbox = package / "inbox"
-                        inbox.mkdir()
-                        plant(inbox)
-                        runner = package / "guard.sh"
-                        runner.write_text(
-                            "#!/bin/sh\nset -eu\n"
-                            f'PACKAGE_INBOX="{inbox}"\n'
-                            f"{source}"
-                            'echo "GUARD ACCEPTED"\n',
-                            encoding="utf-8",
-                        )
+                    runner = (
+                        "set -eu\n"
+                        f'PACKAGE_DIR="{package_dir}"\n'
+                        f'PACKAGE_INBOX="{package_dir}/inbox"\n'
+                        f'{source}'
+                        'echo "PATH ACCEPTED"\n'
+                    )
+                    with tempfile.TemporaryDirectory(prefix="g7-pkgpath-") as raw:
+                        script = Path(raw) / "probe.sh"
+                        script.write_text(runner, encoding="utf-8")
                         done = subprocess.run(
-                            ["/bin/sh", str(runner)],
-                            cwd=package, text=True, capture_output=True, timeout=60,
+                            ["/bin/sh", str(script)],
+                            text=True, capture_output=True, timeout=60,
                         )
-                        output = done.stdout + done.stderr
-                        if must_refuse:
-                            self.assertNotEqual(
-                                0, done.returncode,
-                                f"{name} ACCEPTED {label}. That entry reaches "
-                                f"validate_recovery_archive.py, which refuses it "
-                                f"after the quiesce with production stopped and no "
-                                f"recovery point written: {output}",
-                            )
-                            self.assertIn(
-                                "a recovery archive cannot represent", output,
-                                f"{name} refused {label} without the operator-facing "
-                                f"message: {output}",
-                            )
-                            self.assertIn(
-                                expected, output,
-                                f"{name} refused {label} but named the wrong class; "
-                                f"the operator is sent after the wrong entry: {output}",
-                            )
-                            self.assertIn(
-                                "nothing has been stopped", output,
-                                f"{name} refused {label} without telling the operator "
-                                f"the deployment is untouched: {output}",
-                            )
-                        else:
-                            self.assertEqual(
-                                0, done.returncode,
-                                f"{name} REFUSED {label}. A guard that over-refuses "
-                                f"blocks every backup and every update on that "
-                                f"deployment: {output}",
-                            )
+                    output = done.stdout + done.stderr
+                    if must_refuse:
+                        self.assertNotEqual(
+                            0, done.returncode,
+                            f"{name} accepted {label}; every entry it enumerates "
+                            f"will be a fragment: {output}",
+                        )
+                        self.assertIn(
+                            "package directory's own path", output,
+                            f"{name} refused {label} but did not say the PACKAGE "
+                            f"path is the problem, sending the operator to the "
+                            f"inbox instead: {output}",
+                        )
+                        self.assertIn(
+                            "Nothing has been stopped", output,
+                            f"{name} refused {label} without telling the operator "
+                            f"the deployment is untouched: {output}",
+                        )
+                    else:
+                        self.assertEqual(
+                            0, done.returncode,
+                            f"{name} refused {label}; an ordinary package path "
+                            f"must pass: {output}",
+                        )
 
     def test_every_caller_of_the_rotation_checks_its_lock_before_arming(self) -> None:
         """A refusal that touched nothing must not stop a healthy deployment.
@@ -2470,11 +2797,26 @@ class RecoveryLifecycleContractTests(unittest.TestCase):
         word = re.compile(r"(?<![\w./-])trap(?=\s)")
         mismatched = []
         for path in shipped_shell_scripts():
+            # Quote-aware, not "drop whole-line comments": a `trap` inside a
+            # quoted operator message or a trailing comment is not a command, and
+            # counting it failed the release gate blaming a handler that is not
+            # there. Blanking keeps both counters looking at command text only.
             code = "\n".join(
-                line for line in path.read_text(encoding="utf-8").split("\n")
-                if not line.strip().startswith("#")
+                shell_code_only(line)
+                for line in path.read_text(encoding="utf-8").split("\n")
             )
             written = len(word.findall(code))
+            # Blanking quotes would hide `eval "trap ... HUP"`, which IS a live
+            # handler and which trap_commands() cannot see either. Nothing ships
+            # like that; assert it rather than assume it.
+            self.assertNotIn(
+                "eval", "\n".join(
+                    line for line in path.read_text(encoding="utf-8").split("\n")
+                    if "trap" in line and "eval" in shell_code_only(line)
+                ),
+                f"{path.name} passes a trap through eval, where neither "
+                f"trap_commands() nor this counter can see it",
+            )
             seen = len(trap_commands(path))
             if written != seen:
                 mismatched.append(

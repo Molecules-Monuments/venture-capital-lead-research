@@ -245,6 +245,60 @@ class AgentVcopsBoundaryTests(unittest.TestCase):
             f"contract is a typed rejection, not an internal error",
         )
 
+    def test_deep_json_recursion_is_typed_on_every_interpreter(self) -> None:
+        """vcops's RecursionError handler must be bound whatever the interpreter's budget is.
+
+        The CLI test above cannot do this. It has to pass its payload through
+        argv, and Linux caps a SINGLE argument at MAX_ARG_STRLEN = 32 * PAGE_SIZE
+        = 131_072 bytes, so the depth it can reach is bounded at about 65_000
+        nested brackets -- which 3.11 rejects with RecursionError but 3.14 parses
+        happily. Measured: with the whole `except RecursionError` arm deleted from
+        `parse_json`, that test still passed on 3.14 (it lands on the
+        not-an-object branch instead), so on the interpreter this package's own
+        developer venv runs, the handler had NO cover.
+
+        `sys.setrecursionlimit` cannot close the gap either: since 3.12 the C
+        scanner is bounded by a separate C-stack limit that setrecursionlimit does
+        not touch (measured -- limit 200 with 400-deep input still parses).
+
+        What removes the constraint is not going through argv at all. Driving
+        `parse_json` in-process lets the child BUILD the deep string itself, so
+        MAX_ARG_STRLEN never applies and the depth can be whatever it takes:
+        200_000 raises RecursionError on 3.11, 3.12, 3.13 and 3.14 alike. Run in a
+        child because a deliberate near-stack-exhaustion should not happen inside
+        the test runner's own process.
+        """
+        probe = (
+            "import importlib.util, sys\n"
+            "spec = importlib.util.spec_from_file_location('vcops_probe', sys.argv[1])\n"
+            "module = importlib.util.module_from_spec(spec)\n"
+            "spec.loader.exec_module(module)\n"
+            "depth = 200_000\n"
+            "try:\n"
+            "    module.parse_json('[' * depth + ']' * depth, default=None, expected=dict)\n"
+            "    print('PARSED')\n"
+            "except module.VcopsError as exc:\n"
+            "    print('VCOPSERROR', exc.code)\n"
+            "except RecursionError:\n"
+            "    print('ESCAPED')\n"
+        )
+        done = subprocess.run(
+            [sys.executable, "-B", "-c", probe, str(VCOPS)],
+            text=True, capture_output=True, timeout=120,
+        )
+        self.assertEqual(
+            0, done.returncode,
+            f"the in-process probe did not complete: {done.stdout}{done.stderr}",
+        )
+        self.assertEqual(
+            "VCOPSERROR invalid_json", done.stdout.strip(),
+            f"deeply nested JSON must leave parse_json as the typed "
+            f"invalid_json rejection on every supported interpreter. Got "
+            f"{done.stdout.strip()!r}. 'ESCAPED' means RecursionError propagates, "
+            f"which vcops surfaces as internal_error/exit 3 -- an agent-supplied "
+            f"value producing an untyped internal failure.",
+        )
+
     def test_operator_decision_lanes_reject_non_ascii_principals(self) -> None:
         """approval-decide and proposal-decide share one authority contract.
 

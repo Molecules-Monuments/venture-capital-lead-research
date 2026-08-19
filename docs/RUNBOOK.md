@@ -917,7 +917,10 @@ character or a backslash in the path, a symlink, anything that is not a regular
 file or directory, and a **hard link** — which `cp -al` and
 `rsync --link-dest` produce and `cp -a` preserves from the source. The refusal
 names the entry and ends `nothing has been stopped`, so the deployment is
-untouched and you can correct it and re-run. To detach a hard-linked entry
+untouched and you can correct it and re-run. The one exception is a control
+character in a name: such a name cannot be printed usefully and would corrupt
+the terminal, so that refusal gives you the `find` command that lists the
+offenders instead of quoting them. To detach a hard-linked entry
 without changing its bytes:
 
 ```sh

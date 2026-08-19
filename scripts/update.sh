@@ -106,6 +106,18 @@ if [ ! -d "$PACKAGE_DIR/inbox" ] || [ -L "$PACKAGE_DIR/inbox" ]; then
   exit 1
 fi
 PACKAGE_INBOX="$(CDPATH= cd -- "$PACKAGE_DIR/inbox" && pwd -P)"
+case "$PACKAGE_INBOX" in
+  *[[:cntrl:]]*)
+    echo "the package directory's own path contains a control character:" >&2
+    echo "  $PACKAGE_DIR" >&2
+    echo "Every entry this script enumerates is read from newline-delimited" >&2
+    echo "find output, so a newline in the package path splits each entry into" >&2
+    echo "fragments and the inbox check below would refuse every update while" >&2
+    echo "naming paths that do not exist. Move the package to a path without" >&2
+    echo "control characters. Nothing has been stopped." >&2
+    exit 1
+    ;;
+esac
 DESTINATION_PARENT="$(CDPATH= cd -- "$DESTINATION_PARENT_INPUT" && pwd -P)"
 case "$DESTINATION_PARENT/$DESTINATION_NAME" in
   "$PACKAGE_INBOX"|"$PACKAGE_INBOX"/*)
@@ -227,9 +239,25 @@ inbox_reject=""
 # component is some entry's basename, so a control character anywhere under the
 # inbox is found. Verified to behave identically under GNU find (Debian) and BSD
 # find (macOS), and to leave Muller.pdf, CJK names, spaces, nested directories
-# and backslash names alone.
-if [ -n "$(find "$PACKAGE_INBOX" -mindepth 1 -name '*[[:cntrl:]]*' -print)" ]; then
-  inbox_reject="an entry name holds a control character; list them with: find $PACKAGE_INBOX -mindepth 1 -name '*[[:cntrl:]]*'"
+# and backslash names alone -- but that verification ran only under a UTF-8
+# locale, and the claim is FALSE without LC_ALL=C below.
+#
+# LC_ALL=C makes the classification a property of the BYTES, not of the
+# operator's LANG. Measured on Debian: a file named in CJK is stored as UTF-8
+# bytes, three of which (0x97, 0x9C, 0x9E) are C1 controls in ISO-8859-15, so
+# under LC_ALL=en_US.ISO-8859-15 `[[:cntrl:]]` matched a perfectly ordinary
+# inbox and the guard refused EVERY backup and EVERY update on that deployment.
+# Under LC_ALL=C the class is exactly 0x00-0x1F and 0x7F, which is precisely
+# what scripts/validate_recovery_archive.py refuses -- so the guard and the
+# validator it exists to anticipate now agree on every host, whatever its
+# locale.
+#
+# Assigned on its own line, not tested inside `[ -n "$(...)" ]`: the test's own
+# exit status masks a `find` failure there, so an unreadable subtree read as a
+# clean inbox. As an assignment, `set -e` aborts on it.
+inbox_control_hits="$(LC_ALL=C find "$PACKAGE_INBOX" -mindepth 1 -name '*[[:cntrl:]]*' -print)"
+if [ -n "$inbox_control_hits" ]; then
+  inbox_reject="an entry name holds a control character; list them with: LC_ALL=C find $PACKAGE_INBOX -mindepth 1 -name '*[[:cntrl:]]*'"
 fi
 # Enumerate on its own line so `set -e` aborts when find itself fails; a
 # command substitution inside the here-document swallowed that, and an
@@ -252,10 +280,12 @@ while IFS= read -r entry; do
   # characters. `inbox_relative` is backup.sh's name for it; keeping the two
   # spellings identical is what lets the g7 test compare the blocks.
   inbox_relative="${entry#"$PACKAGE_INBOX"/}"
+  # No control-character arm here. The probe above is terminal for that class
+  # and matches every path component's basename, so this arm could only ever
+  # fire on bytes the probe deliberately does not classify as control -- which
+  # is exactly the locale-dependent over-refusal described there, since a `case`
+  # pattern is matched in the script's own locale and cannot be scoped to C.
   case "$inbox_relative" in
-    # [[:cntrl:]] matches ord<32 and 127 and, unlike [![:print:]], does not
-    # reject ordinary non-ASCII filenames such as Muller.pdf.
-    *[[:cntrl:]]*) inbox_reject="$entry (control character in path)" ; break ;;
     # validate_recovery_archive.py rejects any member name containing a
     # backslash; such a file passes every test below, so tar happily archives
     # it and the validator fails the whole recovery point after the quiesce.

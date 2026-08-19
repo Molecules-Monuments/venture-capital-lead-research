@@ -460,19 +460,27 @@ class EvidenceCountConsistencyTests(unittest.TestCase):
             )
 
     def test_readiness_growth_chain_is_arithmetically_consistent(self):
-        """The narrative chain of waypoints and deltas must add up, and end at discovery.
+        """Every step of the narrative chain must add up, from its stated baseline to discovery.
 
         docs/PRODUCTION_READINESS.md's offline-suites cell narrates how the total
-        reached its current value: a sequence of "moved it to N" waypoints, each
-        introduced by an "added <word> more" delta. Only the cell's LEADING figure
-        was bound by a pattern, so the narrative could say anything. Measured at
-        06b307a: rewriting a delta word, a mid-chain waypoint and the final
-        waypoint together left all nine suites green.
+        reached its current value: a baseline, then a sequence of
+        "added <word> more ... moving it to N" steps. Only the cell's LEADING
+        figure was bound by a pattern, so the narrative could say anything.
+        Measured at 06b307a: rewriting a delta word, a mid-chain waypoint and the
+        final waypoint together left all nine suites green.
 
-        The eighteenth pass wrote `315 + 73 = 388` into that chain and stated the
-        total as 347 in the same sentence, which is exactly the shape this binds.
-        Each waypoint must equal the previous one plus its delta, and the last must
-        equal what discovery counts.
+        The first version of THIS test then bound only the last two of the chain's
+        seven steps, because it collected waypoints and deltas as two independent
+        lists and aligned them from the end: five steps used a different phrasing,
+        matched no delta, and were silently dropped. A test that binds a subset of
+        the class it names is worse than none, because the docstring is then the
+        thing that is wrong.
+
+        So the chain is read as STEPS, not as two lists, and the count of steps
+        must equal the count of waypoints. That equality is the whole point: a
+        step reworded into a phrasing this pattern cannot read makes the test
+        FAIL rather than quietly bind less. The cell was normalised to one
+        spelling so that a total parse is possible at all.
         """
         cell = next(
             (line for line in
@@ -485,28 +493,44 @@ class EvidenceCountConsistencyTests(unittest.TestCase):
         )
         assert cell is not None
 
-        waypoints = [int(value) for value in re.findall(r"mov(?:ed|ing) it to (\d+)", cell)]
-        deltas = re.findall(r"added ([a-z][a-z\- ]*?) more", cell)
-        self.assertGreaterEqual(
-            len(waypoints), 3, f"the growth chain has rotted; found waypoints {waypoints}"
+        # One pattern, one pass, in document order: each step is its delta word and
+        # the waypoint that delta reaches. `[^;]` keeps a step from reaching across
+        # the semicolon that ends it and pairing with the NEXT step's waypoint.
+        steps = re.findall(
+            r"added ([a-z][a-z\- ]*?) more[^;]*?mov(?:ed|ing) it to (\d+)", cell
         )
-        self.assertTrue(deltas, "the growth chain states no delta in words")
+        waypoints = [int(value) for value in re.findall(r"mov(?:ed|ing) it to (\d+)", cell)]
+        self.assertGreaterEqual(
+            len(waypoints), 7, f"the growth chain has rotted; found waypoints {waypoints}"
+        )
+        self.assertEqual(
+            len(waypoints), len(steps),
+            f"the cell states {len(waypoints)} waypoints but only {len(steps)} of "
+            f"them carry a delta this test can read "
+            f"{[(word, value) for word, value in steps]}. Every step must be "
+            f"phrased 'added <word> more ... moving it to N'; a step in any other "
+            f"spelling is unbound, which is how the earlier version of this test "
+            f"checked two steps while claiming to check all of them.",
+        )
+
+        baseline_claim = re.search(r"the baseline was (\d+)", cell)
+        self.assertIsNotNone(
+            baseline_claim,
+            "the cell no longer states the baseline its chain grows from, so the "
+            "first step's arithmetic cannot be checked",
+        )
+        assert baseline_claim is not None
 
         # Invert the module's own number_word() rather than writing a second
         # spelling table: the two could disagree, and this one would be wrong.
         word_to_int = {number_word(value): value for value in range(1000)}
-        unknown = [word for word in deltas if word not in word_to_int]
+        unknown = [word for word, _ in steps if word not in word_to_int]
         self.assertEqual(
             [], unknown,
             f"delta word(s) {unknown} are not English number-words this module can "
             f"read; the chain cannot be checked",
         )
 
-        # The early waypoints predate the "added <word> more" phrasing and state no
-        # delta, so they cannot be checked arithmetically. They can still be
-        # checked for the property the sentence claims — that this is a record of
-        # GROWTH — which is what catches a waypoint rewritten in place. Measured:
-        # without this, changing "moved it to 262" to "999" passed.
         self.assertEqual(
             sorted(waypoints), waypoints,
             f"the growth chain's waypoints are not increasing: {waypoints}. The "
@@ -518,19 +542,21 @@ class EvidenceCountConsistencyTests(unittest.TestCase):
             f"the growth chain repeats a waypoint: {waypoints}",
         )
 
-        # Each delta introduces the waypoint that follows it. Align from the end,
-        # because the early waypoints predate the delta-word phrasing.
-        aligned = list(zip(waypoints[-len(deltas) - 1:], deltas, waypoints[-len(deltas):]))
-        for before, word, after in aligned:
-            with self.subTest(step=f"{before} + {word}"):
+        # Walk the whole chain from the stated baseline. Every step is checked;
+        # nothing is aligned from the end and nothing is skipped.
+        running = int(baseline_claim.group(1))
+        for word, stated in steps:
+            after = int(stated)
+            with self.subTest(step=f"{running} + {word}"):
                 self.assertEqual(
-                    before + word_to_int[word], after,
-                    f"docs/PRODUCTION_READINESS.md says {before} plus '{word}' "
+                    running + word_to_int[word], after,
+                    f"docs/PRODUCTION_READINESS.md says {running} plus '{word}' "
                     f"({word_to_int[word]}) reaches {after}; that is "
-                    f"{before + word_to_int[word]}. The chain is the document's own "
-                    f"account of how the total was reached, so an operator "
+                    f"{running + word_to_int[word]}. The chain is the document's "
+                    f"own account of how the total was reached, so an operator "
                     f"reconciling it finds arithmetic that does not close.",
                 )
+            running = after
 
         self.assertEqual(
             self.offline_tests, waypoints[-1],
@@ -545,7 +571,6 @@ class EvidenceCountConsistencyTests(unittest.TestCase):
             "the cell's leading figure and the end of its own narrative chain "
             "disagree",
         )
-
     def test_manifest_count_is_internally_coherent(self):
         manifest = json.loads((ROOT / "manifest.json").read_text(encoding="utf-8"))
         self.assertEqual(manifest["file_count"], len(manifest["files"]))

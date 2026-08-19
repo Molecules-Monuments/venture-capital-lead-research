@@ -190,15 +190,23 @@ class SemanticContractTests(unittest.TestCase):
             self.helper.calculate_score(criteria, {**CASES["weights"], "founder_team_signal": 14}, {"identity_reliable": True})
 
 
-    def test_every_band_edge_is_straddled_by_one_display_value(self):
-        """Each band edge falls INSIDE a display value, not on its boundary.
+    def test_a_straddled_band_edge_makes_a_display_to_band_table_impossible(self):
+        """At least one band edge falls INSIDE a display value, not on its boundary.
 
-        Stated precisely, because the obvious phrasing is false: of the 51 display
-        values `display_5` can take, 48 DO determine the recommendation exactly
-        (`3.0` is always `watch`). Only the three that sit on a band edge — `2.5`,
-        `3.3`, `4.1` — map to two bands each. Three is enough: a display-to-band
-        table cannot be written, and a fixture that asserts one band for `4.1` is
-        wrong for half of that value's window.
+        Stated precisely, because the obvious phrasing is false twice over. First,
+        of the 51 display values `display_5` can take, 48 DO determine the
+        recommendation exactly (`3.0` is always `watch`); only the three sitting on
+        a shipped band edge — `2.5`, `3.3`, `4.1` — map to two bands each. Three is
+        enough: a display-to-band table cannot be written, and a fixture asserting
+        one band for `4.1` is wrong for half of that value's window.
+
+        Second, and this is why the method is no longer named `every_band_edge`:
+        the body asserts a DISJUNCTION over whatever edges the rubric in force
+        declares, not a universal over them. The three shipped edges all straddle,
+        but an operator's edges need not — an integer edge fails to straddle
+        exactly when it is congruent to 3 mod 4 — and a name promising a universal
+        described a check that does not make one. The reasoning is set out at the
+        assertion.
 
         The rubric says there is "deliberately no display-scale equivalent" of the
         recommendation intervals, and that one must never read a recommendation off
@@ -215,9 +223,10 @@ class SemanticContractTests(unittest.TestCase):
         66.000 both display 3.3 and band `watch` / `research_deeper`; 81.001 and
         82.000 both display 4.1 and band `research_deeper` / `high_priority`.
 
-        Asserted as "more than one band per display value" -- the property that
-        makes a display-to-band table impossible to write -- rather than as six
-        independent expectations a future edit could satisfy one at a time.
+        Asserted as "at least one display value covers more than one band" -- the
+        property that makes a display-to-band table impossible to write -- rather
+        than as six independent expectations a future edit could satisfy one at a
+        time.
         """
         source = HELPER.read_text(encoding="utf-8")
         # assertTrue, not assertIn: assertIn appends `safe_repr(container)` to the
@@ -268,6 +277,20 @@ class SemanticContractTests(unittest.TestCase):
         # documented customisation path (measured: edges 51/67/83 and 55/70/85 both
         # went red). What actually matters is that a display-to-band table cannot
         # be written, and ONE straddling edge is enough to make it impossible.
+        #
+        # Be exact about what that admits, because an earlier version of this
+        # comment claimed the disjunction rescued BOTH customisations above and
+        # it does not. Re-derived over all 99 integer edges: an edge straddles
+        # unless E is congruent to 3 mod 4, so 55/70/85 passes (70 and 85
+        # straddle) while 51/67/83 -- every one of them 3 mod 4 -- still goes red.
+        #
+        # That red is CORRECT rather than a gap. With no straddling edge every
+        # display value maps to exactly one band, so a display-to-band table is
+        # writable and the rubric's own "deliberately no display-scale
+        # equivalent" prose has become false for that deployment. The gate
+        # stopping there is the point; what was missing is a message that says
+        # which knob to turn. The shipped rubric's edges are 50/66/82 and all
+        # three straddle.
         straddling = [e for e in edges if display_of((e - quantum).quantize(quantum)) == display_of(e)]
         self.assertTrue(
             straddling,
@@ -275,8 +298,13 @@ class SemanticContractTests(unittest.TestCase):
             "maps to exactly one recommendation and a display-to-band table WOULD "
             "be writable. The rubric says there is 'deliberately no display-scale "
             f"equivalent'; with edges {[str(e) for e in edges]} that claim no "
-            "longer holds and the rubric, tests/g3/README.md and eval_fixtures.md "
-            "all need revisiting together.",
+            "longer holds. An integer edge straddles unless it is congruent to 3 "
+            "mod 4 (measured over all 99), so moving any one edge off 3 mod 4 -- "
+            "51 to 50 or 52, say -- restores it. The alternative is to accept that "
+            "this deployment CAN read a band off a display value, which means "
+            "amending the rubric's prose and re-cutting "
+            "tests/g3/scoring_boundary_cases.jsonl, tests/g3/README.md and "
+            "workspaces/vc-chief/vc/eval_fixtures.md together.",
         )
 
     def test_the_reviewed_boundary_fixture_is_on_the_unrounded_scale(self):
