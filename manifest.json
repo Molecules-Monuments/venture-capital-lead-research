@@ -96,14 +96,14 @@
     {
       "executable": false,
       "path": "SECURITY.md",
-      "sha256": "6adc98ed25b2145bd33b5f513173970d4ab0f133be5adfcecd3eaaefe1196b7b",
-      "size": 6219
+      "sha256": "4839bd079bc58948c67b92ec9ed601cdb5a061f5e76786108cb606965b54ea0f",
+      "size": 5738
     },
     {
       "executable": false,
       "path": "THIRD_PARTY_NOTICES.md",
-      "sha256": "e9ba0cbc084340a0aa876fe060e2363312416ab8374a2d021a3a4cc2ce731958",
-      "size": 9887
+      "sha256": "a031f6cee003757ee5a6fd69bb8de8e0ccb77208a5bf27d59fc4e27b4b761812",
+      "size": 9894
     },
     {
       "executable": false,
@@ -198,20 +198,20 @@
     {
       "executable": false,
       "path": "docs/OPERATIONS.md",
-      "sha256": "6f0989ec3dac79b6b8b32caf1684313dcdc291e88cf8c2de42dc93aed767c4e6",
-      "size": 36598
+      "sha256": "af6a72c41bdf88fbf40fed50d0072b74c302244043032ab5f1ed83cdf87ca996",
+      "size": 36605
     },
     {
       "executable": false,
       "path": "docs/PRODUCTION_READINESS.md",
-      "sha256": "65889b02e23f333dcfbf0f64d50c59bdb903a0d7199f063c0dbc6f500e92c007",
-      "size": 15598
+      "sha256": "e6d95527f39946665f8303cc8a6a2e005e7772413f1e2b7e8a2626988e0f9300",
+      "size": 15519
     },
     {
       "executable": false,
       "path": "docs/RUNBOOK.md",
-      "sha256": "25aa087117607cd0b6fdcac0d48f6fd959441c3d98b9f15c9b8ca4b56eddbe86",
-      "size": 99537
+      "sha256": "c5d5aad31ee70dd71f503e5e2e2b8124e6439970aec290db12be86ef2f908dca",
+      "size": 99484
     },
     {
       "executable": false,
@@ -228,20 +228,20 @@
     {
       "executable": false,
       "path": "docs/V3_RELEASE_EVIDENCE.md",
-      "sha256": "b25af991473aa78fbb5d01a4b68bd1fa416d9ef1d9545549551f310c50ffbb33",
-      "size": 13982
+      "sha256": "c03ec7f34d1ccf1d5b83277386e381198db37e8055f9647105d3379cb7469db2",
+      "size": 13889
     },
     {
       "executable": false,
       "path": "docs/WORKFLOWS.md",
-      "sha256": "092177a4f1cd7489733100906ec1a1fb45543b0bf688cc4ed40c1f5be9678ce9",
-      "size": 34230
+      "sha256": "e1cf120335f370c8bace78e12f2f0fb90805ac7dd8a9631dadce6e9aae67dc08",
+      "size": 34199
     },
     {
       "executable": false,
       "path": "evals/V3_EVAL_RESULTS.md",
-      "sha256": "6a51f587ab20bfbc08fdabf890ccac5819280da72cc5881eb2529ec0b3564366",
-      "size": 11138
+      "sha256": "ef7ff0a4d608f2a7a937a81fbf61749f8e9ac590f1c33fcf1706575158cc7716",
+      "size": 11056
     },
     {
       "executable": false,
@@ -528,8 +528,8 @@
     {
       "executable": true,
       "path": "scripts/backup.sh",
-      "sha256": "010d80b1180ea44f9118aec48140de9b95e1ccdc725a485094ca1749e9df4732",
-      "size": 29930
+      "sha256": "8354f8f372208e2c60936fba7f7fcb2536cc15f319cc575e6205d85d94076da4",
+      "size": 29484
     },
     {
       "executable": true,
@@ -642,8 +642,8 @@
     {
       "executable": true,
       "path": "scripts/update.sh",
-      "sha256": "fad2230b93df4b14c4108d5aea2fc9b649f91a04d2665f5e4ec02c9f2403b2cd",
-      "size": 25466
+      "sha256": "79cf34ca958629b1e58517062ad8f9d3e567806b79467672aa4f4601562345c4",
+      "size": 25022
     },
     {
       "executable": true,
@@ -798,8 +798,8 @@
     {
       "executable": false,
       "path": "tests/g5/test_vcrun.py",
-      "sha256": "883dcdb7edebc709b763b0c70cd23b760e12e5c1bfd4d360bb3956380c3b37e6",
-      "size": 49866
+      "sha256": "2c61825bf39b7d28818e16fde84cf0a9e77e65c98b632e7ce8c7fd9d2aa70b8c",
+      "size": 49836
     },
     {
       "executable": false,

@@ -329,13 +329,6 @@ inbox_reject=""
 # reversible; discovering it during the archive is neither.
 inbox_scan_output=""
 if ! inbox_scan_output="$(LC_ALL=C find "$PACKAGE_INBOX" -mindepth 1 -name '*[[:cntrl:]]*' -print 2>/dev/null)"; then
-  # find's OWN diagnostic, not a generic sentence. Every other class in this
-  # guard names the offending entry, and docs/RUNBOOK.md section 8 promises the
-  # operator exactly that; discarding stderr made this the one refusal that
-  # identified neither the entry nor a way to list it. `2>&1` rather than a
-  # temporary file: on success find writes nothing to stderr, so the variable
-  # still holds only the matches read by the branch below.
-  #
   # Claim ONLY what this establishes. An earlier wording said "whatever it
   # cannot read it cannot archive", which is not something this probe can know:
   # `find` runs as the invoking operator and never opens file contents, while
@@ -354,9 +347,9 @@ if ! inbox_scan_output="$(LC_ALL=C find "$PACKAGE_INBOX" -mindepth 1 -name '*[[:
   # must never happen for this class, and prescribes exactly what the message
   # below does instead: hand over the command, so the operator sees the failure
   # in their own terminal on their own terms.
-  inbox_reject="the inbox could not be fully enumerated, so the checks below were not applied to every entry; re-run this to see which entry and why: LC_ALL=C find $PACKAGE_INBOX -mindepth 1"
+  inbox_reject="the inbox could not be fully enumerated, so the checks below were not applied to every entry; re-run this to see which entry and why: LC_ALL=C find '$PACKAGE_INBOX' -mindepth 1"
 elif [ -n "$inbox_scan_output" ]; then
-  inbox_reject="an entry name holds a control character; list them with: LC_ALL=C find $PACKAGE_INBOX -mindepth 1 -name '*[[:cntrl:]]*'"
+  inbox_reject="an entry name holds a control character; list them with: LC_ALL=C find '$PACKAGE_INBOX' -mindepth 1 -name '*[[:cntrl:]]*'"
 fi
 # Enumerate on its own line, never inside the here-document: a command
 # substitution there swallowed find's failure and an unreadable subtree read as

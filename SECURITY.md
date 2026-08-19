@@ -61,12 +61,6 @@ to enforce:
 - SQL injection, command injection, or path traversal in `vcops.py`,
   `vcrun.py`, the lifecycle shell scripts, or the `vc-trusted-context`
   extension.
-<!-- This bullet used to close with an eight-name parenthetical, naming eight of
-     the nineteen tables docs/SCHEMA.sql then guarded with an *_append_only
-     trigger and omitting, among others, trusted_context_uses — which backs the
-     trusted-context boundary listed above — and workflow_requests, whose replay
-     boundary the bullet below it now names. Name the class, not a sample: the
-     list is enumerable from the schema and grows with every history table. -->
 - Writing to a table that carries an `*_append_only` trigger (`docs/SCHEMA.sql`
   is the current list) or otherwise defeating a guard trigger as the runtime
   role.
