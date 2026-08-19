@@ -49,7 +49,7 @@ No missing environmental evidence is presented as a passing result.
 
 Originally executed 2026-07-23; **the complete matrix was last re-executed on
 2026-08-19** against this tree, and against the derived image rebuilt from it
-with `docker build --no-cache --pull` on 2026-08-18, after that day's edits to the image-baked `workspaces/` files, `Dockerfile.openclaw` itself, and the host-side recovery-lifecycle and workflow-validation scripts. Every
+with `docker build --no-cache --pull` on 2026-08-19, after that day's edits to the image-baked `workspaces/` files, `Dockerfile.openclaw` itself, and the host-side recovery-lifecycle scripts. Every
 count below is that run's measurement, not a carried-forward one.
 
 - 355 offline unittest cases pass, 0 fail, 0 skip; 30/30 offline checks pass.

@@ -71,5 +71,8 @@ config's `mcp.servers` and adds `<name>__*` to those agents' `tools.allow`.
   failure appears only at `openclaw mcp doctor <name> --probe`. Every shipped
   example in `config/connectors.example.json` is a hosted `url`.
 - **Live connectivity is a deployment-commissioning check**, not a package
-  guarantee: `openclaw mcp doctor <name> --probe` proves the server connects.
+  guarantee, and the bar is not the probe alone: `openclaw mcp doctor <name>
+  --probe` proves the server connects, and invoking a connector tool from a
+  granting specialist proves that specialist can reach it. Keep both results
+  with the commissioning record. `config/connectors.example.json` records why.
   The config surface is what this release provides.
