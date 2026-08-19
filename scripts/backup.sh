@@ -288,6 +288,21 @@ mkdir -m 0700 "$STAGING"
 # the check in one place is NOT enough: update.sh carries its own copy ahead of
 # its quiesce, and the two class lists must stay identical.
 inbox_reject=""
+# The two refusals below hand the operator a command to RUN, with the inbox path
+# interpolated into it, so that path has to survive as a single shell WORD or the
+# command is not pasteable. Unquoted it word-splits on a space -- the path this
+# package itself occupies -- and naively single-quoted it is truncated by an
+# apostrophe, which the package-path guard above deliberately permits: that guard
+# refuses control characters only, so an apostrophe reaches here unchanged.
+# Quote it the POSIX way -- wrap in single quotes and rewrite each embedded
+# apostrophe as close-quote, double-quoted apostrophe, reopen-quote -- which is
+# total over every byte that survives the guard above. Assembled from variables
+# rather than written literally so this file gains no backslash-bearing line;
+# tests/g7 pins that inventory, and a backslash here would also be re-expanded
+# differently by dash and bash.
+inbox_sq="'"
+inbox_dq='"'
+inbox_quoted="$inbox_sq$(printf '%s' "$PACKAGE_INBOX" | sed "s/$inbox_sq/$inbox_sq$inbox_dq$inbox_sq$inbox_dq$inbox_sq/g")$inbox_sq"
 # Probe for a control character BEFORE enumerating, and never parse this probe's
 # output as lines. `find` delimits its output with newlines, so an entry whose
 # own name contains one is split into two fragments that are each tested
@@ -323,10 +338,14 @@ inbox_reject=""
 # `if` condition `set -e` is suspended, so the failure becomes a refusal with a
 # message like every other class.
 #
-# Refusing is the correct outcome, not merely the safe one: this script tars the
-# whole inbox into the recovery point, so a subtree it cannot read is a subtree
-# the recovery point would not contain. Stopping here is pre-quiesce and
-# reversible; discovering it during the archive is neither.
+# Refusing is the correct outcome, not merely the safe one -- but for the reason
+# the branch below gives, NOT an archiving one. An earlier version of this
+# comment claimed a subtree this probe cannot read is a subtree the recovery
+# point would not contain; the branch below retracts exactly that four lines
+# on, and the two have contradicted each other since. What is true is that a run
+# whose enumeration failed did not apply the checks below to every entry, so it
+# cannot certify the inbox. Stopping here is pre-quiesce and reversible;
+# discovering it during the archive is neither.
 inbox_scan_output=""
 if ! inbox_scan_output="$(LC_ALL=C find "$PACKAGE_INBOX" -mindepth 1 -name '*[[:cntrl:]]*' -print 2>/dev/null)"; then
   # Claim ONLY what this establishes. An earlier wording said "whatever it
@@ -347,9 +366,9 @@ if ! inbox_scan_output="$(LC_ALL=C find "$PACKAGE_INBOX" -mindepth 1 -name '*[[:
   # must never happen for this class, and prescribes exactly what the message
   # below does instead: hand over the command, so the operator sees the failure
   # in their own terminal on their own terms.
-  inbox_reject="the inbox could not be fully enumerated, so the checks below were not applied to every entry; re-run this to see which entry and why: LC_ALL=C find '$PACKAGE_INBOX' -mindepth 1"
+  inbox_reject="the inbox could not be fully enumerated, so the checks below were not applied to every entry; re-run this to see which entry and why: LC_ALL=C find $inbox_quoted -mindepth 1"
 elif [ -n "$inbox_scan_output" ]; then
-  inbox_reject="an entry name holds a control character; list them with: LC_ALL=C find '$PACKAGE_INBOX' -mindepth 1 -name '*[[:cntrl:]]*'"
+  inbox_reject="an entry name holds a control character; list them with: LC_ALL=C find $inbox_quoted -mindepth 1 -name '*[[:cntrl:]]*'"
 fi
 # Enumerate on its own line, never inside the here-document: a command
 # substitution there swallowed find's failure and an unreadable subtree read as
