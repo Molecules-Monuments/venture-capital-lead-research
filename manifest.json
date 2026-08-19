@@ -72,8 +72,8 @@
     {
       "executable": false,
       "path": "CUSTOMIZATION.md",
-      "sha256": "5047b2e3ba6dd1bec983290123a53bb0ca2b70d3487e5ae5572be4b74aebf916",
-      "size": 34594
+      "sha256": "16c4696e2e6110172750969861b4aa365a58196fcb05ef74b4ed7affc14778d0",
+      "size": 35343
     },
     {
       "executable": false,
@@ -876,8 +876,8 @@
     {
       "executable": false,
       "path": "tests/v3/test_orchestration_and_customization.py",
-      "sha256": "7fd8741fcd547d2a9f1eba95531414bda9dd4efc25287b9b739050787bbba7bb",
-      "size": 44040
+      "sha256": "d868e0ed7d40fdffa7672baf6f8c9135bf0ec7eb130dcfc04f59b1ae0d2e39bc",
+      "size": 44192
     },
     {
       "executable": false,

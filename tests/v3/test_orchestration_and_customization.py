@@ -820,8 +820,10 @@ class Version3ContractTests(unittest.TestCase):
                 # Added by the eighteenth pass's round-6 repair: the band-change
                 # procedure named neither, and an operator who followed it end to
                 # end left both stating the shipped edges with every offline suite
-                # green. BandEdgeCustomizationSurfaceTests derives that world from
-                # the rubric, so the omission cannot recur silently.
+                # green. The enumeration that was to have bound this is gone (see
+                # the note above Version3ContractTests) -- keeping these two paths
+                # in the procedure is now a review duty, and this pin is what
+                # notices if the document stops naming them.
                 "tests/g3/README.md",
                 "workspaces/shared-skills/memo-writing/SKILL.md",
                 "workspaces/shared-skills/research-depth-control/SKILL.md",
