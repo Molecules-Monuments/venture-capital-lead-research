@@ -1,5 +1,5 @@
--- SPDX-License-Identifier: 0BSD
--- OpenClaw Lead Research System 3.0 — consolidated schema reference (DOCUMENTATION)
+-- SPDX-License-Identifier: Apache-2.0
+-- Venture Capital Lead Research System 3.0 — consolidated schema reference (DOCUMENTATION)
 --
 -- This file is NOT a migration and is applied by nothing: migrate.sh only reads
 -- migrations/NNN_*.sql, and this file lives under docs/. It is a schema-only

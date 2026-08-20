@@ -1,0 +1,58 @@
+# SPDX-License-Identifier: Apache-2.0
+name: Documentation defect
+description: A document states something the tree does not do.
+title: "docs: "
+labels:
+  - docs
+body:
+  - type: markdown
+    attributes:
+      value: |
+        A document that disagrees with the code is a defect here, not a
+        cosmetic issue. Several offline tests exist precisely because prose
+        drifted away from the tree: a stated count, an enumeration, or a
+        documented command that no longer works sends an operator down a path
+        that ends in a failed deployment, and it does so with the project's own
+        authority behind it.
+
+        That is why the last question asks for a command. A defect that can be
+        shown mechanically can also be prevented mechanically, and the fix for
+        one usually includes a check that fails when the drift returns.
+  - type: input
+    id: location
+    attributes:
+      label: Document and section
+      description: >-
+        The file and the heading or section number, for example
+        `docs/RUNBOOK.md` §9, or `CUSTOMIZATION.md`, "Scoring rubric".
+      placeholder: "docs/OPERATIONS.md, \"First install\""
+    validations:
+      required: true
+  - type: textarea
+    id: claim
+    attributes:
+      label: What it says
+      description: Quote the sentence, count, or command as written.
+    validations:
+      required: true
+  - type: textarea
+    id: reality
+    attributes:
+      label: What is actually true
+      description: >-
+        What the tree, the schema, or a run of the command actually does
+        instead.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: The command that shows the disagreement
+      description: >-
+        A command anyone can run from the package root, with its output. A
+        `grep`, a test invocation, or the failing command itself is enough — it
+        is what turns a reading of the prose into a reproducible finding, and
+        it is usually the seed of the check that keeps the defect closed.
+      render: text
+    validations:
+      required: true

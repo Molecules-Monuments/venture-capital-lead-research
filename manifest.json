@@ -19,7 +19,7 @@
     "config/runtime/secrets/vcops_approval_pepper",
     "deployment-lock.json"
   ],
-  "file_count": 334,
+  "file_count": 340,
   "files": [
     {
       "executable": false,
@@ -38,6 +38,42 @@
       "path": ".gitattributes",
       "sha256": "bc1d08e72e21331654e6bf04e1c45e8ac51462723ca975d49213ddaa3354abf4",
       "size": 362
+    },
+    {
+      "executable": false,
+      "path": ".github/ISSUE_TEMPLATE/bug_report.yml",
+      "sha256": "3806040efca6d1b7b9b20227b69643e3fdf7abc3e708d0d1adad2cf559618914",
+      "size": 4771
+    },
+    {
+      "executable": false,
+      "path": ".github/ISSUE_TEMPLATE/config.yml",
+      "sha256": "8c2492e1d80ca107b07621bd37dd804b88aaf98f2e72c4a121d904a4c720b07f",
+      "size": 1396
+    },
+    {
+      "executable": false,
+      "path": ".github/ISSUE_TEMPLATE/docs.yml",
+      "sha256": "f7f255fff36b54ddd4674fff15b40266ef5f0e5d253bd85cea1a169b861afd2c",
+      "size": 2105
+    },
+    {
+      "executable": false,
+      "path": ".github/ISSUE_TEMPLATE/question.yml",
+      "sha256": "77c569a79ae7bbfb770e706b0c71186f959d148b24ebd659059114f5535b4703",
+      "size": 1756
+    },
+    {
+      "executable": false,
+      "path": ".github/PULL_REQUEST_TEMPLATE.md",
+      "sha256": "edf4065fa70ed8f5102b7765a1d11da9fb301bcc35dde86af84c25124e853050",
+      "size": 3126
+    },
+    {
+      "executable": false,
+      "path": ".github/workflows/offline-gates.yml",
+      "sha256": "05bb9fe9e779e301c3bf97b96b3901c2646afec2b06feef9b4f2a6cb30989617",
+      "size": 4199
     },
     {
       "executable": false,
@@ -240,8 +276,8 @@
     {
       "executable": false,
       "path": "docs/SCHEMA.sql",
-      "sha256": "ce770a4297d351a0e6792344c477301f8eea1b7ed27045893641e4a29a710d64",
-      "size": 225312
+      "sha256": "34d7eaea2cdf3ed5dd11be9a66e64b8b85c88b2a70e39873fd4d480e8662ae71",
+      "size": 225325
     },
     {
       "executable": false,
@@ -2027,7 +2063,7 @@
     }
   ],
   "manifest_version": 1,
-  "package": "openclaw-lead-research",
+  "package": "vc-lead-research",
   "package_version": "3.0.0",
   "release_state": {
     "customization_profile": "required and excluded from distribution manifest",

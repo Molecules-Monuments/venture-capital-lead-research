@@ -1,0 +1,121 @@
+# SPDX-License-Identifier: Apache-2.0
+name: Bug report
+description: Report behaviour that contradicts what this package documents.
+title: "bug: "
+labels:
+  - bug
+  - needs-repro
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for taking the time to report a defect in the Venture Capital
+        Lead Research System.
+
+        **Please do not use this form for a security problem.** A vulnerability
+        belongs in the private channel described in `SECURITY.md`, because a
+        public issue discloses the problem before a fix exists.
+
+        The questions below are the ones a maintainer would otherwise have to
+        ask before being able to reproduce anything. This package's behaviour
+        depends on the release, on the migrations the database has actually
+        run, and on the lane the problem is reachable from — the same symptom
+        can be a defect on one lane and the documented design on another.
+        Answering these up front usually saves a round trip, and this project
+        is maintained on a best-effort basis by two people, so a round trip can
+        cost real calendar time.
+  - type: input
+    id: version
+    attributes:
+      label: Package version
+      description: The contents of the `VERSION` file in the package root (`cat VERSION`).
+      placeholder: "3.0.0"
+    validations:
+      required: true
+  - type: input
+    id: migrations
+    attributes:
+      label: Applied migration set
+      description: >-
+        Which of `migrations/001_initial_v2.sql` through
+        `migrations/018_workflow_retry_after_failure.sql` the database has
+        actually run. The ledger is authoritative, not the directory listing:
+        `SELECT version, name FROM schema_migrations ORDER BY version;`.
+        Answer `none` if the database was never migrated, or `not applicable`
+        if the problem does not involve a database.
+      placeholder: "001-018"
+    validations:
+      required: true
+  - type: dropdown
+    id: lane
+    attributes:
+      label: Which lane is the problem reachable from?
+      description: >-
+        Each lane carries a different authority, so the lane decides what the
+        observation means. An action that is routine for a host operator can be
+        a boundary crossing when a model lane performs it, and a document
+        arriving through a channel is treated as adversarial input where the
+        same file placed by the operator is not.
+      options:
+        - host operator
+        - model/agent
+        - fixed workflow
+        - inbound channel or document
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Smallest reproduction you have
+      description: >-
+        The shortest sequence that shows the problem, as commands and their
+        output rather than as a description of them. If you have not managed to
+        reduce it, say what you did try — a partially reduced case with the
+        dead ends named is more useful than a polished one that omits them.
+      placeholder: |
+        1. ...
+        2. ...
+
+        Expected: ...
+        Observed: ...
+    validations:
+      required: true
+  - type: textarea
+    id: gate-output
+    attributes:
+      label: Failing gate output, pasted verbatim
+      description: >-
+        If a gate fails, name which one — `scripts/verify_release.py
+        --pristine`, `scripts/verify_offline.py`, or one of the database (G4),
+        image (G6), and deployment (G8) gates — and paste its output unedited.
+        The gates print structured detail that carries the diagnosis; a
+        summarised or trimmed copy usually loses exactly the line that
+        identifies the cause. Leave this empty if no gate is involved.
+      render: text
+    validations:
+      required: false
+  - type: textarea
+    id: environment
+    attributes:
+      label: Host environment
+      description: >-
+        Fill in what applies. PostgreSQL and Docker matter even for a problem
+        that looks unrelated to them, because the deployment gates and the
+        derived image pin specific majors and fail closed against any other.
+      value: |
+        Host OS (`uname -a`, or the distribution and release):
+        Python (`python3 --version`):
+        Docker (`docker --version`, and `docker compose version`):
+        PostgreSQL (`psql --version`, or the deployed `POSTGRES_IMAGE`):
+    validations:
+      required: true
+  - type: checkboxes
+    id: confirmations
+    attributes:
+      label: Before filing
+      options:
+        - label: >-
+            This is not a security report, and I have read `SECURITY.md` — I
+            understand that a vulnerability goes through private reporting
+            instead of this form.
+          required: true

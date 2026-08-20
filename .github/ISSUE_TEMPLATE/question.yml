@@ -1,0 +1,49 @@
+# SPDX-License-Identifier: Apache-2.0
+name: Question
+description: Ask how to do something with this package.
+title: "question: "
+labels:
+  - question
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Questions are welcome. This package is deliberately unconfigured when
+        downloaded and has a long commissioning path, so a question is often a
+        sign that a document could be clearer — if it turns out that way, the
+        answer becomes a documentation change and this issue is where that gets
+        tracked.
+
+        Please do not put credentials, tokens, `.env` contents, or live lead
+        data in a public issue. Redact them before pasting anything.
+  - type: textarea
+    id: goal
+    attributes:
+      label: What are you trying to do?
+      description: >-
+        The outcome you want, not only the command you are stuck on. Knowing
+        the goal often changes the answer, because more than one lane can reach
+        the same result with different authority.
+    validations:
+      required: true
+  - type: checkboxes
+    id: read
+    attributes:
+      label: What have you already read?
+      description: >-
+        Tick what you have been through. This is not a gate on asking — it
+        tells the answer where to start, and it flags a document that did not
+        land when it should have.
+      options:
+        - label: "`README.md`"
+        - label: "`docs/RUNBOOK.md`"
+        - label: "`CUSTOMIZATION.md`"
+  - type: textarea
+    id: outcome
+    attributes:
+      label: What happened?
+      description: >-
+        What you ran and what came back, verbatim where you can. Include the
+        package version from `VERSION` if the question is about behaviour.
+    validations:
+      required: true
