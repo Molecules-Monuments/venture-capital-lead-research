@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: 0BSD
+# SPDX-License-Identifier: Apache-2.0
 """The citation-prefix rule in TASKFLOW_LOBSTER_COMPATIBILITY.md is a closed rule.
 
 That document's header tells the reader that `upstream_openclaw/` and

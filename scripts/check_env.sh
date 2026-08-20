@@ -1,5 +1,5 @@
 #!/bin/sh
-# SPDX-License-Identifier: 0BSD
+# SPDX-License-Identifier: Apache-2.0
 set -eu
 
 # Thin shell entry point for the environment validator: hand the .env file (arg

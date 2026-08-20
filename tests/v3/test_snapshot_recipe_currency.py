@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: 0BSD
+# SPDX-License-Identifier: Apache-2.0
 """The snapshot.debian.org rebuild recipe must stay current, and stay one recipe.
 
 `Dockerfile.openclaw` pins ten Debian package versions. The other 38 packages

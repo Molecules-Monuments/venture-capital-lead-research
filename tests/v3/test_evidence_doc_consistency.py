@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: 0BSD
+# SPDX-License-Identifier: Apache-2.0
 """The evidence documents must agree with the gates and with each other.
 
 Three audit findings established the defect class this suite closes: a prose

@@ -1,5 +1,5 @@
 name: vc-inbound-text-intake-v3
-# SPDX-License-Identifier: 0BSD
+# SPDX-License-Identifier: Apache-2.0
 
 # Create a lead from a pure-text inbound submission (founder email, referral,
 # warm intro, event follow-up) that carries no document attachment. Mirrors

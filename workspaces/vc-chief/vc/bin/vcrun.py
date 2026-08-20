@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: 0BSD
+# SPDX-License-Identifier: Apache-2.0
 """Fail-closed launcher for the package's reviewed Lobster workflows.
 
 This is intentionally not a general Lobster wrapper.  It exposes no inline

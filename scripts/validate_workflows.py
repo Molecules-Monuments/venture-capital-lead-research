@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: 0BSD
+# SPDX-License-Identifier: Apache-2.0
 """Fail-closed static validator for the fixed Version 3 Lobster workflows.
 
 The validator treats workflow YAML and command text as untrusted. Option

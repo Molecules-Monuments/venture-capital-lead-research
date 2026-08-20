@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: 0BSD
+# SPDX-License-Identifier: Apache-2.0
 """Run the fail-closed Version 3 data/helper gate on disposable PostgreSQL.
 
 The gate applies every numbered SQL migration twice, runs every G4 suite with

@@ -1,5 +1,5 @@
 name: vc-source-unwatch-v3
-# SPDX-License-Identifier: 0BSD
+# SPDX-License-Identifier: Apache-2.0
 
 # Disable one watched signal source without deleting its history.
 args:

@@ -1,5 +1,5 @@
 name: vc-preference-observe-v3
-# SPDX-License-Identifier: 0BSD
+# SPDX-License-Identifier: Apache-2.0
 
 # Record one bounded per-principal preference observation (e.g. a requester's
 # preferred memo length or citation density), gated by a trusted-context

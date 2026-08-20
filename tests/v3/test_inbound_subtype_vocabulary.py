@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: 0BSD
+# SPDX-License-Identifier: Apache-2.0
 """The inbound origin subtype vocabulary is written down twice; pin them together.
 
 `inbound-intake-analyst` returns `result.origin.subtype`, whose accepted values

@@ -1,5 +1,5 @@
 name: vc-contradiction-record-v3
-# SPDX-License-Identifier: 0BSD
+# SPDX-License-Identifier: Apache-2.0
 
 # Record the deterministic contradiction classification for two persisted
 # facts on the autonomous path, under the same per-lead serialization the

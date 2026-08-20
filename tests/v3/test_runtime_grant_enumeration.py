@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: 0BSD
+# SPDX-License-Identifier: Apache-2.0
 """The runtime grant matrix in DATA_MODEL.md is a closed-world claim.
 
 `docs/DATA_MODEL.md` tells the reader the runtime role "holds `SELECT`/`INSERT`

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: 0BSD
+# SPDX-License-Identifier: Apache-2.0
 """Verify package inventory self-consistency against its embedded manifest."""
 
 from __future__ import annotations

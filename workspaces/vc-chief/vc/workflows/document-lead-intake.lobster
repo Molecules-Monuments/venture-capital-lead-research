@@ -1,5 +1,5 @@
 name: vc-document-lead-intake-v3
-# SPDX-License-Identifier: 0BSD
+# SPDX-License-Identifier: Apache-2.0
 
 # Create a candidate lead from an already-ingested document extraction: resolve
 # the company identity (from the supplied name/domain), open the lead, and bind

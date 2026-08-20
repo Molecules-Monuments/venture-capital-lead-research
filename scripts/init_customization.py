@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: 0BSD
+# SPDX-License-Identifier: Apache-2.0
 """Scaffold the reviewed customization profile, or re-pin its artifact hashes.
 
 `check_customization.py` requires a SHA-256 for each of the twenty governed

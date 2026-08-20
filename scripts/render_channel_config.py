@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: 0BSD
+# SPDX-License-Identifier: Apache-2.0
 """Render one fail-closed channel overlay into the immutable runtime config."""
 
 from __future__ import annotations

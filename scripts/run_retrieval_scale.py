@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: 0BSD
+# SPDX-License-Identifier: Apache-2.0
 """Run the frozen 100k-company/1m-fact entity-resolution scale gate.
 
 The benchmark creates a disposable PostgreSQL cluster, applies the migration
