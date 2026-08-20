@@ -1,5 +1,5 @@
 #!/bin/sh
-# SPDX-License-Identifier: 0BSD
+# SPDX-License-Identifier: Apache-2.0
 set -eu
 umask 077
 # Keep lifecycle runs from shedding bytecode caches into the pristine package.
@@ -9,8 +9,8 @@ export PYTHONDONTWRITEBYTECODE
 PACKAGE_DIR="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 ENV_FILE="$PACKAGE_DIR/.env"
 COMPOSE_FILE="$PACKAGE_DIR/docker-compose.yml"
-COMPOSE_PROJECT="openclaw-lead-research-v3"
-LOCK_DIR="/tmp/openclaw-lead-research-v3-lifecycle.lock"
+COMPOSE_PROJECT="vc-lead-research-v3"
+LOCK_DIR="/tmp/vc-lead-research-v3-lifecycle.lock"
 LOCK_OWNED=0
 LOCK_TOKEN=""
 MUTATION_STARTED=0
@@ -92,11 +92,12 @@ compose build --pull openclaw-gateway
 # this check, a lock left by an earlier crash made a refusal that had touched
 # nothing print "openclaw-gateway and openclaw-cli are stopped" and run the
 # cleanup's compose stop against a healthy deployment. Mirror the check here,
-# while production is still running, exactly as update.sh does; CLAUDE.md
-# instructs re-running this script on an already-bootstrapped deployment, so
-# this is a live path and not first-install-only. The lifecycle-lock check above
+# while production is still running, exactly as update.sh does;
+# docs/MAINTAINING.md instructs re-running this script on an
+# already-bootstrapped deployment, so this is a live path and not
+# first-install-only. The lifecycle-lock check above
 # does not cover it: an operator who cleared only that lock lands here.
-ROTATION_LOCK_DIR="/tmp/openclaw-lead-research-v3-rotation.lock"
+ROTATION_LOCK_DIR="/tmp/vc-lead-research-v3-rotation.lock"
 # The remedy pointer below names 'First install', not 'Secrets'. The whole
 # stale-lock recovery procedure -- confirm no rotation process is active, then
 # remove the directory with `rm -rf` because it is not empty (it holds

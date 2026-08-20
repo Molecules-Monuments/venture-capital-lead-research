@@ -19,7 +19,7 @@
     "config/runtime/secrets/vcops_approval_pepper",
     "deployment-lock.json"
   ],
-  "file_count": 330,
+  "file_count": 332,
   "files": [
     {
       "executable": false,
@@ -71,6 +71,12 @@
     },
     {
       "executable": false,
+      "path": "CONTRIBUTING.md",
+      "sha256": "e8599f26492569a74e8b5c6d7f6c4aecce18a422067a5ecc33b3912b7e886ed0",
+      "size": 16190
+    },
+    {
+      "executable": false,
       "path": "CUSTOMIZATION.md",
       "sha256": "16c4696e2e6110172750969861b4aa365a58196fcb05ef74b4ed7affc14778d0",
       "size": 35343
@@ -90,8 +96,8 @@
     {
       "executable": false,
       "path": "README.md",
-      "sha256": "6d02fb356ca7ed00234a20387ca06deaf7f9a01e012361d7d2cc75ac0c5a8e8c",
-      "size": 96401
+      "sha256": "c8ad889f16d4b5fe3de7600ed542faa1670032920458b9903b137f682dad2ac5",
+      "size": 98098
     },
     {
       "executable": false,
@@ -188,6 +194,12 @@
       "path": "docs/DATA_MODEL.md",
       "sha256": "0eb7291207639a4122b7fbbefca04484c804b1db8fe28e95e883f56351ec4060",
       "size": 37654
+    },
+    {
+      "executable": false,
+      "path": "docs/MAINTAINING.md",
+      "sha256": "25ae4338710869b6c3ae289167fc0d7103ca66dd61f432492aa3e3d67acaa736",
+      "size": 14131
     },
     {
       "executable": false,
@@ -534,14 +546,14 @@
     {
       "executable": true,
       "path": "scripts/bootstrap.sh",
-      "sha256": "0ed45db289487777393b5ad34fd3f5ec46621cca89e8a989d2916057f500722f",
+      "sha256": "629b5213d5bec699e27ecfea16c984b6387b8a87cc53d6d6bfa072bb1c8ae060",
       "size": 7103
     },
     {
       "executable": true,
       "path": "scripts/build_release_manifest.py",
-      "sha256": "fb0afe5990e8d1d6cc4409b6640f4d82b34489271248d90833a691752c53f0f4",
-      "size": 20711
+      "sha256": "cf935fa8b94d8e64e98ae0a5700a9214f77ed36d23660f04bd8bc67f46c5b74a",
+      "size": 20731
     },
     {
       "executable": true,
@@ -738,8 +750,8 @@
     {
       "executable": false,
       "path": "tests/g4/test_database_contract.py",
-      "sha256": "a94b38be9b1c0a77d646288a0967a13e514131a78b48cfff9712e0f3bdf9fe6d",
-      "size": 28777
+      "sha256": "8997d6f5796d95208e87bf31f91e6100ffc0a383535f5eed06e292ea698266a4",
+      "size": 28793
     },
     {
       "executable": false,
@@ -822,8 +834,8 @@
     {
       "executable": false,
       "path": "tests/g7/test_recovery_lifecycle.py",
-      "sha256": "6f25544c2b9e6e9225a4e92c0a3c10c3ee1dcadacad783ef647dc3e17001e805",
-      "size": 183104
+      "sha256": "94aee0857a2fce054556d1b577d8d3ab3776dff753c314b5962c8029be309d96",
+      "size": 183154
     },
     {
       "executable": false,
@@ -852,8 +864,8 @@
     {
       "executable": false,
       "path": "tests/v3/test_doc_tree_consistency.py",
-      "sha256": "1adc1a53805db5c5eb9c910e8150e3236418a41be58afdf7a25d70809e33ffe6",
-      "size": 63633
+      "sha256": "9b3717130deafd9c9ca48bec12cd620d57a5be122ffbba5fc780ab1d959dd6d8",
+      "size": 63724
     },
     {
       "executable": false,
@@ -876,8 +888,8 @@
     {
       "executable": false,
       "path": "tests/v3/test_orchestration_and_customization.py",
-      "sha256": "d868e0ed7d40fdffa7672baf6f8c9135bf0ec7eb130dcfc04f59b1ae0d2e39bc",
-      "size": 44192
+      "sha256": "ac97649003b114c23fbf5df4abcecd53bcc89cfbedfeaebe9aa6f5993f5d96fd",
+      "size": 44218
     },
     {
       "executable": false,

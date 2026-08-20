@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: 0BSD
+# SPDX-License-Identifier: Apache-2.0
 from __future__ import annotations
 
 import difflib
@@ -525,7 +525,7 @@ class RecoveryLifecycleContractTests(unittest.TestCase):
         ):
             script = body(name)
             with self.subTest(script=name):
-                self.assertIn('COMPOSE_PROJECT="openclaw-lead-research-v3"', script)
+                self.assertIn('COMPOSE_PROJECT="vc-lead-research-v3"', script)
                 self.assertIn('docker compose -f "$COMPOSE_FILE" -p "$COMPOSE_PROJECT"', script)
 
     def test_postgres_init_mounts_only_the_role_reconciler(self) -> None:
@@ -1437,8 +1437,9 @@ class RecoveryLifecycleContractTests(unittest.TestCase):
         inbox/locked/doc.pdf" while `build_release_manifest.py --check` exited 0.
         In the other direction, `build_release_manifest.py`'s own tolerance was
         exercised by NOTHING: deleting its classification left the whole offline
-        gate green while making every manifest re-pin -- the step CLAUDE.md
-        requires after any declared-file change -- impossible.
+        gate green while making every manifest re-pin -- the step
+        docs/MAINTAINING.md requires after any declared-file change --
+        impossible.
 
         Asserted as equality of outcome rather than as two independent
         expectations, so the test fails when they diverge in either direction.
@@ -1598,7 +1599,8 @@ class RecoveryLifecycleContractTests(unittest.TestCase):
                 baseline["files"], repinned["files"],
                 "a re-pin absorbed the operator's own inbox/repo/.gitkeep into "
                 "the declared inventory. The next operator to add or remove a "
-                "file there fails --pristine, and CLAUDE.md's re-pin step becomes "
+                "file there fails --pristine, and the re-pin step "
+                "docs/MAINTAINING.md mandates becomes "
                 "a way to certify operator payload as package content.",
             )
             self.assertIn(
@@ -1829,7 +1831,7 @@ class RecoveryLifecycleContractTests(unittest.TestCase):
         contract = module.release_contract()
         prior_contract = json.loads(json.dumps(contract))
         prior_contract["package_version"] = "1.9.0"
-        prior_contract["expected_images"]["derived"] = "openclaw-lead-research:1.9.0"
+        prior_contract["expected_images"]["derived"] = "vc-lead-research:1.9.0"
         images = []
         for index, (role, reference) in enumerate(
             prior_contract["expected_images"].items(), start=1
@@ -2957,7 +2959,7 @@ class RecoveryLifecycleContractTests(unittest.TestCase):
     def test_every_caller_of_the_rotation_checks_its_lock_before_arming(self) -> None:
         """A refusal that touched nothing must not stop a healthy deployment.
 
-        rotate_runtime_role.sh acquires /tmp/openclaw-lead-research-v3-rotation.lock
+        rotate_runtime_role.sh acquires /tmp/vc-lead-research-v3-rotation.lock
         as its first act in that lane, and a crash-left lock is a state
         docs/OPERATIONS.md documents as an expected leftover -- it says the copy
         "can outlive an interrupted bootstrap or update". At that point the
@@ -2973,9 +2975,9 @@ class RecoveryLifecycleContractTests(unittest.TestCase):
         and openclaw-cli are stopped" and ran that stop against a deployment
         nothing had touched. update.sh gained the pre-check in this wave;
         bootstrap.sh did not, and reached the identical refusal through the
-        identical call. Both now carry it, and CLAUDE.md instructs re-running
-        bootstrap.sh on an already-bootstrapped deployment, so this is a live
-        path rather than first-install-only.
+        identical call. Both now carry it, and docs/MAINTAINING.md instructs
+        re-running bootstrap.sh on an already-bootstrapped deployment, so
+        this is a live path rather than first-install-only.
 
         The caller set is derived, so a third caller cannot be added without
         either carrying the check or failing here.
@@ -2999,7 +3001,7 @@ class RecoveryLifecycleContractTests(unittest.TestCase):
                 # of the container, and these scripts are 10-25 KB. The script text
                 # is not what a reader needs to see.
                 self.assertTrue(
-                    'ROTATION_LOCK_DIR="/tmp/openclaw-lead-research-v3-rotation.lock"'
+                    'ROTATION_LOCK_DIR="/tmp/vc-lead-research-v3-rotation.lock"'
                     in script,
                     f"{name} invokes the rotation after arming a mutation flag, so "
                     f"it must refuse a crash-left rotation lock itself, while "

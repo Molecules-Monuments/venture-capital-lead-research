@@ -1,7 +1,11 @@
-# OpenClaw Lead Research System 3.0
+# Venture Capital Lead Research System 3.0
 
 An evidence-first, self-hosted multi-agent system for venture-capital inbound
 and outbound lead research.
+
+OpenClaw and Lobster names belong to their owners. This is an independent
+application, not an official OpenClaw Foundation product. The same statement is
+carried in [NOTICE](NOTICE), which Apache-2.0 obliges a redistributor to pass on.
 
 Version 3.0 uses [OpenClaw](https://github.com/openclaw/openclaw) as the agent
 harness, PostgreSQL as the authoritative venture-data store, and
@@ -603,9 +607,9 @@ Change both in one reviewed change, then:
 ./scripts/check_env.sh .env
 python3 -B scripts/check_customization.py config/customization-profile.json .env
 python3 -B scripts/render_channel_config.py .env
-docker compose -f docker-compose.yml -p openclaw-lead-research-v3 --env-file .env config --quiet
-docker compose -f docker-compose.yml -p openclaw-lead-research-v3 --env-file .env run --rm --no-deps openclaw-state-init
-docker compose -f docker-compose.yml -p openclaw-lead-research-v3 --env-file .env up -d --wait --force-recreate --no-deps openclaw-gateway
+docker compose -f docker-compose.yml -p vc-lead-research-v3 --env-file .env config --quiet
+docker compose -f docker-compose.yml -p vc-lead-research-v3 --env-file .env run --rm --no-deps openclaw-state-init
+docker compose -f docker-compose.yml -p vc-lead-research-v3 --env-file .env up -d --wait --force-recreate --no-deps openclaw-gateway
 ```
 
 The `openclaw-state-init` run is required: the gateway reads the rendered
@@ -1163,7 +1167,7 @@ is not needed on a deployment host:
 python3 -B scripts/check_customization.py config/customization-profile.json .env
 python3 -B scripts/render_channel_config.py .env
 docker compose -f docker-compose.yml \
-  -p openclaw-lead-research-v3 --env-file .env config --quiet
+  -p vc-lead-research-v3 --env-file .env config --quiet
 ```
 
 Errors are hard failures. Never edit `config/runtime/openclaw.json` by hand; it
@@ -1213,7 +1217,7 @@ document already dropped under `/inbox`.) To create a lead yourself, invoke the
 fixed workflows directly. From the package root:
 
 ```sh
-compose() { docker compose -f docker-compose.yml -p openclaw-lead-research-v3 --env-file .env "$@"; }
+compose() { docker compose -f docker-compose.yml -p vc-lead-research-v3 --env-file .env "$@"; }
 
 # 0. Prove the helper/database boundary is live.
 compose exec openclaw-gateway /workspaces/vc-chief/vc/bin/agent/vcrun \
@@ -1248,7 +1252,7 @@ docker compose --profile tools --env-file .env run --rm openclaw-cli \
 ```
 
 Run this from the package root as the deployment operator; add
-`-f docker-compose.yml -p openclaw-lead-research-v3` if you invoke it from
+`-f docker-compose.yml -p vc-lead-research-v3` if you invoke it from
 anywhere else, as the lifecycle scripts always do.
 
 This container runs its own embedded agent against the shared database and
@@ -1401,9 +1405,9 @@ or data distribution.
 
 ```sh
 docker build -f Dockerfile.openclaw \
-  -t openclaw-lead-research:3.0.0 .
+  -t vc-lead-research:3.0.0 .
 python3 -B scripts/verify_offline.py \
-  --with-g6-image openclaw-lead-research:3.0.0
+  --with-g6-image vc-lead-research:3.0.0
 ```
 
 The network-disabled, read-only probe verifies exact OpenClaw/Lobster/channel,
@@ -1440,9 +1444,12 @@ python3 -B scripts/verify_release.py --pristine
 ```text
 .
 ├── README.md                         # Public architecture, setup, use, and risk guide
-├── LICENSE                           # 0BSD license for original project material
+├── LICENSE                           # Apache-2.0 license for original project material
+├── NOTICE                            # Apache-2.0 attribution notice; travels with redistribution
 ├── THIRD_PARTY_NOTICES.md            # Upstream attribution and license boundary
 ├── SECURITY.md                       # Vulnerability reporting and support policy
+├── CONTRIBUTING.md                   # Fork/branch/PR flow, gates to run, CLA process
+├── CODE_OF_CONDUCT.md                # Contributor Covenant 2.1, enforcement rewritten
 ├── VERSION                           # 3.0.0
 ├── CUSTOMIZATION.md                  # Required fund/deployment decisions
 ├── 00_RESEARCH_AND_IMPLEMENTATION_PLAN.md  # Version 3 plan of record
@@ -1526,7 +1533,13 @@ python3 -B scripts/verify_release.py --pristine
 │   ├── g5/                           # Lobster, Task Flow, runner
 │   ├── g6/                           # Exact image/channel contracts
 │   └── g7/                           # Recovery/release lifecycle
+├── .github/
+│   ├── workflows/offline-gates.yml   # CI: the offline gates on every pull request
+│   ├── ISSUE_TEMPLATE/               # Bug, documentation, and question forms
+│   └── PULL_REQUEST_TEMPLATE.md      # Gate checklist and CLA confirmation
 ├── docs/                             # Runbooks, channels, data, workflows, evidence
+│   ├── MAINTAINING.md                # Engineering rules and the standard an audit is held to
+│   └── *.md / SCHEMA.sql             # Runbook, operations, channels, data model, evidence
 ├── research/                         # Design research, sources, and limitations
 ├── evals/                            # Version 3 evaluation evidence
 ├── inbox/                            # Optional authenticated host-operator originals
@@ -1540,8 +1553,8 @@ authority lives in config, workspaces, migrations, and code.
 
 The published inventory is the *source* package, not a deployable-files-only
 subset, so it also carries the material needed to change it safely and to audit
-how it was built: `CLAUDE.md`, `ruff.toml`, the four numbered planning
-documents, `research/`, `evals/`, and `tests/`. None of it is read at runtime,
+how it was built: `CONTRIBUTING.md`, `docs/MAINTAINING.md`, `ruff.toml`, the
+four numbered planning documents, `research/`, `evals/`, and `tests/`. None of it is read at runtime,
 and all of it is declared in `manifest.json` and covered by
 `verify_release.py`. Anything at the package root that is *not* declared —
 including your own working notes — is reported by `verify_release.py
@@ -1666,21 +1679,31 @@ A famous investor, company, or selected winner is not evidence that a method
 causes returns and never supplies a scoring weight.
 
 Exact direct/transitive runtime dependencies are recorded in the Python/npm
-lockfiles and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). OpenClaw and
-Lobster names belong to their owners. This is an independent application, not
-an official OpenClaw Foundation product.
+lockfiles and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). The trademark
+and affiliation disclaimer is stated below the title of this document and in
+[NOTICE](NOTICE).
 
 ## License and risk
 
 Original project material is released under the
-[BSD Zero Clause License (`0BSD`)](LICENSE). It permits use, copying,
-modification, distribution, and commercial use for any purpose, with or without
-a fee, and imposes no attribution or source-disclosure condition. It was chosen
-because it most closely matches the stated intent that users may use, fork,
-copy, modify, distribute, sublicense as part of a product, and sell their work
-without a project-specific restriction. `0BSD` is
-[OSI approved](https://opensource.org/license/0bsd) and has the
-[SPDX identifier `0BSD`](https://spdx.org/licenses/0BSD.html).
+[Apache License, Version 2.0](LICENSE), Copyright 2026 Molecules and Monuments
+GmbH. It permits use, copying, modification, distribution, and commercial use,
+for a fee or without one, and it adds an express patent licence from every
+contributor — which terminates for anyone who starts patent litigation claiming
+this software infringes a patent (§3). That patent grant is why it was chosen
+over a shorter permissive licence: this system is assembled from other people's
+harnesses and plugins, and an explicit grant is worth more here than brevity.
+
+It is not condition-free. Anyone who redistributes this software, or a work
+derived from it, must give recipients a copy of the licence, keep the copyright,
+patent, trademark, and attribution notices found in the source they carry, mark
+every file they changed as changed, and reproduce the contents of
+[NOTICE](NOTICE) wherever the derived work presents its notices (§4). A derived
+Docker image is such a work: `LICENSE` and `NOTICE` are not baked into the image
+this package builds, so a redistributor of that image has to add them to the
+artifact they ship. Apache-2.0 is
+[OSI approved](https://opensource.org/license/apache-2-0) and has the
+[SPDX identifier `Apache-2.0`](https://spdx.org/licenses/Apache-2.0.html).
 
 Third-party software, packages, services, trademarks, documents, and linked
 content are not relicensed. Their licenses, notices, usage terms, privacy terms,
