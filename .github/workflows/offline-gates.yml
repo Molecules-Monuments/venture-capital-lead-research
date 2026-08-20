@@ -1,0 +1,88 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# The deterministic offline gate, and only that gate.
+#
+# Deliberately not run here: the database gate G4 (scripts/run_g4.py), the
+# image gate G6 (scripts/run_g6_image.py), the deployment gate G8
+# (scripts/run_g8_deployment.py), the retrieval-scale run, and the live
+# commissioning matrix. G4 needs PostgreSQL 17 client tools and a disposable
+# cluster, G6 needs a Docker daemon holding the derived image, G8 needs a host
+# willing to carry a throwaway deployment end to end, and the commissioning
+# matrix needs real channel credentials and a real model provider. A hosted
+# runner cannot supply those reproducibly, and the ones that need credentials
+# must not be given them. A maintainer runs that set on a real host before a
+# release and records the result in the release evidence documents. A green
+# check here therefore means the offline matrix passed — not that the release
+# is complete.
+name: offline-gates
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+# The triggers above carry no path filter, and must never be given one. Several
+# offline tests bind documented counts, enumerations, and command invocations
+# back to the tree they describe, so a documentation-only change legitimately
+# fails this gate: a reworded sentence that stops matching, or a count that no
+# longer equals what discovery measures, is a real defect. Restricting this
+# workflow to code paths would hide precisely the class of defect those tests
+# exist to catch.
+
+concurrency:
+  # One run per ref. A superseded push has nothing left to prove, and the
+  # matrix is long enough that queued duplicates would delay real feedback.
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  offline-gates:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the package
+        uses: actions/checkout@v4
+
+      - name: Select Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          # The deployed floor, not the newest available: the derived image
+          # ships Debian Python 3.11 and requirements-dev.lock is compiled for
+          # 3.11 or newer. Testing on the version the deployment runs is the
+          # point. There is no matrix — one interpreter is what ships.
+          python-version: '3.11'
+
+      - name: Install the hash-locked developer environment
+        # No pip cache: the lock is verified by hash on every run, and a cache
+        # is one more thing that can differ between this runner and a
+        # maintainer's machine. `python -m pip` installs the console scripts
+        # next to this interpreter, which is where verify_offline.py looks for
+        # ruff and ty — it resolves both from its own interpreter before
+        # falling back to PATH, so the versions pinned in the lock are the ones
+        # that decide the result.
+        run: python -m pip install --disable-pip-version-check --require-hashes -r requirements-dev.lock
+
+      - name: Release inventory is pristine
+        # This runs first, before anything that could write into the working
+        # tree, and the order must be preserved. verify_release.py --pristine
+        # reports any undeclared file — a __pycache__ directory, a .ruff_cache,
+        # editor debris — as a tampering signal, so it has to see the checkout
+        # as it arrived. The matrix below is careful about caches itself (it
+        # sets PYTHONDONTWRITEBYTECODE and passes --no-cache to ruff), but
+        # running the pristine check up front makes that independent of the
+        # matrix staying careful.
+        run: python3 -B scripts/verify_release.py --pristine
+
+      - name: Deterministic offline verification matrix
+        # The offline test suites, the Python and shell syntax checks, ruff,
+        # ty, the skill-system and fixed-workflow validators, the manifest
+        # currency check, and verify_release.py --pristine once more. It prints
+        # a JSON report and carries the detail of any failing check inline, so
+        # there is nothing to upload as an artifact.
+        run: python -B scripts/verify_offline.py
