@@ -1176,7 +1176,10 @@ record. Autonomous transcript review remains disabled.
      `migrations/000_roles.sh` sets `openclaw_runtime` to `NOLOGIN`, installs
      both passwords in two further `psql` invocations, and restores `LOGIN` only
      at the end; a failure anywhere in that window leaves the runtime role
-     unable to log in with a password that is nevertheless correct.
+     unable to log in, and which password is stored depends on how far the
+     script reached — the runtime `\password` runs inside the window, so an
+     earlier failure leaves the previous one in place. Either way the remedy
+     below is the same.
 
   In every one of those phases the fix is the same, because **the reconciler does
   not need the database's current passwords.** Every credential-changing
