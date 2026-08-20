@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: 0BSD
+# SPDX-License-Identifier: Apache-2.0
 """Structurally validate and safely extract one bounded gzip tar recovery stream."""
 
 from __future__ import annotations

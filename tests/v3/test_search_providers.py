@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: 0BSD
+# SPDX-License-Identifier: Apache-2.0
 """Config-driven web-search provider selection — offline, no DB, no model.
 
 Proves the render wires any native provider (not only the original four): the

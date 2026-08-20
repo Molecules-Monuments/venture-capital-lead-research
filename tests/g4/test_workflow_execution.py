@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: 0BSD
+# SPDX-License-Identifier: Apache-2.0
 """Execute the real .lobster fixed workflows end-to-end against the live database.
 
 The commands run here are parsed from the shipped workflow files themselves,

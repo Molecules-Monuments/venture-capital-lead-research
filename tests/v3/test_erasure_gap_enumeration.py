@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: 0BSD
+# SPDX-License-Identifier: Apache-2.0
 """The erasure-gap enumeration in data_retention.md is a closed-world claim.
 
 `workspaces/vc-chief/vc/data_retention.md` tells the operator which stores

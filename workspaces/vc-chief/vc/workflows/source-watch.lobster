@@ -1,5 +1,5 @@
 name: vc-source-watch-v3
-# SPDX-License-Identifier: 0BSD
+# SPDX-License-Identifier: Apache-2.0
 
 # Register one watched signal source in the surveillance watchlist, or refresh
 # an already-enabled one (the "monitor this website" path). This lane cannot

@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: 0BSD
+# SPDX-License-Identifier: Apache-2.0
 """Which arguments each `*-request-claim` step actually records, pinned both ways.
 
 `docs/DATA_MODEL.md` describes `workflow_requests` as the row that claims the

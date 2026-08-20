@@ -1,7 +1,10 @@
 # Third-party notices
 
-The 0BSD license in `LICENSE` applies to original OpenClaw Lead Research
-project material. It does not replace or override the licenses, notices,
+The Apache License, Version 2.0 in `LICENSE` applies to original OpenClaw Lead
+Research project material, Copyright 2026 Molecules and Monuments GmbH. `NOTICE`
+carries the attribution notice that Apache-2.0 §4(d) obliges a redistributor to
+pass on with a derived work; this document is a separate surface and covers
+third-party material. Neither file replaces or overrides the licenses, notices,
 trademarks, service terms, or acceptable-use policies of third-party software
 and content.
 
@@ -30,7 +33,7 @@ release, plus the exact `@openclaw/firecrawl-plugin@2026.7.1`,
 `@openclaw/msteams@2026.7.1`, and `@openclaw/discord@2026.7.1` packages locked
 in `runtime-packages/package-lock.json`. They remain OpenClaw components under
 the upstream repository's MIT license. The local `vc-trusted-context` extension is
-original project material covered by this repository's 0BSD license.
+original project material covered by this repository's Apache-2.0 license.
 
 ## Optional external model, search, and channel services
 
@@ -101,7 +104,7 @@ packages `Dockerfile.openclaw` installs. That base contributes **Node.js
 upstream tarballs rather than from apt; pnpm is not in the base and arrives
 with the build (third bullet). None of them appear in either Python
 lockfile, either npm lockfile, or `dpkg`, and their notices are not gathered
-into one file. Measured in the built image `openclaw-lead-research:3.0.0`,
+into one file. Measured in the built image `vc-lead-research:3.0.0`,
 with the pinned base (`node@sha256:242549cd…`) measured separately because
 the two do not agree everywhere:
 
@@ -158,6 +161,26 @@ for preserving required copyright notices or license texts in a distributed
 binary/image. Before redistributing a derived image or commercial product,
 generate and review a software bill of materials and the license/notices from
 the exact built artifact. Preserve every notice required by those components.
+
+This project's own material adds to that set rather than being covered by it.
+Apache-2.0 §4 requires a redistributor of this software, or of a work derived
+from it, to include a copy of `LICENSE`, retain the copyright, patent,
+trademark, and attribution notices in the source they carry, mark every file
+they changed as changed, and reproduce the contents of `NOTICE` in the
+documentation or display the derived work uses for notices. The derived image
+this repository builds carries neither file — `.dockerignore` admits only the
+build inputs — so a redistributor of that image must add them to the artifact
+they ship.
+
+## Contributor Covenant
+
+- Project: Contributor Covenant, version 2.1
+- Text: https://www.contributor-covenant.org/version/2/1/code_of_conduct.html
+- License: CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/)
+
+`CODE_OF_CONDUCT.md` is an adaptation of that text. The Attribution section of
+that file states which changes were made; this entry deliberately does not
+restate them, because two copies of the same change list drift apart.
 
 ## Research sources and linked content
 

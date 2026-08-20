@@ -1,5 +1,5 @@
 name: vc-runtime-preflight-v3
-# SPDX-License-Identifier: 0BSD
+# SPDX-License-Identifier: Apache-2.0
 
 # Smoke-test the fixed-workflow runtime end to end: drive a workflow_run through
 # its full lifecycle (start -> running -> succeeded) using only the read-only

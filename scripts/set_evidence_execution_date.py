@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: 0BSD
+# SPDX-License-Identifier: Apache-2.0
 """Set or check the canonical re-execution dates across the evidence documents.
 
 The four evidence documents state, in several phrasings each, (a) the date the

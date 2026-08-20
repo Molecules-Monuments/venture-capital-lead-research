@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: 0BSD
+# SPDX-License-Identifier: Apache-2.0
 """The one shipped approval checkpoint must be one the pinned runtime honours.
 
 `scripts/validate_workflows.py` rejects `approval: false`, but that rule tests

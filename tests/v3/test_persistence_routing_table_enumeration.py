@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: 0BSD
+# SPDX-License-Identifier: Apache-2.0
 """Every persistence operation a specialist can request must have a named row.
 
 A specialist hands the data-persistence steward a `persistenceRequest` whose

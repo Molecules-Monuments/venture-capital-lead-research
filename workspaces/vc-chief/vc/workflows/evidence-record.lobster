@@ -1,5 +1,5 @@
 name: vc-evidence-record-v3
-# SPDX-License-Identifier: 0BSD
+# SPDX-License-Identifier: Apache-2.0
 
 # Persist one research claim with its provenance as a submitted_claim, then
 # attempt the deterministic corroboration-gated promotion. Nothing on this

@@ -1,5 +1,5 @@
 name: vc-preference-forget-v3
-# SPDX-License-Identifier: 0BSD
+# SPDX-License-Identifier: Apache-2.0
 
 # Delete one bounded per-principal preference, gated by a trusted-context
 # capability bound to the owning channel identity. This is the data-subject

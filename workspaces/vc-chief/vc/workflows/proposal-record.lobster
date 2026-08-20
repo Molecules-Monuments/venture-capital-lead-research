@@ -1,5 +1,5 @@
 name: vc-proposal-record-v3
-# SPDX-License-Identifier: 0BSD
+# SPDX-License-Identifier: Apache-2.0
 
 # Persist one governance proposal (schema change, source-policy change, or skill
 # candidate) for later operator review. Records a proposal only; it applies
