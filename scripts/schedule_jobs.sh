@@ -1,5 +1,5 @@
 #!/bin/sh
-# SPDX-License-Identifier: 0BSD
+# SPDX-License-Identifier: Apache-2.0
 set -eu
 # Word-splitting of the delivery value below is deliberate; pathname expansion
 # is not — set -f keeps glob characters in operator-supplied values literal.
@@ -38,7 +38,7 @@ umask 077
 PACKAGE_DIR="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 ENV_FILE="$PACKAGE_DIR/.env"
 COMPOSE_FILE="$PACKAGE_DIR/docker-compose.yml"
-COMPOSE_PROJECT="openclaw-lead-research-v3"
+COMPOSE_PROJECT="vc-lead-research-v3"
 
 # The 07:00 default starts the scan an hour before the 08:00-19:00 Mon-Fri
 # window in workspaces/vc-chief/vc/notification_policy.md, so the digest is

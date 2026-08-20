@@ -197,7 +197,7 @@ the lead, and `channel_event_id` must be unique per submission, as must
 `idempotency_key`:
 
 ```sh
-docker compose -f docker-compose.yml -p openclaw-lead-research-v3 --env-file .env \
+docker compose -f docker-compose.yml -p vc-lead-research-v3 --env-file .env \
   exec openclaw-gateway /workspaces/vc-chief/vc/bin/agent/vcrun run inbound-intake \
   --args-json '{
     "idempotency_key": "acme-2026-07-28-1",
@@ -218,7 +218,7 @@ To read the extracted text back, run `lead-show` on that `lead_id`. Each entry
 in `artifacts` carries the `extraction_id` of its extraction, and:
 
 ```sh
-docker compose -f docker-compose.yml -p openclaw-lead-research-v3 --env-file .env \
+docker compose -f docker-compose.yml -p vc-lead-research-v3 --env-file .env \
   exec openclaw-gateway /workspaces/vc-chief/vc/bin/agent/vcops \
   document-extraction-show --extraction-id <id> --json
 ```
@@ -414,7 +414,7 @@ inside the gateway image, so run it through `compose exec` from the package
 directory on the deployment host:
 
 ```sh
-docker compose -f docker-compose.yml -p openclaw-lead-research-v3 --env-file .env \
+docker compose -f docker-compose.yml -p vc-lead-research-v3 --env-file .env \
   exec -e VCOPS_OPERATOR_ID=<stable-operator-id> openclaw-gateway \
   /workspaces/vc-chief/vc/bin/vcrun-control resume --id <approval-id> --approve yes
 ```
@@ -429,7 +429,7 @@ named `approval_<8-hex-id>.json`, and removes it on resume or cancel. List them
 on the deployment host:
 
 ```sh
-docker compose -f docker-compose.yml -p openclaw-lead-research-v3 --env-file .env \
+docker compose -f docker-compose.yml -p vc-lead-research-v3 --env-file .env \
   exec openclaw-gateway sh -c 'ls -1 /home/node/.openclaw/lobster/state/approval_*.json'
 ```
 

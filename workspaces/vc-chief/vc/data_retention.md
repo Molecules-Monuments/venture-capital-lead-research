@@ -44,9 +44,9 @@ tests pass (see the banner above):
   goes quiet retains transcripts past `pruneAfter` until someone runs:
 
   ```sh
-  docker compose -f docker-compose.yml -p openclaw-lead-research-v3 --env-file .env \
+  docker compose -f docker-compose.yml -p vc-lead-research-v3 --env-file .env \
     exec openclaw-gateway openclaw sessions cleanup --all-agents --dry-run
-  docker compose -f docker-compose.yml -p openclaw-lead-research-v3 --env-file .env \
+  docker compose -f docker-compose.yml -p vc-lead-research-v3 --env-file .env \
     exec openclaw-gateway openclaw sessions cleanup --all-agents
   ```
 

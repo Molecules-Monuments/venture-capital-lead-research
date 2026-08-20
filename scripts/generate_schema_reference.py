@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: 0BSD
+# SPDX-License-Identifier: Apache-2.0
 """Generate (or verify) docs/SCHEMA.sql from the migration set.
 
 docs/SCHEMA.sql is documentation, not a migration, but it is published as a
@@ -48,8 +48,8 @@ sys.dont_write_bytecode = True
 
 PACKAGE = Path(__file__).resolve().parent.parent
 TARGET = PACKAGE / "docs/SCHEMA.sql"
-HEADER = """-- SPDX-License-Identifier: 0BSD
--- OpenClaw Lead Research System 3.0 — consolidated schema reference (DOCUMENTATION)
+HEADER = """-- SPDX-License-Identifier: Apache-2.0
+-- Venture Capital Lead Research System 3.0 — consolidated schema reference (DOCUMENTATION)
 --
 -- This file is NOT a migration and is applied by nothing: migrate.sh only reads
 -- migrations/NNN_*.sql, and this file lives under docs/. It is a schema-only

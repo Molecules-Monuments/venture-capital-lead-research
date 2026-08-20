@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: 0BSD
+# SPDX-License-Identifier: Apache-2.0
 """Validate Version 3 configs inside the exact built OpenClaw image.
 
 This gate is deliberately offline: every container has networking disabled,
@@ -86,7 +86,7 @@ EXPECTED_DEBIAN_PACKAGES = {
     "poppler-utils": "22.12.0-2+deb12u3",
     # These two are the python3-defaults metapackages, so their `3.11.2` is that
     # source's revision and not the interpreter's: measured in
-    # openclaw-lead-research:3.0.0, `/usr/bin/python3` is a symlink owned by
+    # vc-lead-research:3.0.0, `/usr/bin/python3` is a symlink owned by
     # python3-minimal, while the interpreter binary `/usr/bin/python3.11` belongs
     # to python3.11-minimal=3.11.2-6+deb12u8, which the digest-pinned base image
     # already carries. The interpreter revision is therefore inherited, not
@@ -307,7 +307,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--image",
-        default="openclaw-lead-research:3.0.0",
+        default="vc-lead-research:3.0.0",
         help="already-built local Version 3 image",
     )
     args = parser.parse_args()

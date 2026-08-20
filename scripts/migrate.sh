@@ -1,5 +1,5 @@
 #!/bin/sh
-# SPDX-License-Identifier: 0BSD
+# SPDX-License-Identifier: Apache-2.0
 set -eu
 umask 077
 
@@ -11,7 +11,7 @@ umask 077
 PACKAGE_DIR="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 ENV_FILE="${1:-$PACKAGE_DIR/.env}"
 COMPOSE_FILE="$PACKAGE_DIR/docker-compose.yml"
-COMPOSE_PROJECT="openclaw-lead-research-v3"
+COMPOSE_PROJECT="vc-lead-research-v3"
 EXPECTED_LEDGER=""
 ACTUAL_LEDGER=""
 case "$ENV_FILE" in

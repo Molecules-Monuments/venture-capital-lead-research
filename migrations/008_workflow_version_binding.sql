@@ -1,5 +1,5 @@
--- SPDX-License-Identifier: 0BSD
--- OpenClaw Lead Research System 3.0
+-- SPDX-License-Identifier: Apache-2.0
+-- Venture Capital Lead Research System 3.0
 -- Bind idempotent workflow state to the exact package and policy semantics.
 
 BEGIN;

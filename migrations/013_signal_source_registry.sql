@@ -1,5 +1,5 @@
--- SPDX-License-Identifier: 0BSD
--- OpenClaw Lead Research System 3.0
+-- SPDX-License-Identifier: Apache-2.0
+-- Venture Capital Lead Research System 3.0
 -- Restore automated source surveillance: a queryable watchlist registry that a
 -- scheduled or operator-triggered source-scan can read by cadence. The
 -- primary_sources.md watchlist was documentation-only; this makes it data.

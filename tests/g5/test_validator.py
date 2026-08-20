@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: 0BSD
+# SPDX-License-Identifier: Apache-2.0
 from __future__ import annotations
 
 import importlib.util
@@ -422,7 +422,7 @@ steps:
 
         The pinned runtime resolves the inline shell from the step environment,
         so `LOBSTER_SHELL` demotes the validated command to an argument of an
-        arbitrary binary — measured on openclaw-lead-research:3.0.0, a step
+        arbitrary binary — measured on vc-lead-research:3.0.0, a step
         with `LOBSTER_SHELL: /bin/echo` ran echo and never invoked
         `vcops-workflow`, while the run still reported `ok: true`. The
         validator must therefore constrain env KEY names, not just values, or

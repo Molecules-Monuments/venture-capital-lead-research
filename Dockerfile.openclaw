@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: 0BSD
+# SPDX-License-Identifier: Apache-2.0
 ARG OPENCLAW_IMAGE=ghcr.io/openclaw/openclaw:2026.7.1@sha256:6a31d44b2944e7adcd2b582bf6fb463111264ebca97a0201795b799135bd102c
 FROM ${OPENCLAW_IMAGE}
 
@@ -79,12 +79,12 @@ RUN npm ci --prefix /opt/openclaw-runtime \
 # these exact pins are eventually superseded and drop out of deb.debian.org.
 # RECOVERY (documented in docs/RUNBOOK.md "Rebuilding after a Debian point
 # release"): point apt at a snapshot dated at or after the date the reviewed
-# image was built (docs/V3_RELEASE_EVIDENCE.md records 2026-08-19), delete the
+# image was built (docs/V3_RELEASE_EVIDENCE.md records 2026-08-20), delete the
 # base image's own deb.debian.org source list — left in place it sits at the
 # same priority 500 and apt takes the higher version from it, so the snapshot
 # decides nothing — and add BOTH snapshot archives, since the poppler pair is a
 # bookworm-security revision which never reaches the bookworm main suite:
-#   SNAPSHOT=20260819T000000Z
+#   SNAPSHOT=20260820T000000Z
 #   rm -f /etc/apt/sources.list.d/debian.sources
 #   { printf 'deb [check-valid-until=no] https://snapshot.debian.org/archive/debian/%s/ bookworm main\n' "$SNAPSHOT"
 #     printf 'deb [check-valid-until=no] https://snapshot.debian.org/archive/debian-security/%s/ bookworm-security main\n' "$SNAPSHOT"
@@ -200,7 +200,7 @@ ENV PATH="/opt/vcops-venv/bin:${PATH}" \
 #
 # Placed last on purpose: LABEL after FROM would invalidate the build cache for
 # every layer below it, and label order does not affect the resulting config.
-LABEL org.opencontainers.image.title="OpenClaw Lead Research" \
+LABEL org.opencontainers.image.title="Venture Capital Lead Research" \
       org.opencontainers.image.version="3.0.0" \
       org.opencontainers.image.description="Independent OpenClaw-derived lead-research runtime; not an official OpenClaw Foundation product" \
       org.opencontainers.image.licenses="NOASSERTION" \

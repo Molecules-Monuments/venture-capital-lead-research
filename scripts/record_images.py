@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: 0BSD
+# SPDX-License-Identifier: Apache-2.0
 """Record and validate the release/image contract for one deployment."""
 
 from __future__ import annotations
@@ -170,7 +170,7 @@ def _expected_images(upstream: dict[str, Any], package_version: str) -> dict[str
         return {
             "openclaw-base": upstream["openclaw"]["image"],
             "postgres": upstream["postgres_image"],
-            "derived": f"openclaw-lead-research:{package_version}",
+            "derived": f"vc-lead-research:{package_version}",
         }
     except (KeyError, TypeError) as exc:
         raise LockError("release manifest has an incomplete upstream image contract") from exc

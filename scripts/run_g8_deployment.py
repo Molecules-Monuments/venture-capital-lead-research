@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: 0BSD
+# SPDX-License-Identifier: Apache-2.0
 """Run the real deployment path end-to-end on the pinned images (G8 gate).
 
 This is the execution-based deployment coverage the offline suites cannot
@@ -35,14 +35,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 PACKAGE = Path(__file__).resolve().parent.parent
-COMPOSE_PROJECT = "openclaw-lead-research-v3"
+COMPOSE_PROJECT = "vc-lead-research-v3"
 PROJECT_VOLUMES = (
     f"{COMPOSE_PROJECT}_postgres-data",
     f"{COMPOSE_PROJECT}_openclaw-state",
     f"{COMPOSE_PROJECT}_runtime-config",
     f"{COMPOSE_PROJECT}_vc-quarantine",
 )
-LIFECYCLE_LOCK = Path("/tmp/openclaw-lead-research-v3-lifecycle.lock")
+LIFECYCLE_LOCK = Path("/tmp/vc-lead-research-v3-lifecycle.lock")
 GENERATED_FILES = (
     ".env",
     "config/customization-profile.json",

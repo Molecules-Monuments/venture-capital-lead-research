@@ -1,4 +1,4 @@
-# OpenClaw Lead Research System 3.0 — repository root is this directory.
+# Venture Capital Lead Research System 3.0 — repository root is this directory.
 # Everything the deployable package needs is tracked; operator-supplied secrets,
 # rendered runtime state, generated artifacts, and internal review material are not.
 

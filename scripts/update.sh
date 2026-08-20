@@ -1,5 +1,5 @@
 #!/bin/sh
-# SPDX-License-Identifier: 0BSD
+# SPDX-License-Identifier: Apache-2.0
 set -eu
 umask 077
 # Keep lifecycle runs from shedding bytecode caches into the pristine package.
@@ -9,8 +9,8 @@ export PYTHONDONTWRITEBYTECODE
 PACKAGE_DIR="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 ENV_FILE="$PACKAGE_DIR/.env"
 COMPOSE_FILE="$PACKAGE_DIR/docker-compose.yml"
-COMPOSE_PROJECT="openclaw-lead-research-v3"
-LOCK_DIR="/tmp/openclaw-lead-research-v3-lifecycle.lock"
+COMPOSE_PROJECT="vc-lead-research-v3"
+LOCK_DIR="/tmp/vc-lead-research-v3-lifecycle.lock"
 # Captured before the cd into the package below: a relative destination must
 # resolve where the operator invoked the script, not inside the live package
 # tree that recovery points are documented to stay out of.
@@ -207,7 +207,7 @@ fi
 # MUTATION_STARTED has armed the handler that leaves consumers stopped. Mirror
 # the check here, while production is still running, the same way the ledger and
 # CLI guards above are mirrored.
-ROTATION_LOCK_DIR="/tmp/openclaw-lead-research-v3-rotation.lock"
+ROTATION_LOCK_DIR="/tmp/vc-lead-research-v3-rotation.lock"
 # The remedy pointer below names 'First install', not 'Secrets'. The whole
 # stale-lock recovery procedure -- confirm no rotation process is active, then
 # remove the directory with `rm -rf` because it is not empty (it holds
@@ -456,7 +456,7 @@ MUTATION_STARTED=0
 # whitespace and duplicate keys in .env, so this literal read is exact.
 PRIMARY_CHANNEL_VALUE="$(sed -n 's/^PRIMARY_CHANNEL=//p' "$ENV_FILE" 2>/dev/null | head -n 1)"
 if [ -n "$PRIMARY_CHANNEL_VALUE" ] && [ "$PRIMARY_CHANNEL_VALUE" != none ]; then
-  echo "Update completed from a quiesced pre-update recovery point. The gateway is running on the new release and its configured channel ($PRIMARY_CHANNEL_VALUE) is already live; the CLI container exists but is stopped. Re-run every affected G8 live gate now. To hold traffic while you do, stop the gateway first: docker compose -f docker-compose.yml -p openclaw-lead-research-v3 --env-file .env stop openclaw-gateway"
+  echo "Update completed from a quiesced pre-update recovery point. The gateway is running on the new release and its configured channel ($PRIMARY_CHANNEL_VALUE) is already live; the CLI container exists but is stopped. Re-run every affected G8 live gate now. To hold traffic while you do, stop the gateway first: docker compose -f docker-compose.yml -p vc-lead-research-v3 --env-file .env stop openclaw-gateway"
 else
   echo "Update completed from a quiesced pre-update recovery point. The gateway is running on the new release with no channel configured (PRIMARY_CHANNEL=$PRIMARY_CHANNEL_VALUE), so it is accepting no external traffic; the CLI container exists but is stopped. Re-run every affected G8 live gate now."
 fi

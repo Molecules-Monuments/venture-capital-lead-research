@@ -1,8 +1,8 @@
 {
-  "name": "@openclaw-lead-research/vc-trusted-context",
+  "name": "@vc-lead-research/vc-trusted-context",
   "version": "3.0.0",
   "private": true,
-  "license": "0BSD",
+  "license": "Apache-2.0",
   "type": "module",
   "openclaw": {
     "extensions": ["./index.js"]

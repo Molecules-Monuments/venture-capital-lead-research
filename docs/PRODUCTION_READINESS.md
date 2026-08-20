@@ -2,7 +2,7 @@
 
 Decision date: 2026-07-23 (final-audit session: every gate re-executed after the security/correctness remediation; supersedes the 2026-07-22 decision)
 Live-model boundary restated: 2026-08-04, after five audit passes drove the agent layer against a real model (see "Exercised against a live model" below). The decision itself is unchanged; what changed is that the boundary is now drawn at model *judgement* rather than at model *contact*.
-Package: `openclaw-lead-research`
+Package: `vc-lead-research`
 Version: `3.0.0`
 Decision: **Deterministic package and deployment path VERIFIED. The live-model path is exercised against a real model — resolution, provider reach, tool-call payloads, and the timeout/context/watchdog bounds. Behavioral certification remains BLOCKED: never run against a production-grade model. Not certified for autonomous decision quality until commissioned.**
 
@@ -49,7 +49,7 @@ archive (excluded from the published package).
 Each figure in the table below is the measurement of a **2026-08-20**
 re-execution against this tree — except where the cell quoting it names an
 earlier run — and against the derived image rebuilt from it
-with `docker build --no-cache --pull` on 2026-08-19, after that day's edits to the image-baked `workspaces/` files, `Dockerfile.openclaw` itself, and the host-side recovery-lifecycle scripts — not a
+with `docker build --no-cache --pull` on 2026-08-20, after that day's edits to the image-baked `workspaces/` files, `Dockerfile.openclaw` itself, and the host-side recovery-lifecycle scripts — not a
 figure carried forward from the 2026-07-23 session. That re-execution was necessary rather than ceremonial: the
 migrations, `vcops.py`, the eighteen `.lobster` workflows and
 `Dockerfile.openclaw` — the file that defines the very image G6 and G8 build —
@@ -156,7 +156,7 @@ python3 -B scripts/verify_offline.py \
   --with-schema-reference \
   --with-deployment \
   --with-retrieval-scale \
-  --with-g6-image openclaw-lead-research:3.0.0
+  --with-g6-image vc-lead-research:3.0.0
 ```
 
 The runbook's live checklists and the BLOCKED gates above determine whether one
