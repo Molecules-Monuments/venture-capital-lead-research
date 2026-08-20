@@ -1,0 +1,24 @@
+Venture Capital Lead Research System 3.0
+
+Copyright 2026 Molecules and Monuments GmbH
+
+Original project material in this repository is licensed under the Apache
+License, Version 2.0. A complete copy of that licence is in the LICENSE
+file at the root of this repository, and the canonical text is published
+at http://www.apache.org/licenses/LICENSE-2.0
+
+OpenClaw and Lobster names belong to their owners. This is an independent
+application, not an official OpenClaw Foundation product. Naming a
+third-party project, service, or vendor here does not imply that it
+endorses this project or its outputs.
+
+This NOTICE covers original project material only. Third-party software
+bundled into, or depended on by, the derived runtime image keeps its own
+licences, notices, and terms, and nothing in this repository relicenses
+any of it. Some of that material is copyleft: redistributing a built
+image carries source-offer and notice-preservation obligations that the
+Apache licence above does not satisfy on its own.
+THIRD_PARTY_NOTICES.md enumerates the principal projects, their licences,
+and those obligations. Read it before redistributing an image or a
+derived product, and establish the actual obligation set from the exact
+artifact you ship.

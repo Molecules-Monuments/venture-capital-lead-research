@@ -19,7 +19,7 @@
     "config/runtime/secrets/vcops_approval_pepper",
     "deployment-lock.json"
   ],
-  "file_count": 332,
+  "file_count": 334,
   "files": [
     {
       "executable": false,
@@ -71,6 +71,12 @@
     },
     {
       "executable": false,
+      "path": "CODE_OF_CONDUCT.md",
+      "sha256": "73a3bfb15f9653e5c467dc3cfe4d42910eac546eda811b5ce1d9ff614b484526",
+      "size": 7988
+    },
+    {
+      "executable": false,
       "path": "CONTRIBUTING.md",
       "sha256": "e8599f26492569a74e8b5c6d7f6c4aecce18a422067a5ecc33b3912b7e886ed0",
       "size": 16190
@@ -95,6 +101,12 @@
     },
     {
       "executable": false,
+      "path": "NOTICE",
+      "sha256": "19e31ac1bdc549867aeb1c0bf7ea41f109bf68c047894e7607ad2ef192581247",
+      "size": 1241
+    },
+    {
+      "executable": false,
       "path": "README.md",
       "sha256": "c8ad889f16d4b5fe3de7600ed542faa1670032920458b9903b137f682dad2ac5",
       "size": 98098
@@ -102,8 +114,8 @@
     {
       "executable": false,
       "path": "SECURITY.md",
-      "sha256": "4839bd079bc58948c67b92ec9ed601cdb5a061f5e76786108cb606965b54ea0f",
-      "size": 5738
+      "sha256": "fdc3da624fecd77d70da4190d3fe3e0af0367669fab08864c273fdacc498c74f",
+      "size": 6475
     },
     {
       "executable": false,
