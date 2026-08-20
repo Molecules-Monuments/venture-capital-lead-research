@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: 0BSD
+# SPDX-License-Identifier: Apache-2.0
 import json
 import os
 import re
@@ -375,8 +375,8 @@ class PopulatedUpgradePathTests(unittest.TestCase):
 
     So a new backfill, or a CHECK-tightening derivation, over a table an earlier
     migration already guards adds a KEY to `fixtures` rather than moving a split
-    point. CLAUDE.md §"Auditing this package" states the same rule and sends
-    migration authors to this class by name.
+    point. docs/MAINTAINING.md §"Auditing this package" states the same rule
+    and sends migration authors to this class by name.
     """
 
     @classmethod

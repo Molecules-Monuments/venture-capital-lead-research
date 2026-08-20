@@ -1,11 +1,12 @@
-# SPDX-License-Identifier: 0BSD
+# SPDX-License-Identifier: Apache-2.0
 """Documentation inventories must enumerate the tree, not remember it.
 
 Two fourteenth-audit-pass findings established the class this suite closes:
 the README project structure enumerated 25 of 26 shipped scripts with no
-elision marker — the missing one being the evidence-date tool CLAUDE.md
-mandates — and OPERATIONS.md's rotation step list omitted that the rotation
-script applies pending migrations and re-runs the state initializer. An
+elision marker — the missing one being the evidence-date tool
+docs/MAINTAINING.md mandates — and OPERATIONS.md's rotation step list
+omitted that the rotation script applies pending migrations and re-runs the
+state initializer. An
 enumeration that reads as complete must be complete, and a step list for a
 script that mutates state must name the mutating steps; both are bound to the
 tree here so the next drift fails the offline gate instead of waiting for an
@@ -554,7 +555,8 @@ class SkillCountPinTests(unittest.TestCase):
 
 
 class RuffRuleInventoryTests(unittest.TestCase):
-    """CLAUDE.md argues against widening ruff.toml from two measured numbers.
+    """The maintainer handbook argues against widening ruff.toml from two
+    measured numbers.
 
     Both were asserted rather than derived, and the family count was wrong by
     one (pycodestyle, selected through `E4`/`E7`/`E9`/`W`, was uncounted). The
@@ -602,19 +604,21 @@ class RuffRuleInventoryTests(unittest.TestCase):
             self.assertIsNotNone(best, f"no ruff linter owns rule {code}")
             families.add(prefixes[best])
 
-        claude = (ROOT / "CLAUDE.md").read_text(encoding="utf-8")
+        maintaining = (ROOT / "docs/MAINTAINING.md").read_text(encoding="utf-8")
         match = re.search(
-            r"`ruff\.toml` selects \*\*(\d+)\*\* rules across (\d+) linter families", claude
+            r"`ruff\.toml` selects \*\*(\d+)\*\* rules across (\d+) linter families", maintaining
         )
         if match is None:
             self.fail(
-                "CLAUDE.md no longer states the ruff rule/family counts in the "
-                "pinned form `ruff.toml` selects **N** rules across M linter families"
+                "docs/MAINTAINING.md no longer states the ruff rule/family counts "
+                "in the pinned form `ruff.toml` selects **N** rules across M "
+                "linter families"
             )
         self.assertEqual(
             (int(match.group(1)), int(match.group(2))), (len(codes), len(families)),
-            f"CLAUDE.md states {match.group(1)} rules across {match.group(2)} families; "
-            f"the pinned ruff reports {len(codes)} rules across {len(families)} "
+            f"docs/MAINTAINING.md states {match.group(1)} rules across "
+            f"{match.group(2)} families; the pinned ruff reports {len(codes)} "
+            f"rules across {len(families)} "
             f"({sorted(families)}). Update the sentence to the measured value.",
         )
 
@@ -845,7 +849,7 @@ class LifecycleLockOwnerFileTests(unittest.TestCase):
     acquisitions writes the `owner` line after the `mkdir` and not before it.
     """
 
-    LOCK_PATH = "/tmp/openclaw-lead-research-v3-lifecycle.lock"
+    LOCK_PATH = "/tmp/vc-lead-research-v3-lifecycle.lock"
 
     def _acquisitions(self) -> list[tuple[str, str, str, int, int]]:
         """(script, variable, script text, mkdir start, mkdir end) per `mkdir`."""
@@ -916,7 +920,7 @@ class LifecycleLockOwnerFileTests(unittest.TestCase):
             "bootstrap": "bootstrap.sh",
             "direct role rotation": "rotate_runtime_role.sh",
         }
-        sentence_start = operations.find("share `/tmp/openclaw-lead-research-v3-lifecycle.lock`")
+        sentence_start = operations.find("share `/tmp/vc-lead-research-v3-lifecycle.lock`")
         self.assertNotEqual(
             sentence_start, -1,
             "docs/OPERATIONS.md no longer contains the lifecycle-lock sentence "
@@ -1012,7 +1016,7 @@ class CsvFieldLimitDocPinTests(unittest.TestCase):
         # The document attributes its figure to the image's interpreter; this
         # test reads `field_size_limit()` from whichever interpreter runs the
         # suite. Both were measured at 131072 for this release (dev venv 3.14.5,
-        # and 3.11.2 in openclaw-lead-research:3.0.0 via `docker run --rm
+        # and 3.11.2 in vc-lead-research:3.0.0 via `docker run --rm
         # --entrypoint python3`), so the substitution holds today — but only the
         # running one is checked here: were the image's default ever to diverge
         # from the dev interpreter's, this test would stay green while the

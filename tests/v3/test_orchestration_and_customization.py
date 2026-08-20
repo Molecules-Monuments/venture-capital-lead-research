@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: 0BSD
+# SPDX-License-Identifier: Apache-2.0
 from __future__ import annotations
 
 import ast
@@ -724,7 +724,7 @@ class Version3ContractTests(unittest.TestCase):
             (len(flags), len(artifacts)), (20, 20),
             "the review-flag or reviewed-artifact inventory moved; update every "
             "documented 'twenty'/'twenty-first' mention (CUSTOMIZATION.md, "
-            "README.md, docs/RUNBOOK.md, docs/OPERATIONS.md, CLAUDE.md, "
+            "README.md, docs/RUNBOOK.md, docs/OPERATIONS.md, docs/MAINTAINING.md, "
             "scripts/init_customization.py) and this pin in the same change",
         )
         for relative, phrases in (
@@ -740,7 +740,7 @@ class Version3ContractTests(unittest.TestCase):
             # that hole in README.md.
             ("README.md", ("twenty reviewed-artifact", "twenty reviewed artifacts")),
             ("docs/OPERATIONS.md", ("twenty artifact hashes",)),
-            ("CLAUDE.md", ("twenty hash-pinned reviewed artifacts",)),
+            ("docs/MAINTAINING.md", ("twenty hash-pinned reviewed artifacts",)),
         ):
             text = (ROOT / relative).read_text(encoding="utf-8")
             for phrase in phrases:

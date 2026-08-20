@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: 0BSD
+# SPDX-License-Identifier: Apache-2.0
 """Build or verify the deterministic Version 3.0 deployment manifest."""
 
 from __future__ import annotations
@@ -65,7 +65,7 @@ def tolerated(relative: str) -> bool:
     inventory: `_internal/` is excluded by contract and `inbox/`/`quarantine/`
     below their own root hold operator payload that is never declared, so an odd
     permission there is not a tamper signal. Refusing on those made an unreadable
-    directory under `inbox/` block every re-pin — the step CLAUDE.md makes
+    directory under `inbox/` block every re-pin — the step docs/MAINTAINING.md makes
     mandatory after any declared-file change — which is a worse failure than the
     blind spot the guard closes.
 
@@ -222,7 +222,7 @@ def expected_manifest() -> dict[str, Any]:
     files = inventory()
     return {
         "manifest_version": 1,
-        "package": "openclaw-lead-research",
+        "package": "vc-lead-research",
         "package_version": "3.0.0",
         "created_on": "2026-07-20",
         "based_on": {
@@ -397,10 +397,10 @@ def main() -> int:
         # printed lines, this warning was suppressed by the very truncation it
         # was printed from: a re-pin that added twenty files dropped every
         # `removed:` line, so deleting a hash-pinned reviewed artifact — the
-        # highest-signal case CLAUDE.md makes reading this delta a binding step
-        # for — was absorbed in silence. Every removed path is named, uncapped:
-        # for the one delta kind that takes content away, completeness beats
-        # brevity.
+        # highest-signal case docs/MAINTAINING.md makes reading this delta a
+        # binding step for — was absorbed in silence. Every removed path is
+        # named, uncapped: for the one delta kind that takes content away,
+        # completeness beats brevity.
         if delta and delta["removed"]:
             print(
                 "These paths are no longer declared at all; confirm you deleted "
