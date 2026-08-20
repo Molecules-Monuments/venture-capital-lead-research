@@ -1,4 +1,4 @@
-<!-- SPDX-License-Identifier: 0BSD -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
 # Security policy
 
 ## Supported versions
@@ -36,15 +36,26 @@ Please include:
 
 What to expect:
 
-- **Acknowledgement within 7 days** that the report was received and is being
-  looked at.
-- **An assessment within 30 days**: accepted with a planned fix, accepted as a
-  documented limitation, or declined with reasoning.
+- **An acknowledgement that the report arrived**, and later an assessment:
+  accepted with a planned fix, accepted as a documented limitation, or declined
+  with reasoning.
 - Credit in the release notes if you want it, and coordination on timing before
   any public disclosure.
+- **No response deadline.** This project has two maintainers who work on it
+  alongside other commitments. Earlier revisions of this document promised an
+  acknowledgement and an assessment inside fixed windows; those windows were
+  removed because they were a statement of intent that nothing in the project
+  could keep, and a security policy that overstates its own responsiveness is
+  worse than one that does not promise. Reports are read and worked in the
+  order severity dictates, on a best-effort basis, and nothing here is a
+  service-level agreement or any other contractual commitment.
+
+If a report has had no reply and the delay has become a problem for you,
+disclose on whatever timetable you judge right. You do not need this project's
+agreement to do that, and the absence of a promised window is exactly why.
 
 This project is maintained on a best-effort basis and offers no warranty (see
-`LICENSE`, 0BSD). These timelines are intent, not a contractual SLA.
+`LICENSE`, Apache-2.0).
 
 ## Scope
 
