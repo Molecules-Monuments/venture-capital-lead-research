@@ -1,5 +1,5 @@
--- SPDX-License-Identifier: 0BSD
--- OpenClaw Lead Research System 2.0
+-- SPDX-License-Identifier: Apache-2.0
+-- Venture Capital Lead Research System 2.0
 -- Initial PostgreSQL 17 schema. Apply as openclaw_owner.
 -- The migration is additive and safe to re-run against a schema it created.
 

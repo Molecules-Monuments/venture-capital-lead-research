@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: 0BSD
+# SPDX-License-Identifier: Apache-2.0
 from __future__ import annotations
 
 import importlib.util
@@ -219,8 +219,8 @@ class EnvironmentFileSecurityTests(unittest.TestCase):
 
     def test_configurable_volume_cannot_alias_fixed_or_default_state(self) -> None:
         probes = {
-            "VC_QUARANTINE_VOLUME": "openclaw-lead-research-v3_postgres-data",
-            "OPENCLAW_RUNTIME_CONFIG_VOLUME": "openclaw-lead-research-v3_openclaw-state",
+            "VC_QUARANTINE_VOLUME": "vc-lead-research-v3_postgres-data",
+            "OPENCLAW_RUNTIME_CONFIG_VOLUME": "vc-lead-research-v3_openclaw-state",
         }
         for key, forbidden_name in probes.items():
             with self.subTest(key=key), tempfile.TemporaryDirectory(prefix="env-contract-") as raw:

@@ -1,5 +1,5 @@
--- SPDX-License-Identifier: 0BSD
--- OpenClaw Lead Research System 2.0
+-- SPDX-License-Identifier: Apache-2.0
+-- Venture Capital Lead Research System 2.0
 -- Claim whole workflow payloads before business mutation and freeze decision guards.
 
 BEGIN;

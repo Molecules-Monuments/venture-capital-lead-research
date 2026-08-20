@@ -1,5 +1,5 @@
--- SPDX-License-Identifier: 0BSD
--- OpenClaw Lead Research System 3.0
+-- SPDX-License-Identifier: Apache-2.0
+-- Venture Capital Lead Research System 3.0
 -- Approved product-data erasure. Closes two gaps at once: product-data
 -- retention/erasure (subject request, legal hold expiry) had no executor, and
 -- the reviewed consume_approval function had no caller performing a governed

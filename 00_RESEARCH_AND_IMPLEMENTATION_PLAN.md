@@ -6,7 +6,7 @@ Date: 2026-07-20
 
 ## Objective
 
-Improve the published OpenClaw VC lead-research system without weakening its
+Improve the published Venture Capital lead-research system without weakening its
 evidence, authority, privacy, or side-effect boundaries. Version 3.0 must make
 each specialist more decision-useful, make delegation evaluable before work
 starts, make customization explicit, and make canonical retrieval behave as

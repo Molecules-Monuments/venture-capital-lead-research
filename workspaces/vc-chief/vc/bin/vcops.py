@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: 0BSD
-"""Bounded persistence and document-intake CLI for OpenClaw Lead Research v3.0.
+# SPDX-License-Identifier: Apache-2.0
+"""Bounded persistence and document-intake CLI for Venture Capital Lead Research v3.0.
 
 Every command emits exactly one JSON object on stdout.  The program accepts no
 SQL, executable, output-path, or workspace-path argument.  PostgreSQL is the
@@ -6144,7 +6144,7 @@ class JsonArgumentParser(argparse.ArgumentParser):
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = JsonArgumentParser(prog="vcops", description="Bounded OpenClaw Lead Research persistence helper")
+    parser = JsonArgumentParser(prog="vcops", description="Bounded Venture Capital Lead Research persistence helper")
     parser.add_argument("--version", action="version", version=VERSION)
     sub = parser.add_subparsers(dest="command", required=True)
 

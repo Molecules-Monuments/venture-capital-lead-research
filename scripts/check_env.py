@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: 0BSD
+# SPDX-License-Identifier: Apache-2.0
 """Validate deployment configuration without evaluating shell code."""
 
 from __future__ import annotations
@@ -191,12 +191,12 @@ POSTGRES_IMAGE = (
     "sha256:4f736ae292687621d4dbe0d499ffd024a36bd2ee7d8ca6f2ccd4c800f047b394"
 )
 VOLUME_DEFAULTS = {
-    "OPENCLAW_RUNTIME_CONFIG_VOLUME": "openclaw-lead-research-v3_runtime-config",
-    "VC_QUARANTINE_VOLUME": "openclaw-lead-research-v3_vc-quarantine",
+    "OPENCLAW_RUNTIME_CONFIG_VOLUME": "vc-lead-research-v3_runtime-config",
+    "VC_QUARANTINE_VOLUME": "vc-lead-research-v3_vc-quarantine",
 }
 FIXED_PROJECT_VOLUMES = {
-    "postgres-data": "openclaw-lead-research-v3_postgres-data",
-    "openclaw-state": "openclaw-lead-research-v3_openclaw-state",
+    "postgres-data": "vc-lead-research-v3_postgres-data",
+    "openclaw-state": "vc-lead-research-v3_openclaw-state",
 }
 # The six independently generated deployment secrets. No two may be equal; see
 # the pairwise-distinctness check in validate().

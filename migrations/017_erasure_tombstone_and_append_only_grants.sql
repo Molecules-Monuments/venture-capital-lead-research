@@ -1,5 +1,5 @@
--- SPDX-License-Identifier: 0BSD
--- OpenClaw Lead Research System 3.0
+-- SPDX-License-Identifier: Apache-2.0
+-- Venture Capital Lead Research System 3.0
 -- Two corrections found by the pre-publication audit:
 --
 --   1. consume_approval_and_erase_lead wrote its retraction tombstone by

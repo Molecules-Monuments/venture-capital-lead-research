@@ -1,5 +1,5 @@
--- SPDX-License-Identifier: 0BSD
--- OpenClaw Lead Research System 3.0
+-- SPDX-License-Identifier: Apache-2.0
+-- Venture Capital Lead Research System 3.0
 -- Permit an evidence-readiness downgrade without falsifying the numeric score.
 
 BEGIN;

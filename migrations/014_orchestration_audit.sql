@@ -1,5 +1,5 @@
--- SPDX-License-Identifier: 0BSD
--- OpenClaw Lead Research System 3.0
+-- SPDX-License-Identifier: Apache-2.0
+-- Venture Capital Lead Research System 3.0
 -- Persist the orchestration/delegation audit trail. The chief's pre-spawn
 -- delegation_eval, post-return return_assessment, and terminal chief output
 -- lived only in ephemeral model context; this makes "which specialists were

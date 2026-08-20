@@ -1,5 +1,5 @@
 #!/bin/sh
-# SPDX-License-Identifier: 0BSD
+# SPDX-License-Identifier: Apache-2.0
 set -eu
 umask 077
 # Keep lifecycle runs from shedding bytecode caches into the pristine package.
@@ -9,8 +9,8 @@ export PYTHONDONTWRITEBYTECODE
 PACKAGE_DIR="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 ENV_FILE="$PACKAGE_DIR/.env"
 COMPOSE_FILE="$PACKAGE_DIR/docker-compose.yml"
-COMPOSE_PROJECT="openclaw-lead-research-v3"
-LIFECYCLE_LOCK_DIR="/tmp/openclaw-lead-research-v3-lifecycle.lock"
+COMPOSE_PROJECT="vc-lead-research-v3"
+LIFECYCLE_LOCK_DIR="/tmp/vc-lead-research-v3-lifecycle.lock"
 LIFECYCLE_LOCK_OWNED=0
 LIFECYCLE_LOCK_TOKEN=""
 cd "$PACKAGE_DIR"
@@ -20,7 +20,7 @@ if [ ! -f "$ENV_FILE" ] || [ -L "$ENV_FILE" ]; then
   exit 1
 fi
 
-LOCK_DIR="/tmp/openclaw-lead-research-v3-rotation.lock"
+LOCK_DIR="/tmp/vc-lead-research-v3-rotation.lock"
 ENV_SNAPSHOT="$LOCK_DIR/deployment.env"
 ROTATION_LOCK_OWNED=0
 ROTATION_STARTED=0

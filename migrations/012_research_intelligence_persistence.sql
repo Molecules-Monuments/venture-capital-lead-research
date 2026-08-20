@@ -1,5 +1,5 @@
--- SPDX-License-Identifier: 0BSD
--- OpenClaw Lead Research System 3.0
+-- SPDX-License-Identifier: Apache-2.0
+-- Venture Capital Lead Research System 3.0
 -- Autonomous research-intelligence persistence: claim identity, the reviewed
 -- promotion policy, and the deterministic claim-to-verified-fact promotion
 -- boundary (SECURITY DEFINER; a caller cannot assert its way past it).

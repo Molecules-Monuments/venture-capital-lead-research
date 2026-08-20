@@ -1,5 +1,5 @@
 #!/bin/sh
-# SPDX-License-Identifier: 0BSD
+# SPDX-License-Identifier: Apache-2.0
 set -eu
 umask 077
 # Keep lifecycle runs from shedding bytecode caches into the pristine package.
@@ -9,8 +9,8 @@ export PYTHONDONTWRITEBYTECODE
 PACKAGE_DIR="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 ENV_FILE="$PACKAGE_DIR/.env"
 COMPOSE_FILE="$PACKAGE_DIR/docker-compose.yml"
-COMPOSE_PROJECT="openclaw-lead-research-v3"
-LOCK_DIR="/tmp/openclaw-lead-research-v3-lifecycle.lock"
+COMPOSE_PROJECT="vc-lead-research-v3"
+LOCK_DIR="/tmp/vc-lead-research-v3-lifecycle.lock"
 # The state archive bound is operator-tunable because intake snapshots
 # accumulate in that tier; check_env.py validates the range.
 STATE_ARCHIVE_MAX_BYTES="$(sed -n 's/^OPENCLAW_STATE_ARCHIVE_MAX_BYTES=//p' "$ENV_FILE" 2>/dev/null | head -n 1)"

@@ -1,5 +1,5 @@
--- SPDX-License-Identifier: 0BSD
--- OpenClaw Lead Research System 3.0
+-- SPDX-License-Identifier: Apache-2.0
+-- Venture Capital Lead Research System 3.0
 -- Durable capture of governance proposals. schema-proposal and source-improvement
 -- produce reviewed change proposals whose only sink was transient conversation
 -- output — silently lost. This persists them for later operator review.

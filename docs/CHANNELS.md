@@ -150,7 +150,7 @@ correct.
    and every check in step 7 would measure the old configuration:
 
    ```sh
-   compose() { docker compose -f docker-compose.yml -p openclaw-lead-research-v3 --env-file .env "$@"; }
+   compose() { docker compose -f docker-compose.yml -p vc-lead-research-v3 --env-file .env "$@"; }
    compose run --rm --no-deps openclaw-state-init
    compose up -d --wait --force-recreate --no-deps openclaw-gateway
    ```
@@ -449,7 +449,7 @@ running, the same fields also appear in the gateway log, which is the easier
 route when you later add a user:
 
 ```sh
-docker compose -f docker-compose.yml -p openclaw-lead-research-v3 --env-file .env \
+docker compose -f docker-compose.yml -p vc-lead-research-v3 --env-file .env \
   logs -f openclaw-gateway
 ```
 

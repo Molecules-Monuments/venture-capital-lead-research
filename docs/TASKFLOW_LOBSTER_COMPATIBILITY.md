@@ -298,7 +298,7 @@ Version 3.0 **does not use managed Lobster/Task Flow mode**. The inspected adapt
 Use supported CLI surfaces; do not mutate `openclaw.sqlite` manually. `openclaw`
 is not installed on the deployment host — it lives in the gateway image — so
 every bare `openclaw …` line below runs through the gateway container in the
-form `docker compose -f docker-compose.yml -p openclaw-lead-research-v3
+form `docker compose -f docker-compose.yml -p vc-lead-research-v3
 --env-file .env exec openclaw-gateway openclaw …`, exactly as `docs/RUNBOOK.md`
 §5.3 states.
 

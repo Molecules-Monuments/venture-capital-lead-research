@@ -1,5 +1,5 @@
-# SPDX-License-Identifier: 0BSD
-name: openclaw-lead-research-v3
+# SPDX-License-Identifier: Apache-2.0
+name: vc-lead-research-v3
 
 services:
   postgres:
@@ -48,7 +48,7 @@ services:
         max-file: ${POSTGRES_LOG_MAX_FILES:-5}
 
   openclaw-state-init:
-    image: openclaw-lead-research:3.0.0
+    image: vc-lead-research:3.0.0
     restart: "no"
     user: "0:0"
     entrypoint: ["/bin/sh", "-eu", "-c"]
@@ -123,7 +123,7 @@ services:
       dockerfile: Dockerfile.openclaw
       args:
         OPENCLAW_IMAGE: ${OPENCLAW_IMAGE:-ghcr.io/openclaw/openclaw:2026.7.1@sha256:6a31d44b2944e7adcd2b582bf6fb463111264ebca97a0201795b799135bd102c}
-    image: openclaw-lead-research:3.0.0
+    image: vc-lead-research:3.0.0
     user: node
     restart: unless-stopped
     init: true
@@ -201,7 +201,7 @@ services:
 
   openclaw-cli:
     profiles: ["tools"]
-    image: openclaw-lead-research:3.0.0
+    image: vc-lead-research:3.0.0
     user: node
     depends_on:
       openclaw-gateway:
@@ -272,9 +272,9 @@ volumes:
   postgres-data:
   openclaw-state:
   openclaw-runtime-config:
-    name: ${OPENCLAW_RUNTIME_CONFIG_VOLUME:-openclaw-lead-research-v3_runtime-config}
+    name: ${OPENCLAW_RUNTIME_CONFIG_VOLUME:-vc-lead-research-v3_runtime-config}
   vc-quarantine:
-    name: ${VC_QUARANTINE_VOLUME:-openclaw-lead-research-v3_vc-quarantine}
+    name: ${VC_QUARANTINE_VOLUME:-vc-lead-research-v3_vc-quarantine}
 
 configs:
   openclaw_runtime_config:

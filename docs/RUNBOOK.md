@@ -15,6 +15,39 @@ scope. A concrete deployment is not activatable until `CUSTOMIZATION.md` is comp
 sample thesis, rubric, sources, retention, models, and approvers are not
 universal defaults.
 
+> [!IMPORTANT]
+> **One-time break at the open-source publication of this release.** Relicensing
+> to Apache-2.0 and renaming the project rewrote the SPDX line and the
+> project-name header at the top of all eighteen `migrations/*.sql` files, and
+> renamed the Compose project and the derived image to `vc-lead-research-v3`
+> and `vc-lead-research:3.0.0`. Both are byte changes, so both are breaking:
+>
+> - Every migration's SHA-256 moved. `scripts/migrate.sh` reconciles the file
+>   digests against `schema_migrations.checksum_sha256` before it applies
+>   anything, and `schema_migrations` is append-only — so on a database
+>   migrated by an earlier revision, `migrate.sh` exits with `database contains
+>   an unexpected or incompatible migration ledger row`, and `bootstrap.sh`,
+>   `update.sh`, `rotate_runtime_role.sh` and `backup.sh` all fail with it. The
+>   ledger cannot be repaired in place; §9 forbids editing it.
+> - The Compose project name is what Docker derives the `postgres-data` and
+>   `openclaw-state` volume names from. Under the new name Compose creates
+>   empty volumes and leaves the populated ones dangling — silently, because
+>   every script addresses its volumes through `docker compose -p`. The
+>   `runtime-config` and `vc-quarantine` volumes are exempt only where `.env`
+>   sets `OPENCLAW_RUNTIME_CONFIG_VOLUME` and `VC_QUARANTINE_VOLUME`
+>   explicitly, as `.env.example` does.
+> - Recovery points taken before this change record the old image reference and
+>   the old migration digests in their `deployment-lock.json` member, so
+>   `restore.sh --validate-lock` refuses them.
+>
+> There is no upgrade path across this boundary. A deployment created from an
+> earlier revision must be re-bootstrapped from a fresh install and its data
+> re-loaded by hand; do not attempt an in-place `update.sh`. No deployment of
+> this package existed outside the development host when the change was made,
+> which is why it was taken — the same reasoning
+> `docs/PRODUCTION_READINESS.md` records for the pre-release migration fixes.
+> Nothing after this revision may edit a migration file.
+
 The release has three separate decisions:
 
 - **Package production readiness:** the complete code, reference database
@@ -155,7 +188,7 @@ Validate and render:
 ```sh
 ./scripts/check_env.sh .env
 python3 -B scripts/render_channel_config.py .env
-docker compose -f docker-compose.yml -p openclaw-lead-research-v3 --env-file .env config --quiet
+docker compose -f docker-compose.yml -p vc-lead-research-v3 --env-file .env config --quiet
 ```
 
 Any validation error, missing or unknown value, ambient Compose
@@ -370,13 +403,13 @@ channel matrix. A row a gate closes outright carries a `—` in that column.
   container, in the same form as §5.2 and §5.3:
 
   ```sh
-  docker compose -f docker-compose.yml -p openclaw-lead-research-v3 --env-file .env \
+  docker compose -f docker-compose.yml -p vc-lead-research-v3 --env-file .env \
     exec openclaw-gateway openclaw config validate
-  docker compose -f docker-compose.yml -p openclaw-lead-research-v3 --env-file .env \
+  docker compose -f docker-compose.yml -p vc-lead-research-v3 --env-file .env \
     exec openclaw-gateway openclaw doctor
-  docker compose -f docker-compose.yml -p openclaw-lead-research-v3 --env-file .env \
+  docker compose -f docker-compose.yml -p vc-lead-research-v3 --env-file .env \
     exec openclaw-gateway openclaw secrets audit
-  docker compose -f docker-compose.yml -p openclaw-lead-research-v3 --env-file .env \
+  docker compose -f docker-compose.yml -p vc-lead-research-v3 --env-file .env \
     exec openclaw-gateway openclaw security audit --deep
   ```
 
@@ -652,9 +685,9 @@ channel matrix. A row a gate closes outright carries a `—` in that column.
   use the absolute wrapper, and override the CLI service's own entrypoint:
 
   ```sh
-  docker compose -f docker-compose.yml -p openclaw-lead-research-v3 --env-file .env \
+  docker compose -f docker-compose.yml -p vc-lead-research-v3 --env-file .env \
     exec openclaw-gateway /workspaces/vc-chief/vc/bin/agent/vcops db-check
-  docker compose -f docker-compose.yml -p openclaw-lead-research-v3 --env-file .env \
+  docker compose -f docker-compose.yml -p vc-lead-research-v3 --env-file .env \
     --profile tools run --rm --no-deps \
     --entrypoint /workspaces/vc-chief/vc/bin/agent/vcops openclaw-cli db-check
   ```
@@ -690,9 +723,9 @@ channel matrix. A row a gate closes outright carries a `—` in that column.
   installed on the host; it lives in the gateway image:
 
   ```sh
-  docker compose -f docker-compose.yml -p openclaw-lead-research-v3 --env-file .env \
+  docker compose -f docker-compose.yml -p vc-lead-research-v3 --env-file .env \
     exec openclaw-gateway openclaw tasks audit
-  docker compose -f docker-compose.yml -p openclaw-lead-research-v3 --env-file .env \
+  docker compose -f docker-compose.yml -p vc-lead-research-v3 --env-file .env \
     exec openclaw-gateway openclaw tasks maintenance
   ```
 
@@ -839,9 +872,9 @@ Then rerun:
 ./scripts/check_env.sh .env
 python3 -B scripts/check_customization.py config/customization-profile.json .env
 python3 -B scripts/render_channel_config.py .env
-docker compose -f docker-compose.yml -p openclaw-lead-research-v3 --env-file .env config --quiet
-docker compose -f docker-compose.yml -p openclaw-lead-research-v3 --env-file .env run --rm --no-deps openclaw-state-init
-docker compose -f docker-compose.yml -p openclaw-lead-research-v3 --env-file .env up -d --wait --force-recreate --no-deps openclaw-gateway
+docker compose -f docker-compose.yml -p vc-lead-research-v3 --env-file .env config --quiet
+docker compose -f docker-compose.yml -p vc-lead-research-v3 --env-file .env run --rm --no-deps openclaw-state-init
+docker compose -f docker-compose.yml -p vc-lead-research-v3 --env-file .env up -d --wait --force-recreate --no-deps openclaw-gateway
 ```
 
 The `openclaw-state-init` run is required, not optional: the gateway reads the
@@ -1044,7 +1077,7 @@ For an accepted pending proposal:
 
    ```sh
    docker run --rm -v "$PWD/workspaces/shared-skills:/skills:ro" \
-     --entrypoint python3 openclaw-lead-research:3.0.0 \
+     --entrypoint python3 vc-lead-research:3.0.0 \
      /app/skills/skill-creator/scripts/quick_validate.py /skills/<skill-name>
    ```
 
@@ -1115,7 +1148,7 @@ record. Autonomous transcript review remains disabled.
   script's own output names which command failed — so list them first:
 
   ```sh
-  docker compose -f docker-compose.yml -p openclaw-lead-research-v3 --env-file .env \
+  docker compose -f docker-compose.yml -p vc-lead-research-v3 --env-file .env \
     --profile tools ps --all
   ```
 
@@ -1138,7 +1171,7 @@ record. Autonomous transcript review remains disabled.
   `openclaw-gateway` and the `openclaw-cli` container and prints that it has done
   so — even though the rotation itself changed nothing, and its own cleanup would
   have stopped nothing. Both callers pre-check
-  `/tmp/openclaw-lead-research-v3-rotation.lock` before arming, so the one crash
+  `/tmp/vc-lead-research-v3-rotation.lock` before arming, so the one crash
   state `docs/OPERATIONS.md` documents as an expected leftover now refuses while
   production is still running; what remains in that window is losing the race for
   that lock, and the rotation's own private `.env` snapshot. **If the message you
@@ -1147,7 +1180,7 @@ record. Autonomous transcript review remains disabled.
   correcting the cause:
 
   ```sh
-  docker compose -f docker-compose.yml -p openclaw-lead-research-v3 --env-file .env \
+  docker compose -f docker-compose.yml -p vc-lead-research-v3 --env-file .env \
     up -d --wait --force-recreate --no-deps openclaw-gateway
   ```
 
@@ -1195,7 +1228,7 @@ record. Autonomous transcript review remains disabled.
   is the `openclaw_runtime` one.
 
   ```sh
-  docker compose -f docker-compose.yml -p openclaw-lead-research-v3 --env-file .env \
+  docker compose -f docker-compose.yml -p vc-lead-research-v3 --env-file .env \
     exec postgres psql -h 127.0.0.1 -U openclaw_owner -d openclaw -W -tAc 'select 1'
   ```
 
@@ -1483,7 +1516,7 @@ record. Autonomous transcript review remains disabled.
 bookworm `main` pool keeps only the current revision of each package, so once
 Debian ships a newer point release those exact pins are eventually removed from
 `deb.debian.org` and the image build that bootstrap/update run (`docker compose
--f docker-compose.yml -p openclaw-lead-research-v3 --env-file .env build --pull
+-f docker-compose.yml -p vc-lead-research-v3 --env-file .env build --pull
 openclaw-gateway`) fails with ``E: Version '<version>' for '<package>' was not found``. The image build wraps the `apt-get
 install` step to turn that otherwise-opaque failure into an actionable message.
 
@@ -1504,7 +1537,7 @@ alongside its sibling and move both to the same revision — as this release doe
 for `libpoppler126` and `poppler-utils` — then re-run every release gate,
 including `run_g6_image.py`, whose provenance assertions must list both names.
 Verify a *fresh* build explicitly with `docker compose -f docker-compose.yml
--p openclaw-lead-research-v3 --env-file .env build --no-cache
+-p vc-lead-research-v3 --env-file .env build --no-cache
 openclaw-gateway`; a cached build proves nothing about the pool.
 To rebuild the reviewed package set, point apt at a `snapshot.debian.org`
 timestamp that still carries the pinned versions before building, and
@@ -1520,7 +1553,7 @@ which is never published into the `bookworm main` suite, so a main-only
 snapshot cannot satisfy it however recent it is.
 
 ```sh
-SNAPSHOT=20260819T000000Z   # the date the reviewed image was built
+SNAPSHOT=20260820T000000Z   # the date the reviewed image was built
 rm -f /etc/apt/sources.list.d/debian.sources
 { printf 'deb [check-valid-until=no] https://snapshot.debian.org/archive/debian/%s/ bookworm main\n' "$SNAPSHOT"
   printf 'deb [check-valid-until=no] https://snapshot.debian.org/archive/debian-security/%s/ bookworm-security main\n' "$SNAPSHOT"
@@ -1529,7 +1562,7 @@ rm -f /etc/apt/sources.list.d/debian.sources
 
 (add it inside the build, or bake it into a local Dockerfile overlay). The
 timestamp must be at or after the date the reviewed image was built —
-`docs/V3_RELEASE_EVIDENCE.md` records **2026-08-19** — not merely at or after
+`docs/V3_RELEASE_EVIDENCE.md` records **2026-08-20** — not merely at or after
 the last pin change, which is an earlier and different date. The gap is a
 security revision: with `debian.sources` removed, `20260805T000000Z` resolves
 `libnss3` to `2:3.87.1-1+deb12u3` while the reviewed image carries
@@ -1566,7 +1599,7 @@ those pins; the other 38 — among them `libtiff6`, `libfreetype6`,
 poppler pulls in — carry no version pin, and nothing in the gates would notice
 if the pool moved them. The `python3` and `python3-venv` pins are
 python3-defaults metapackages, so the `3.11.2` they fix is that source's
-revision and not the interpreter's: in `openclaw-lead-research:3.0.0`
+revision and not the interpreter's: in `vc-lead-research:3.0.0`
 `/usr/bin/python3` is a symlink to `python3.11` owned by `python3-minimal`,
 while the interpreter binary `/usr/bin/python3.11` belongs to
 `python3.11-minimal=3.11.2-6+deb12u8`, inherited from the digest-pinned base

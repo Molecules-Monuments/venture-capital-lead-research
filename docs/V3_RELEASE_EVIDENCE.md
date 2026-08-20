@@ -10,7 +10,7 @@ followed the 2026-07-23 evidence, so the counts below are what this tree
 produces rather than figures carried forward, except where a sentence names the
 commit or host a figure came from. **The full matrix was last re-executed on
 2026-08-20**, against this tree and against the derived
-image rebuilt from it with `docker build --no-cache --pull` on **2026-08-19**,
+image rebuilt from it with `docker build --no-cache --pull` on **2026-08-20**,
 after that day's edits to the image-baked `workspaces/` files, `Dockerfile.openclaw` itself, and the host-side recovery-lifecycle scripts. Earlier in the same
 session `bootstrap.sh` also built the image during the live channel exercise,
 and the G8 deployment gate's own bootstrap built and tore down another. The gates: `verify_offline.py`
@@ -54,7 +54,7 @@ Every gate below was executed after those changes:
 | --- | ---: | --- |
 | Offline verification (the nine declared suites listed under "Passing evidence" below, ruff, ty, shell syntax, fixed workflows, skill system, manifest currency, pristine) | **PASS — 355 tests, 30/30 checks** | `python3 -B scripts/verify_offline.py` |
 | Disposable Postgres hard gate | **PASS — 98/98** across seven suites, migrations 001–018 applied twice | `python3 -B scripts/run_g4.py` |
-| Exact-image gate against the image rebuilt from this tree | **PASS — 8/8** (provenance, workshop guard, all five channel schemas, unknown-field fail-closed) | `python3 -B scripts/run_g6_image.py --image openclaw-lead-research:3.0.0` |
+| Exact-image gate against the image rebuilt from this tree | **PASS — 8/8** (provenance, workshop guard, all five channel schemas, unknown-field fail-closed) | `python3 -B scripts/run_g6_image.py --image vc-lead-research:3.0.0` |
 | Real deployment gate (bootstrap → negative-auth proof → live fixed workflows → replay/tamper semantics → teardown) | **PASS** | `python3 -B scripts/run_g8_deployment.py` |
 | Reference retrieval scale (100k companies / 1m facts) | PASS, all frozen thresholds met | `python3 -B scripts/run_retrieval_scale.py` |
 | Pristine release inventory | PASS — `verified_files` == `declared_files`, 0 errors | `python3 -B scripts/verify_release.py --pristine` |
@@ -133,9 +133,9 @@ base, and tore the deployment down.
 ## Image digests — regenerate at deployment
 
 The local image ID is host-specific: `bootstrap.sh` rebuilds
-`openclaw-lead-research:3.0.0` from this tree and `record_images.py` records
+`vc-lead-research:3.0.0` from this tree and `record_images.py` records
 the resulting digest in `deployment-lock.json` at install time. The G6 gate was
-re-run on 2026-08-19 against an image rebuilt from this tree with `docker build
+re-run on 2026-08-20 against an image rebuilt from this tree with `docker build
 --no-cache --pull` (8/8), and the retrieval-scale gate was re-run on 2026-08-06,
 2026-08-07, 2026-08-08, 2026-08-09, 2026-08-10, 2026-08-11, 2026-08-16,
 2026-08-18, 2026-08-19 and 2026-08-20 (160/160 cases

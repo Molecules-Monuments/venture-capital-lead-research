@@ -54,11 +54,11 @@ them and investigate OOM/restart evidence rather than disabling the bounds.
 
 Bootstrap and every update take the package-wide lifecycle lock and run `scripts/rotate_runtime_role.sh`. The script takes its database-rotation lock, copies `.env` once into a mode-`0600` private snapshot, re-validates that snapshot (`check_env.sh`), validates the customization binding against it and re-renders the runtime config and all four secret files from it (`check_customization.py`, then `render_channel_config.py`), then stops all declared database-secret consumers and force-recreates Postgres so its file-backed Compose secrets are re-read. It temporarily sets the runtime role to `NOLOGIN`, evicts existing owner/runtime sessions, changes both credentials through `psql`'s protected `\password` path, removes role memberships in both directions, resets role settings, and reasserts `NOSUPERUSER`, `NOCREATEDB`, `NOCREATEROLE`, `NOINHERIT`, `NOREPLICATION`, and `NOBYPASSRLS` before restoring login.
 
-The reconciler proves both new credentials over TCP and proves that an invalid password is rejected. The script then applies any pending schema migrations via `scripts/migrate.sh` under its checksum ledger, re-runs the `openclaw-state-init` one-shot so the re-rendered config reaches the runtime-config volume, and only then force-recreates the gateway and stopped CLI container. Final `vcops db-check` probes run from both consumer images. Any failure after rotation starts stops the gateway and CLI. Changing either database password without this complete reconciliation is not a valid rotation. Do not run long-lived Compose one-offs or independent backend clients during this maintenance operation; runtime sessions are deliberately terminated. If a host crash leaves `/tmp/openclaw-lead-research-v3-rotation.lock`, confirm that no rotation process is active, then remove the whole directory (`rm -rf`, not `rmdir` — it is not empty) before retrying: it holds `deployment.env`, a mode-`0600` verbatim copy of `.env` carrying both database passwords, the gateway token, the approval pepper, the trusted-context key, the backup HMAC key, and every provider and channel credential. Only the script's own exit trap removes it, which a crash never runs — and because bootstrap and update both call `rotate_runtime_role.sh`, that copy can outlive an interrupted bootstrap or update as well as a direct rotation.
+The reconciler proves both new credentials over TCP and proves that an invalid password is rejected. The script then applies any pending schema migrations via `scripts/migrate.sh` under its checksum ledger, re-runs the `openclaw-state-init` one-shot so the re-rendered config reaches the runtime-config volume, and only then force-recreates the gateway and stopped CLI container. Final `vcops db-check` probes run from both consumer images. Any failure after rotation starts stops the gateway and CLI. Changing either database password without this complete reconciliation is not a valid rotation. Do not run long-lived Compose one-offs or independent backend clients during this maintenance operation; runtime sessions are deliberately terminated. If a host crash leaves `/tmp/vc-lead-research-v3-rotation.lock`, confirm that no rotation process is active, then remove the whole directory (`rm -rf`, not `rmdir` — it is not empty) before retrying: it holds `deployment.env`, a mode-`0600` verbatim copy of `.env` carrying both database passwords, the gateway token, the approval pepper, the trusted-context key, the backup HMAC key, and every provider and channel credential. Only the script's own exit trap removes it, which a crash never runs — and because bootstrap and update both call `rotate_runtime_role.sh`, that copy can outlive an interrupted bootstrap or update as well as a direct rotation.
 
-Both database passwords must be independent 24-128 character base64url-safe values (`A-Z`, `a-z`, `0-9`, `_`, `-`); this keeps Compose, `psql`, passfiles, and recovery handling unambiguous. This package requires Docker Compose, not `docker stack deploy`: its file-backed secret sources are Compose-only. `docker compose -f docker-compose.yml -p openclaw-lead-research-v3 --env-file .env config --quiet` is a mandatory compatibility preflight and the lifecycle commands require support for `up --wait`, `--force-recreate`, `--no-deps`, `--no-start`, and `run --rm`.
+Both database passwords must be independent 24-128 character base64url-safe values (`A-Z`, `a-z`, `0-9`, `_`, `-`); this keeps Compose, `psql`, passfiles, and recovery handling unambiguous. This package requires Docker Compose, not `docker stack deploy`: its file-backed secret sources are Compose-only. `docker compose -f docker-compose.yml -p vc-lead-research-v3 --env-file .env config --quiet` is a mandatory compatibility preflight and the lifecycle commands require support for `up --wait`, `--force-recreate`, `--no-deps`, `--no-start`, and `run --rm`.
 
-Backup, restore, update, bootstrap, and direct role rotation share `/tmp/openclaw-lead-research-v3-lifecycle.lock`. Nested update/bootstrap operations pass a private owner token that is checked against the mode-`0700` lock directory; setting a boolean environment flag cannot bypass the lock. If a host crash leaves the directory, confirm no lifecycle process is active — the lock directory's `owner` file names the holder as `<operation>:<pid>`, so read it (`cat /tmp/openclaw-lead-research-v3-lifecycle.lock/owner`) and check that PID with `ps`. A dead holder PID is **not** sufficient on its own: the named script may have exited while the `psql`, `pg_restore`, `docker compose` or `migrate.sh` child it launched is still running against the production database, and killing the parent does not stop the SQL a child has already streamed. Run the path scan below in **both** branches and require it to be empty before you delete anything. Then remove the whole directory with `rm -rf /tmp/openclaw-lead-research-v3-lifecycle.lock`; `rmdir` fails while the `owner` file is present. A lock directory with **no** `owner` file is an acquisition interrupted between the `mkdir` that creates the lock and the write that names its holder: each script does those two steps in that order, so a signal in that window leaves the directory behind before its `owner` line is written. That state names no PID, so the `cat`/`ps` step above dead-ends — fall back to looking for a running lifecycle script by path, and if nothing is running remove the directory the same way (`rmdir` also succeeds here, the directory being empty):
+Backup, restore, update, bootstrap, and direct role rotation share `/tmp/vc-lead-research-v3-lifecycle.lock`. Nested update/bootstrap operations pass a private owner token that is checked against the mode-`0700` lock directory; setting a boolean environment flag cannot bypass the lock. If a host crash leaves the directory, confirm no lifecycle process is active — the lock directory's `owner` file names the holder as `<operation>:<pid>`, so read it (`cat /tmp/vc-lead-research-v3-lifecycle.lock/owner`) and check that PID with `ps`. A dead holder PID is **not** sufficient on its own: the named script may have exited while the `psql`, `pg_restore`, `docker compose` or `migrate.sh` child it launched is still running against the production database, and killing the parent does not stop the SQL a child has already streamed. Run the path scan below in **both** branches and require it to be empty before you delete anything. Then remove the whole directory with `rm -rf /tmp/vc-lead-research-v3-lifecycle.lock`; `rmdir` fails while the `owner` file is present. A lock directory with **no** `owner` file is an acquisition interrupted between the `mkdir` that creates the lock and the write that names its holder: each script does those two steps in that order, so a signal in that window leaves the directory behind before its `owner` line is written. That state names no PID, so the `cat`/`ps` step above dead-ends — fall back to looking for a running lifecycle script by path, and if nothing is running remove the directory the same way (`rmdir` also succeeds here, the directory being empty):
 
 ```sh
 ps -eo pid,args \
@@ -70,11 +70,11 @@ ps -eo pid,args \
 Check for crash-left staging at the same time: a backup interrupted before publishing — including update's pre-update backup — leaves a `.<destination-name>.partial.<pid>` directory beside the intended destination, and an interrupted `restore.sh` leaves a `${TMPDIR:-/tmp}/openclaw-restore-validation.*` directory. Both hold an unpublished copy of the recovery point (database dump, sessions, continuations) under the same restricted-operational-data mandate as the backup itself, and only the scripts' own exit traps remove them, which a crash never runs — delete them after confirming no lifecycle process is active. A crashed `restore.sh` also leaves its disposable validation database inside the production cluster, holding a full copy of the backup's data and surviving a host reboot that clears `/tmp`; list and drop any leftover once no lifecycle process is active:
 
 ```sh
-docker compose -f docker-compose.yml -p openclaw-lead-research-v3 --env-file .env \
+docker compose -f docker-compose.yml -p vc-lead-research-v3 --env-file .env \
   exec -T postgres psql -X -w --username openclaw_owner --dbname postgres \
   --tuples-only --no-align --command \
   "SELECT datname FROM pg_database WHERE datname LIKE 'openclaw_restore_validate_%'"
-docker compose -f docker-compose.yml -p openclaw-lead-research-v3 --env-file .env \
+docker compose -f docker-compose.yml -p vc-lead-research-v3 --env-file .env \
   exec -T postgres dropdb --username openclaw_owner --force <name>
 ```
 
@@ -94,7 +94,7 @@ server-wide, and `usename = 'openclaw_owner'` already excludes the background
 workers and the gateway runtime role:
 
 ```sh
-docker compose -f docker-compose.yml -p openclaw-lead-research-v3 --env-file .env \
+docker compose -f docker-compose.yml -p vc-lead-research-v3 --env-file .env \
   exec -T postgres psql -X -w --username openclaw_owner --dbname postgres \
   --tuples-only --no-align --command \
   "SELECT pid, datname, state, xact_start, left(query, 80) FROM pg_stat_activity
@@ -117,7 +117,7 @@ image, so reach it with `compose exec` from the package directory:
 
 ```sh
 compose() {
-  docker compose -f docker-compose.yml -p openclaw-lead-research-v3 --env-file .env "$@"
+  docker compose -f docker-compose.yml -p vc-lead-research-v3 --env-file .env "$@"
 }
 operator() {
   compose exec -e VCOPS_OPERATOR_ID="$OPERATOR_ID" openclaw-gateway \
@@ -227,7 +227,7 @@ see `workspaces/vc-chief/vc/data_retention.md` for what it covers.
 
 - `/healthz` is liveness only.
 - `/readyz` is readiness and is used by Compose.
-- `docker compose -f docker-compose.yml -p openclaw-lead-research-v3 --env-file .env ps` must show Postgres and the gateway healthy before workflows are accepted.
+- `docker compose -f docker-compose.yml -p vc-lead-research-v3 --env-file .env ps` must show Postgres and the gateway healthy before workflows are accepted.
 - Task Flow rows in `queued`, `running`, `waiting`, or `blocked` must be inspected during incidents; cancellation is sticky and revisions must be honored.
 
 ## Backup
@@ -282,9 +282,9 @@ by a lifecycle render. The sequence for the non-database secrets is:
 ```sh
 ./scripts/check_env.sh .env
 python3 -B scripts/render_channel_config.py .env
-docker compose -f docker-compose.yml -p openclaw-lead-research-v3 \
+docker compose -f docker-compose.yml -p vc-lead-research-v3 \
   --env-file .env up -d --force-recreate
-docker compose -f docker-compose.yml -p openclaw-lead-research-v3 \
+docker compose -f docker-compose.yml -p vc-lead-research-v3 \
   --env-file .env --profile tools up --force-recreate --no-deps --no-start openclaw-cli
 ```
 
@@ -338,9 +338,9 @@ Only `postgres-data` is actually removed. Compose does say so, in lines that are
 easy to lose among the successful removals:
 
 ```text
-Volume openclaw-lead-research-v3_runtime-config  Resource is still in use
-Volume openclaw-lead-research-v3_openclaw-state  Resource is still in use
-Volume openclaw-lead-research-v3_vc-quarantine   Resource is still in use
+Volume vc-lead-research-v3_runtime-config  Resource is still in use
+Volume vc-lead-research-v3_openclaw-state  Resource is still in use
+Volume vc-lead-research-v3_vc-quarantine   Resource is still in use
 ```
 
 Afterwards `docker compose ps` reports nothing, so the operator sees an empty
@@ -348,7 +348,7 @@ stack over retained data. The database is gone but `openclaw-state` is not, and
 that is the tier holding inbound media and document snapshots. Name the profile:
 
 ```sh
-docker compose -f docker-compose.yml -p openclaw-lead-research-v3 --env-file .env \
+docker compose -f docker-compose.yml -p vc-lead-research-v3 --env-file .env \
   --profile tools down --volumes --remove-orphans
 # The two volume names below are operator-settable, so read them from .env —
 # but read them scoped. `set -a; . ./.env` would export every deployment
@@ -358,9 +358,9 @@ docker compose -f docker-compose.yml -p openclaw-lead-research-v3 --env-file .en
 # `docker compose` invocation in the same shell.
 runtime_config_volume="$(sed -n 's/^OPENCLAW_RUNTIME_CONFIG_VOLUME=//p' .env | head -n 1)"
 quarantine_volume="$(sed -n 's/^VC_QUARANTINE_VOLUME=//p' .env | head -n 1)"
-docker volume ls --quiet --filter name=openclaw-lead-research-v3 \
-  --filter name="${runtime_config_volume:-openclaw-lead-research-v3_runtime-config}" \
-  --filter name="${quarantine_volume:-openclaw-lead-research-v3_vc-quarantine}"
+docker volume ls --quiet --filter name=vc-lead-research-v3 \
+  --filter name="${runtime_config_volume:-vc-lead-research-v3_runtime-config}" \
+  --filter name="${quarantine_volume:-vc-lead-research-v3_vc-quarantine}"
 # must return nothing. `--quiet` is what makes that literally true: without it
 # `docker volume ls` always prints its `DRIVER  VOLUME NAME` header, so an
 # operator testing for empty output would read a fully decommissioned stack as
