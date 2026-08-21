@@ -1,4 +1,46 @@
 # SPDX-License-Identifier: Apache-2.0
+"""A misconfigured runtime and a lost turn context both look healthy.
+
+`RuntimeProviderTests` renders `.env.example` through
+`scripts/render_channel_config.py` and asserts what comes out. The renderer is
+invoked directly in documented snippets, so it cannot assume `check_env.sh`
+ran first: a runtime selection `check_env` refuses — a plain-HTTP custom
+provider, a public Ollama origin, `auto` search under a local model, Tavily
+without its key — must be refused here too, and a rejected render must leave
+no config behind. Two numeric floors are pinned for the same reason. A context
+window below the compaction reserve plus the chief's own system prompt
+validated, bootstrapped and reported healthy, then answered every message with
+"Context overflow: prompt too large for the model" as an ordinary payload at
+exit code 0. And in Ollama mode the first turn after each model load prefills
+the whole system prompt on the deployment host — 331 s measured on a CPU-only
+host, past the shipped 300 s default — while the cached retry returns in about
+five seconds, so the failure reads as a flake and re-arms on every restart.
+
+The rest of that class pins settings whose absence is silent rather than loud.
+`plugins.load.paths` must never name a channel: that makes it a path-origin
+plugin, `openKeyedStore` throws for it, and Teams crash-looped through all ten
+auto-restarts without ever binding its port while `bootstrap.sh` exited 0 and
+the container reported healthy. `agents.defaults.heartbeat.every` must stay
+`"0m"`, because the harness default is an autonomous `vc-chief` turn every 30
+minutes delivered nowhere. The Readability allowlist entry and the
+conversation-hooks flag each degrade the system quietly when dropped. And the
+two render modes stay separated: an explicit-output render is a validation run
+and must not touch the deployment's secrets, while a lifecycle render — which
+overwrites them — must refuse anything but the package `.env`.
+
+`TrustedContextTests` executes the shipped Node extension. Its correctness is
+entirely conformance to the harness, so every hook payload there is shaped the
+way OpenClaw 2026.7.1 builds it; the class comment records the shapes that are
+not obvious, including the absence of a run id at `message_received`. The two
+properties that keep the unsupported-attachment refusal working under load are
+driven on an explicit clock: a capture must survive the longest turn
+`config/openclaw.json` permits — read from `stuckSessionAbortMs` rather than
+hardcoded, so raising the budget raises this with it — and a claim must
+outlive the run that owns it, because `before_prompt_build` runs once per
+attempt. `vcops.verify_trusted_context`, the other end of the same token, must
+reject tampering, expiry, and a scope the token was not minted for.
+"""
+
 from __future__ import annotations
 
 import base64

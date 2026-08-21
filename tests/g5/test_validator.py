@@ -1,4 +1,44 @@
 # SPDX-License-Identifier: Apache-2.0
+"""The workflow validator is checked against the runtime, never against itself.
+
+`WorkflowValidatorTests` writes one-off `.lobster` fixtures, runs
+`scripts/validate_workflows.py` over them, and requires zero findings from
+every shipped workflow. The rules it exercises exist because a step's `run:`
+text is handed to `/bin/sh -lc`, so everything the shell does before vcops
+sees argv has to be covered: command substitution, chaining and redirection
+operators, embedded newlines in all three YAML spellings — a literal block, an
+escape sequence in a double-quoted scalar, and a more-indented line under the
+folded style, none of which `shlex` distinguishes from ordinary whitespace —
+bare `$VAR`, unquoted `$LOBSTER_ARG_*` and `$VCOPS_*`, direct
+`$step.json.path` references, glob and tilde. Each rule carries a positive
+control next to its probes, because a rule that flags the spelling the
+documentation tells authors to use is a rule that gets widened away.
+
+The independence in the summary line above is what the module constants are
+for. `WRAPPERS` is `frozenset(WRAPPER_COMMAND_SETS)`, so checking one against
+the other compares a dict's key set with itself: measured with that as the
+only scope check, admitting `vcops-operator` — a wrapper whose own header says
+it must never appear in exec approvals — passed the entire offline matrix with
+no new failures, and the validator then certified the operator lane inside a
+workflow. Measured one level down, replacing the per-wrapper derivation with a
+set carrying `fact-add` and `source-add` moved both sides of every comparison
+together, the file still reported `Ran 18 tests ... OK`, and the mutant
+validator certified `vcops-workflow fact-add`. So `REVIEWED_WORKFLOW_WRAPPERS`
+and `OPERATOR_ONLY_COMMANDS` are written out here independently of the
+validator, and vcops is loaded directly to decide the derivation; editing
+either set is how a change to the workflow-lane authorization boundary is
+recorded.
+
+Approving the `run:` text does not approve the executable that runs it, which
+is why the env rules constrain key names and not only values: on
+vc-lead-research:3.0.0 a step carrying `LOBSTER_SHELL: /bin/echo` ran echo,
+never invoked `vcops-workflow`, and still reported `ok: true`.
+`SkillSystemValidatorTests` then covers the gate's second validator,
+`scripts/validate_skill_system.py`, whose identical strict mapping constructor
+was reachable from no test — deleting its unhashable-key guard left every
+offline suite green and the `skill-agent-system` gate step exiting 0.
+"""
+
 from __future__ import annotations
 
 import importlib.util

@@ -1,4 +1,40 @@
 # SPDX-License-Identifier: Apache-2.0
+"""Entity resolution is a policy decision here, never a similarity score.
+
+`vcops.decide_entity_resolution` is the one place a candidate becomes an
+existing company, a new one, a human-review item, or a refusal, and the whole
+point of it is that no confidence value authorises a merge on its own. Every
+case in `entity_resolution_cases.json` asserts `auto_merge` is false alongside
+its expected outcome, and the fuzzy test repeats that assertion against a
+hand-built candidate at 0.99 confidence, so moving `FUZZY_REVIEW_THRESHOLD` or
+adding a match method cannot quietly turn similarity into an automatic merge.
+The fixture cases are precommitted: they are the decisions the resolver is
+allowed to reach, not examples it may redefine.
+
+The rest of the suite exists so that nothing routes around that decision. The
+legacy `memory-lookup` adapter must stay literal-only — no `ILIKE`, no f-string
+wildcard interpolation, still labelled DEPRECATED; the typed read surface
+(`entity-resolve`) and the writing surface (`company-resolve-create`) must stay
+on opposite sides of `AGENT_READ_ONLY_COMMANDS`; `decide_external_research`
+must refuse, with a reason, a creation purpose, an unresolved or denied
+outcome, and a match above the caller's confidentiality ceiling; and all four
+lead-creating workflows must claim, then resolve, then create, with neither
+`company-upsert` nor `memory-lookup` anywhere in the file. That last assertion
+once covered two of the four, so the bypass it exists to catch was unguarded on
+`inbound-text-intake` and `document-lead-intake` while reading as complete.
+
+The migration assertions pin the requirement rather than the string, because
+pinning the string once held the defect in place. Migration 006's
+`company_aliases` backfill must derive `normalized_alias` as
+`lower(btrim(normalize(name, NFKC)))` — normalise first, then trim — and must
+not spell it the other way round: `btrim` with no character argument strips
+only U+0020, NFKC then maps U+00A0 and U+3000 onto U+0020, and the edge
+whitespace that reintroduces fails `company_aliases`' own
+`btrim(normalized_alias) = normalized_alias` CHECK, aborting the upgrade for
+any company whose name carries one. Migration 009 is read for the trigram
+indexes and for the two `GRANT EXECUTE` lines without which the runtime role
+cannot use the prefilter at all.
+"""
 from __future__ import annotations
 
 import importlib.util

@@ -1,4 +1,51 @@
 # SPDX-License-Identifier: Apache-2.0
+"""The artifacts that build and start the deployment are bound to each other.
+
+This is the contract suite for the files around the application rather than
+inside it: `.env` parsing and validation in `scripts/check_env.py`,
+`docker-compose.yml`, `Dockerfile.openclaw` and `.dockerignore`, the two
+hash-pinned requirement locks, `config/openclaw.json`,
+`config/exec-approvals.json` and `config/channel-plugins.lock.json`. What they
+have in common is their reader: Docker, apt, npm and the operator consume them,
+the running code does not, so two of them can contradict each other without
+anything failing to build or to start. The `.env` half is held to the same
+reading its consumers perform — the characters `str.splitlines()` treats as
+line breaks are derived from the running interpreter and refused inside a
+value, because Compose's `--env-file` parser and the `grep`/`sed` reads in the
+lifecycle scripts keep them inside the preceding value instead.
+
+The `openclaw-state-init` lane is the sharpest edge here. It runs as `0:0` with
+CHOWN, DAC_OVERRIDE and FOWNER, and `install -d`, `cp`, `chown` and `chmod` all
+follow a symlink to its destination, so a link planted in the writable state
+volume redirects a root-privileged write. Measured in the shipped image while
+the two `test ! -L` guards for `media` and `media/inbound` sat AFTER their
+`install -d`: the link was caught and the gateway never started, but only after
+`/runtime-config/victim` had been handed to node:node 0700. Nothing pinned that
+ordering, and putting the guards back left the whole offline gate green — so
+the writes are parsed out of the Compose command itself rather than listed, and
+a new write using one of those verbs is checked the moment it is added.
+
+The integrity checkers are bound for the same reason. `Path.rglob` swallows the
+`PermissionError` it hits while descending, so an undeclared payload inside a
+mode-0o000 directory was invisible to `verify_release.py --pristine`, to
+`build_release_manifest.py --check` and to `git status` simultaneously. A
+readable-but-unsearchable directory (mode 0o444, what `chmod a-x` produces) is
+a different syscall failing and was a separate gap: the builder exited 0
+reporting a written manifest having silently dropped every declared `docs/*`
+file. `--pristine` is the tamper signal `docs/RUNBOOK.md` §9 sends the operator
+to read, so both scripts are executed as subprocesses over a throwaway tree and
+asserted on the exit status and the path they name, not on an internal call.
+
+The remaining bindings exist because nothing else would notice them breaking.
+`config/channel-plugins.lock.json` is a review artifact no script reads, so it
+is tied to `runtime-packages/package-lock.json`, the file that decides the
+bytes in the image. `record_images.BAKED_SOURCE_*` is tied to `.dockerignore`'s
+allow-list and to the Dockerfile's `COPY` lines, because a digest over paths
+the image never receives gates nothing. And `MSTEAMS_PUBLIC_WEBHOOK_URL`, which
+no runtime code reads at all, is validated here because a loopback or RFC1918
+callback passed every gate and first showed up at CH-01 as silent
+non-delivery.
+"""
 from __future__ import annotations
 
 import importlib.util

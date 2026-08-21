@@ -1,4 +1,49 @@
 # SPDX-License-Identifier: Apache-2.0
+"""Pin vcops' decision arithmetic, and the artifacts that quote its results.
+
+The release `vcops.py` named by `VCOPS_HELPER` is imported by path and its
+pure functions are driven directly, so what is under test here is the
+computation rather than the CLI: numeric suffix and currency normalisation,
+the fact-pair classifier, `calculate_score`, and the `vc3_` token prefix that
+keeps a random payload beginning with `-` from being read as an option.
+`semantic_cases.json` supplies the table-driven cases; the weights, bands and
+thresholds are read from `workspaces/vc-chief/vc/scoring-rubric.v3.json`
+rather than restated, so a deployment that customises the rubric — it ships
+`sample_only_must_customize` — gets its own numbers checked.
+
+Two properties are asserted because no caller controls them. Classification
+must be symmetric: `cmd_trajectory_check` derives the persisted up/down
+direction from the bounds precisely so a caller passing the later fact first
+cannot invert it, and an asymmetric classifier would make the recorded
+contradiction or trajectory depend on argument order. And a criterion that is
+absent must not redistribute its weight onto the ones that are present, which
+is what keeps "not yet evidenced" distinct from "scored zero".
+
+The rest of the file is about which scale a recommendation may be read from.
+`display_5` rounds `final_100 / 20` to one decimal, so each display value
+covers a two-point window on the deciding scale, and a window that straddles a
+band edge belongs to two bands. The rubric says as much in prose — there is
+"deliberately no display-scale equivalent" — but three shipped artifacts
+contradicted it, each mapping a display value to exactly one band, and no test
+bound any of them. One of the three,
+`tests/g3/scoring_boundary_cases.jsonl`, is hash-pinned by
+`check_customization.py` and byte-verified by the G8 gate yet was replayed by
+nothing, so it could drift onto the display scale with every gate still green.
+The last two methods here are its executor.
+
+Both of those methods are shaped to survive a customised rubric. The straddle
+is asserted as a disjunction over whatever edges the rubric in force declares
+rather than a universal over them, because the universal form failed the
+offline gate on a documented customisation path and one straddling edge is
+already enough to make a display-to-band table impossible to write.
+`vcops.py`'s rounding line is pinned as source text instead of copied as a
+formula, so a change to the runtime's arithmetic fails here rather than
+quietly changing what these constants mean. And the fixture's values are tied
+to the rubric's own edges, because re-deriving each `expected` through the
+helper proves only internal consistency: measured, a fixture rewritten wholly
+onto the display scale passed that check.
+"""
+
 import importlib.util
 import json
 import os

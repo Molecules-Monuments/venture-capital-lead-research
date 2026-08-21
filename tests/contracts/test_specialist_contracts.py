@@ -1,4 +1,40 @@
 # SPDX-License-Identifier: Apache-2.0
+"""A specialist's output schema is the contract, so this suite tests refusals.
+
+`founder-researcher`, `traction-analyst`, `market-mapper`,
+`qualification-analyst` and `memo-writer` each return one packet a model
+composed, and the JSON Schema under `workspaces/schemas/` is where a malformed
+or over-claiming packet is refused. Validating the reviewed example proves that
+a schema accepts one shape and nothing at all about what it rejects, so almost
+every assertion below is a negative one. Each role gets an undeclared field
+pushed into its packet, a `failed` status with no error object, and an `ok`
+status carrying one: an envelope that fails open in either direction lets a run
+that produced nothing be read as a run that succeeded.
+
+The per-role checks pin the fields the role exists to produce rather than its
+shape in general. A team assessment stripped of its `falsifiers` or its
+`prestige_bias_check`, a metric observation missing the cohort that makes it
+comparable, a comparison that declares itself not comparable while still
+reporting a direction, a market map with no wedge, distribution motion or
+incumbent response, a criterion given a quality score while its evidence state
+is `unknown` or its `evidence_refs` are empty, and a memo claim backed by
+neither evidence nor a declared inference basis must each be rejected. Those
+disciplines are the reason the roles are separated at all; unenforced, they are
+advice in a prompt.
+
+Some obligations no schema can carry, and each schema's `$comment` names its
+own: reference integrity, criterion/rubric ID parity, scenario range ordering.
+Where this suite asserts one of those it asserts it over the reviewed fixture,
+which keeps that fixture a legal example of the whole caller contract and not
+only of the validator.
+
+The last test binds the prose to the schema. Every role's `AGENTS.md` and its
+`SKILL.md` must name the canonical schema path, and `AGENTS.md` must not
+restate the output shape inline. Prose that lists the fields is a second copy
+of the contract that no validator reads, that drifts from the schema on its
+first change, and that the model reads in preference to it.
+"""
+
 from __future__ import annotations
 
 import copy

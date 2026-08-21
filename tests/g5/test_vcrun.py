@@ -1,4 +1,48 @@
 # SPDX-License-Identifier: Apache-2.0
+"""The fixed runner must stay fixed, and stay in step with `vcops`.
+
+`workspaces/vc-chief/vc/bin/vcrun.py` is the fail-closed launcher for the
+package's eighteen reviewed workflow selectors: each selector carries a closed
+key contract, there is no `--file`, `--cwd`, `--env` or output-size override,
+and exactly one JSON object leaves the process — usage errors included, on
+stderr at exit 2. This suite holds that shape in place without a database, a
+gateway, or the Lobster binary. `vcrun` and `vcrun_control` are loaded from
+their shipped paths, and the tests that need a helper result patch
+`subprocess.run`.
+
+Argument validation is the largest part, and it is bound as a total partition
+rather than a sample. `vcrun` once enforced the PostgreSQL BIGINT ceiling for
+`lead_id` alone, so the other identifier arguments accepted an in-shape value
+above 9223372036854775807 and failed later inside `vcops`, after
+`workflow-start` had already committed the run row — costing a fresh
+idempotency key to correct. `IdentifierCeilingTests` therefore asserts that
+every contract key is classified, not merely that the classified ones are
+bounded. `DocumentedValueDomainTests` closes the mirror-image gap: the accepted
+values for `contradiction-record --severity` and `inbound-text-intake
+--origin_subtype` lived only in `vcrun.py`, so an operator following
+docs/WORKFLOWS.md verbatim failed on first use.
+
+The replay probe is the pre-flight classification that makes an unchanged
+retry a no-op, so its digest has to cover the whole argument payload:
+`workflow-start` once saw only the workflow, the lead and the key, and two
+`evidence-record` runs with completely different `evidence_json` recorded the
+same `input_hash`. A
+caller cannot supply that digest itself, an unrecognised probe outcome fails
+closed, and a dry run never probes at all.
+
+The rest is what happens when a run goes wrong, where the failure modes are
+ordering and disclosure rather than validation. PostgreSQL is reconciled before
+any destructive Lobster resume, and never by inference — only an explicit safe
+outcome is accepted. A reconciliation that itself fails is attached alongside
+the original Lobster error instead of replacing it, because reporting only the
+downstream error is what made a failed retry look like a broken deployment.
+Bearer tokens and API keys are redacted recursively out of the envelope. And
+every failure reason `vcrun` can emit must be one `vcops` accepts, or the
+reconciliation is rejected and the run strands in `running`; that parity is
+checked by walking both files' ASTs, since the reasons are literals on two
+sides of a process boundary no import connects.
+"""
+
 from __future__ import annotations
 
 import hashlib
