@@ -1,4 +1,40 @@
 # SPDX-License-Identifier: Apache-2.0
+"""The subject is the shipped vcops CLI, run exactly as the runtime runs it.
+
+Every command below goes through `subprocess` against the migrated database
+over `G4_RUNTIME_DATABASE_URL`, which `scripts/run_g4.py` rewrites to connect
+as `openclaw_runtime` — the least-privileged role the deployment gives the
+helper. The contract under test is therefore the whole shipped invocation:
+argv parsing, the JSON envelope, the typed `error.code`, the exit band, and
+the grants that role carries. Where an assertion matters the row is re-read
+with `query()` rather than taken from the reply, because the defect class this
+suite exists for is a command that reports `ok` while the database did not
+change.
+
+Three such commands are named in the tests. `evidence_artifacts` is
+content-addressed, so the first ingestion of a byte sequence fixes its
+governance classification; re-ingesting the same bytes under a different trust
+boundary was absorbed by an `ON CONFLICT` no-op while the command still
+reported `ok`, so an operator's reclassification silently did nothing, and it
+is a typed `artifact_classification_conflict` refusal now. Before migration
+018 the first reconciled failure poisoned an idempotency key permanently,
+against the README's "reuse a key only to recover that same operation". And a
+`--content-file` holding non-UTF-8 bytes reached the bare handler and surfaced
+as `internal_error` at exit 3 instead of a typed denial at exit 2 — which is
+why `run_helper` hands back the `CompletedProcess` that `invoke` discards.
+
+Two methods leave the CLI deliberately and call
+`consume_approval_and_erase_lead` over psycopg: an authorization boundary that
+only the helper enforces is not a boundary, so an approval scoped to lead A
+must still be refused when a direct SQL caller names lead B, and that refusal
+must roll back with the one-time approval left consumable for its own lead.
+Method names carry ordering here as well — unittest runs a class's methods
+alphabetically, and the whole class shares the single company, lead and source
+built in `setUpClass`, so the two `z`-prefixed names run after the rest by
+construction; renaming either moves it in among the methods that read that
+shared state.
+"""
+
 import base64
 import hashlib
 import hmac

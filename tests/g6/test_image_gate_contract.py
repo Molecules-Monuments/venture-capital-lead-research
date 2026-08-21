@@ -1,4 +1,32 @@
 # SPDX-License-Identifier: Apache-2.0
+"""This suite guards the G6 gate itself, not the image the gate certifies.
+
+`scripts/run_g6_image.py` only runs where Docker and a built
+`vc-lead-research:3.0.0` image exist, and `verify_offline.py` invokes it solely
+behind the opt-in `--with-g6-image`. Its own self-check compares the checks it
+emitted against `EXPECTED_CHECK_NAMES` — a tuple it derives from `PROFILES`.
+Drop a profile and the check disappears from both sides of that comparison at
+once, so the gate reports PASS over a smaller world without saying so. A gate
+that can quietly stop running a check and still report PASS is worse than no
+gate, because the report is what the release record keeps.
+
+So the inventory is pinned here instead, in the `g6` suite that
+`verify_offline.py` always runs: the eight check names spelled out as literals,
+the count as a literal, `PROFILES` as a literal, the locked runtime package
+set, and `workshop_guard_probe` and `docker_config_command` asserted callable
+so a rename cannot silently drop a check. The same suite pins the shape of the
+validation container — `--network none`, `--read-only`, `--cap-drop`,
+`no-new-privileges` — because a gate that gained network access would still
+pass every check while no longer being the offline gate the evidence documents
+describe.
+
+The Debian pins are read back out of `Dockerfile.openclaw` rather than counted:
+a count-only pin let a name or version swap inside the gate's own list pass
+unnoticed. That parse is bounded to the single `apt-get install` shell
+continuation after a later `LABEL` block's line-continued `key=value` pairs
+were read as package pins and failed this test with a package-drift message.
+"""
+
 from __future__ import annotations
 
 import importlib.util

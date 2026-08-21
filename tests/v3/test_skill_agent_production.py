@@ -1,4 +1,36 @@
 # SPDX-License-Identifier: Apache-2.0
+"""Skill self-modification must stop at a proposal an operator has to release.
+
+The Skill Workshop lets this system draft skills for itself, which is only
+safe while the line between drafting and installing holds. Three independent
+layers hold it, and each is checked here because any one of them can be edited
+away on its own: `config/openclaw.json` grants `skill_workshop` to `vc-chief`
+and denies it to every other agent and to subagents outright; the
+`before_tool_call` hook in `runtime-extensions/vc-trusted-context/index.js`
+blocks the lifecycle actions (`apply`, `reject`, `quarantine`), blocks a
+worker agent that reaches for the tool anyway, and blocks an action it does
+not recognise, so an action added upstream arrives denied rather than
+permitted; and the meta-skills' own prose has to say what the artifact they
+produce really is — pending, not installed — because that prose is what the
+agent reads. Autonomous transcript review stays off and the approval policy
+stays `pending` alongside them.
+
+`scripts/validate_skill_system.py` is the offline gate step that enumerates
+the shipped inventory, and the first test requires it to answer PASS with no
+findings over 26 skills, 12 agents and 18 workflows.
+
+Its report envelope is what the last two tests defend. `main()` installs no
+exception handler by design, so a read that raises escapes before anything is
+printed and takes every finding already collected with it: the operator sees a
+traceback and zero JSON, and `verify_offline.py`'s `skill-agent-system` step
+fails with nothing to act on. One test corrupts each governed artifact in turn
+and demands a parseable FAIL envelope that still carries findings; the other
+enumerates every read site from the validator's AST, because a representative
+sample cannot prove there is no unguarded read left. Both are enumerations
+rather than spot checks for a reason their own docstrings record: the claim
+that no unguarded read remained has been wrong twice.
+"""
+
 from __future__ import annotations
 
 import ast

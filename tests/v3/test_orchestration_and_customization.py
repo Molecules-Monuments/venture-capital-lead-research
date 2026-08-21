@@ -1,4 +1,42 @@
 # SPDX-License-Identifier: Apache-2.0
+"""The v3 contract in config/openclaw.json, and the gate that lets it deploy.
+
+Two things decide whether this release behaves the way it is documented to.
+The first is `config/openclaw.json`: a twelve-agent roster, 26 shared skills,
+one spawner (`vc-chief`), one executor (`data-steward`), no markdown memory
+tools on any agent, and channel overlays that add a binding and nothing else.
+Each of those facts is restated somewhere a reader trusts — the per-agent
+TOOLS.md files, `RESOLVER.md`, the research dossiers, `CUSTOMIZATION.md` — and
+a restatement drifts. The checks here read each restatement against the file
+that defines it, so a config edit that leaves a document behind fails offline
+instead of at the next deployment.
+
+The second is `scripts/check_customization.py`, the gate between a shipped
+default and a deployed one. It has to fail closed on the example profile and
+on the hash-only scaffold — computing twenty SHA-256 values is not evidence
+that anyone read the files — and it has to stay satisfiable, or no operator
+could ever deploy, so a fully reviewed profile is built here and required to
+PASS. Its model-reference verdicts are pinned against `check_env`'s in the
+same pass, because the two validators bind the same value byte for byte and a
+shape one accepts while the other refuses is a value nobody can deploy.
+
+The twenty itself is load-bearing prose. The reviewed-artifact set is written
+down three times in code (`check_customization.py`, `run_g8_deployment.py`,
+the example profile) and its size is spelled out as a numeral in six more
+files, `docs/MAINTAINING.md` among them. A twenty-first entry added
+consistently to the code passes every other gate while each "exactly twenty"
+and "twenty-first" sentence goes quietly wrong; the fifteenth pass's
+planted-defect calibration went through exactly that hole in README.md. The
+measured sizes and the wording that carries them are pinned together, so
+moving the count means moving the documents in the same change.
+
+One surface is deliberately left to review rather than checked: the band-edge
+customisation inventory. Two attempted detectors both refused documented,
+mandatory operator actions, which is a worse failure than no detector at all.
+The reasoning, and the conditions any third attempt would have to meet, are in
+the comment above `Version3ContractTests`.
+"""
+
 from __future__ import annotations
 
 import ast

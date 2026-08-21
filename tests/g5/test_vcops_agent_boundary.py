@@ -1,4 +1,38 @@
 # SPDX-License-Identifier: Apache-2.0
+"""`vcops` in agent mode must refuse cleanly — no escalation, no traceback.
+
+Every test here spawns the shipped `workspaces/vc-chief/vc/bin/vcops.py` as a
+real subprocess with a minimal environment, because the boundary under test is
+a process boundary: the agent lane reaches `vcops` only through argv and the
+environment, and an in-process call would exercise a function instead of the
+lane.
+
+The first property is authority. `VCOPS_AGENT_MODE=1` narrows the CLI to a
+read-only allowlist, so the operator dispatcher, the bearer-token approval
+commands, the notification worker lane and the state-writing commands must all
+answer `agent_command_forbidden` at exit 1, and the agent must not be able to
+raise its own clearance to `confidential` or `restricted`. The operator lanes
+are probed from the other side too: `approval-decide` and `proposal-decide`
+must answer a non-ASCII principal with `operator_context_required`, not the
+`TypeError` that `compare_digest` raises on non-ASCII `str` operands.
+
+The second property is typing. An agent-supplied value is hostile input, so
+every refusal has to arrive as a typed error code at the documented exit
+status, never as a traceback surfacing as `internal_error`/exit 3. The probes
+sit where Python's own primitives raise something that is not a validation
+error: `int()` past CPython's digit limit, `json.loads` at depth,
+`compare_digest` and `.encode("ascii")` on a non-ASCII trusted-context token,
+and duplicate object keys that `json` would otherwise collapse in silence.
+
+Deep recursion is asserted twice on purpose. A CLI probe has to pass its
+payload through argv, where Linux caps a single argument at MAX_ARG_STRLEN, so
+the depth it can reach is one CPython 3.14 parses happily — with the
+`except RecursionError` arm deleted from `parse_json`, that probe still passed
+on the interpreter this package's own developer venv runs. The second probe
+drives `parse_json` inside a child process, which builds the deep string itself
+and so is bounded by nothing.
+"""
+
 from __future__ import annotations
 
 import json

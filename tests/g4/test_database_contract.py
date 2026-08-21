@@ -1,4 +1,43 @@
 # SPDX-License-Identifier: Apache-2.0
+"""The data invariants are asserted as SQL, not through a well-behaved caller.
+
+Everything above this layer can be gone around: a helper can be invoked with
+different arguments, a workflow definition can be edited, a model lane can be
+pointed at another connection. A trigger, CHECK, unique index or grant cannot.
+So `DatabaseContractTests` talks to the migrated schema through `psql` and
+sends the statements a hostile — or merely mistaken — caller would send,
+asserting the database's own refusal rather than a helper's error message:
+global artifact identity over many-to-many lead provenance, optimistically
+versioned workflow transitions with a sticky cancel and one usable idempotency
+key, the scope CHECK that exempts exactly the three reviewed lead-less
+workflows, append-only `facts` and `fact_sources` with cross-lead lineage
+refused, scoped single-use approvals that expire, notification dedupe, claim
+and retry with a durable attempt history, and append-only `audit_events`.
+
+The connection is the disposable cluster's bootstrap superuser, not
+`openclaw_runtime`, which makes the append-only results the stronger claim: the
+tamper is refused for a superuser because the trigger fires for everybody, not
+merely because the runtime role was never granted UPDATE. The runtime role's
+own privileges are read through `has_*_privilege` and pinned as one exact
+eighteen-value string, so a widened grant fails here instead of slipping past a
+spot check.
+
+`scripts/run_g4.py` applies the whole migration series twice before this module
+runs, which is what gives the ledger test its meaning: one `schema_migrations`
+row per version, each carrying the checksum the gate computed outside the
+database, and no table left holding two unique indexes whose definitions are
+identical once the index name is normalised away — a second `CREATE UNIQUE
+INDEX` under a fresh name is otherwise invisible. Neither class here may skip:
+a missing `DATABASE_URL` or `psql` raises instead, because a skipped database
+test and a passing one read the same in a gate summary, and the runner
+independently fails any suite that reports a skip.
+
+`PopulatedUpgradePathTests` covers the other axis — not what the finished
+schema enforces, but whether the series can reach it over a database that
+already holds rows. Its own docstring carries the fixture rule a new backfill
+has to follow.
+"""
+
 import json
 import os
 import re

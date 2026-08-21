@@ -1,4 +1,55 @@
 # SPDX-License-Identifier: Apache-2.0
+"""Documents cross a trust boundary, so this suite supplies hostile files.
+
+Every file this system ingests came from outside it — a founder's deck, a
+data-room workbook, a PDF — and lands in the inbox directory the helper
+reads. This suite runs the shipped helper named by `VCOPS_HELPER` as a
+subprocess against a throwaway inbox/quarantine/state tree, with the bounds in
+`document_cases.json` turned down to kilobytes and five rows so that a limit
+can be crossed by a fixture small enough to keep in this file. Every hostile
+fixture is assembled here byte by byte rather than checked in, so the package
+ships no attack binaries and each fixture's hostile property is readable as
+code rather than hidden inside one.
+
+A rejection has to fail closed and leave evidence behind. `assert_rejected`
+demands the non-zero exit and `ok: false` for every hostile input — a source
+outside the inbox root, a `..` traversal, a symlinked file, a symlinked parent
+directory, a macro part, a relationship with an external target, a DOCTYPE
+entity, an embedded OLE object, a renamed PNG, a legacy `.xls`, a zip bomb, a
+Flate bomb — and for the inputs that must be preserved for review it demands
+more: that the inbox source is still present and byte-identical afterwards, and
+that a quarantine copy of exactly the rejected bytes materialised. A refusal
+that consumes the operator's only copy, and a refusal that keeps nothing to
+review, both pass a looser test. Library-level failures are held to the same
+lane: a corrupted archive member comes back as a typed `document_parse_failed`
+with a review artifact, never an opaque `internal_error` over an empty
+quarantine.
+
+Acceptance must not turn into execution. Formulas are flagged and kept as
+literal untrusted text, with no computed or cached value anywhere in the
+persisted extraction; the row bound is checked against the rows actually
+written, since an extractor that kept every row and set `truncated` afterwards
+would satisfy the flag alone; and a slide's notes are read through the
+relationship the slide declares, with the resolved target confined to
+`ppt/notesSlides/`, because naming the notes part from the slide's own ordinal
+shifts every note one slide earlier on a deck whose notes were authored on only
+some of its slides.
+
+Some shapes below look redundant and are not. `document_cases.json` carries
+only environment bounds, because the accepted/rejected inventory it used to
+hold drifted from the executed contract — it listed `too-many-rows.xlsx` as
+rejected while the suite asserts accepted-with-truncation — with nothing
+consuming it. The quarantine-copy-failure case pins the exact error dict rather
+than searching the payload for `quarant`, because that substring check stayed
+green under an audit mutant that returned a different branch's reason, one
+whose RUNBOOK wording would tell an operator no copy can exist. And the
+quarantine-name case executes `scripts/validate_recovery_archive.py` over
+whatever the quarantine root actually holds rather than keeping a fourth copy
+of its rule, because `backup.sh` tars that volume through that validator: a
+caller-controlled extension carrying a backslash or a control byte would sit
+there and fail every later backup and update.
+"""
+
 import importlib.util
 import json
 import hashlib

@@ -1,4 +1,54 @@
 # SPDX-License-Identifier: Apache-2.0
+"""The destructive lifecycle scripts are read as text, not executed.
+
+Almost every assertion below opens `scripts/backup.sh`, `restore.sh`,
+`update.sh`, `migrate.sh`, `bootstrap.sh`, `rotate_runtime_role.sh` or
+`migrations/000_roles.sh` as text and compares `str.index` positions: quiesce
+before dump, dump before state archive, every component validated before
+`MUTATION_STARTED`, checksums written and HMAC-authenticated before the
+recovery point becomes visible at its destination, each mutation flag armed
+before the command whose failure it makes recoverable. The release-lifecycle
+helpers around them — `verify_release.py --pristine`,
+`build_release_manifest.py`, `record_images.py`'s deployment lock,
+`authenticate_backup.py` — are imported and driven directly, with the Docker
+boundary mocked. The worlds being scanned are read from the shipped tree rather
+than restated here, after a hard-coded `["_internal"]` in these fixtures
+silently went wrong when the review-only contract widened, and after the
+gate's own `*.sh` glob missed the five suffix-less launchers this module was
+already scanning.
+
+Static is a deliberate choice, not a shortcut. These scripts stop the gateway,
+drop and reload the production database, and publish a recovery point at a
+destination that must not already exist; no offline gate may run them to
+completion, and the destructive round trip stays the G8 and live-commissioning
+exercise (see `tests/g7/README.md`). Reading the text is what makes the
+orderings provable at all, because the states they matter in are states no test
+run reaches: a signal delivered mid-command, a retried update whose
+`deployment-lock.json` is one contract behind its own schema, a crash-left
+rotation lock. What it cannot prove is that the script does any of this when
+actually executed.
+
+The gap is widest where the two shells disagree, and that is the thing to know
+before trusting a green run here. `sh -n` runs under the GATE HOST's `/bin/sh`,
+which on the macOS gate host is GNU bash 3.2.57 and parses `ARR=(a b c)` and
+`cat <<<"here"` that the deployment's dash rejects outright. The two also
+differ on escapes: bash's `echo` emits a backslash literal where dash expands
+it, so `echo '\\endif'` prints ESC + "ndif" on Debian, psql never closes its
+`\\if` block, and the run exits 3 — a defect no execution on the gate host can
+observe. Hence the escape guard is a static scan over every `echo` argument and
+every `printf` FORMAT operand, and the backslash-bearing lines that survive it
+are pinned as an identity SET rather than a count: a count is defeated by a
+net-zero edit that adds a mangling `echo` while deleting a reviewed `printf`.
+
+Two things are executed on purpose. `LifecycleScriptRefusalExecutionTests` runs
+the shipped scripts, but only on argument-contract refusals that return before
+any lock acquisition, Docker call or state mutation. And the package-inbox
+guards are lifted verbatim out of `backup.sh` and `update.sh` and run under
+every POSIX shell present on the host, because comparing the two copies to each
+other cannot see a mistake applied to both — measured: deleting the
+control-character probe from both, and separately neutering the symlink test in
+both with `&& false`, each left every offline suite green.
+"""
 from __future__ import annotations
 
 import difflib
