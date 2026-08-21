@@ -47,10 +47,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out the package
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Select Python 3.11
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           # The deployed floor, not the newest available: the derived image
           # ships Debian Python 3.11 and requirements-dev.lock is compiled for
