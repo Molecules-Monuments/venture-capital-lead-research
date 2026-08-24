@@ -2,6 +2,23 @@
 
 Access date for web sources: 2026-07-20.
 
+Link decay is tracked rather than assumed. On **2026-08-24** every one of the 86
+distinct URLs cited under `research/` was re-requested. Two no longer resolve and
+both are annotated at their point of use rather than silently repaired, because
+the access date records what was actually read and a substituted link would not:
+
+- the Meritech `meritechcapital.com/blog/...` URL (HTTP 404, first noted 2026-08-08),
+  in the priority fund roster below;
+- the Korteweg and Sørensen paper at `finance.darden.virginia.edu` (HTTP 404),
+  in `research/agents/09-qualification-analyst.md`.
+
+The remainder resolved, or returned a bot-block status (HTTP 403/406) from
+publishers that refuse non-browser clients — Wiley, SAGE, SSRN, ScienceDirect,
+Oxford Academic, MDPI and the SEC among them. A bot-block is not evidence of
+decay and is not recorded as such. Neither dead link changes a graded claim: the
+underlying findings are unchanged, but a reader cannot re-verify them at those
+addresses.
+
 ## What “proven” means here
 
 This project does not infer skill from fame, AUM, private valuations, portfolio
