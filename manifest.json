@@ -108,8 +108,8 @@
     {
       "executable": false,
       "path": "CHANGELOG.md",
-      "sha256": "98d4ae9c61cfc81b54a2909d7f4a475a7ead7fd7113992652518608f22cf6634",
-      "size": 11595
+      "sha256": "22c85ca4a962dadc1d31a2665e29802e6a3d917c15ff9cb900b9918964daea50",
+      "size": 11593
     },
     {
       "executable": false,
@@ -120,8 +120,8 @@
     {
       "executable": false,
       "path": "CONTRIBUTING.md",
-      "sha256": "e8599f26492569a74e8b5c6d7f6c4aecce18a422067a5ecc33b3912b7e886ed0",
-      "size": 16190
+      "sha256": "c0d9422b027a1890c3a529b8667d03acaca7b4bfe7db8beeebb77a0e1e53a01f",
+      "size": 16188
     },
     {
       "executable": false,
@@ -138,20 +138,20 @@
     {
       "executable": false,
       "path": "LICENSE",
-      "sha256": "3c3332376c5196cc2ec9bdb893a636e3a50af1616864cf49b729ea3fa9ee0d8f",
-      "size": 11358
+      "sha256": "649b5fe23442fe6d970934d5249c9142e5489d09e962257409cda548715e9308",
+      "size": 11356
     },
     {
       "executable": false,
       "path": "NOTICE",
-      "sha256": "19e31ac1bdc549867aeb1c0bf7ea41f109bf68c047894e7607ad2ef192581247",
-      "size": 1241
+      "sha256": "254993b73670cf88a677d41e12c8c12c3a04e4b1be79ab78bef8060c562ba12e",
+      "size": 1239
     },
     {
       "executable": false,
       "path": "README.md",
-      "sha256": "c8ad889f16d4b5fe3de7600ed542faa1670032920458b9903b137f682dad2ac5",
-      "size": 98098
+      "sha256": "c8ac19b9a6c1f1ec2041d932482a8b9e879fc0bd424409950bed9e6bac504072",
+      "size": 98096
     },
     {
       "executable": false,
@@ -162,8 +162,8 @@
     {
       "executable": false,
       "path": "THIRD_PARTY_NOTICES.md",
-      "sha256": "23e4abd919cc57908f565c3bd747b9eb45da2de47b1c71c2d658833a5c2d2449",
-      "size": 11213
+      "sha256": "17446a6432cf223ca1ec8849e93248e6146c3d1241266a4d97576a95e82f0fad",
+      "size": 11211
     },
     {
       "executable": false,
