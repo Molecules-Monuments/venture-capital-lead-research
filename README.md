@@ -1364,14 +1364,18 @@ current attempt's own step error, not a stale one.
 The gates deliberately separate local software evidence from live deployment
 evidence.
 
-Every `python3 -B scripts/…` command in this section runs under the disposable
-dev virtualenv from the [developer quick start](#developer-quick-start), not the
-host interpreter — activate it again with
-`. ../openclaw-v3-dev-venv/bin/activate`, or call it by path as
-`../openclaw-v3-dev-venv/bin/python -B scripts/verify_offline.py`. The host
-`python3` carries neither the hash-pinned `ruff` and `ty` nor the locked test
-dependencies, so the gate reports `FAIL` on a correct package. `docs/RUNBOOK.md`
-§1 says the same thing for the same gate.
+`verify_offline.py` and the opt-in gates below run under the disposable dev
+virtualenv from the [developer quick start](#developer-quick-start), not the host
+interpreter — activate it with `. ../openclaw-v3-dev-venv/bin/activate`, or call
+it by path as `../openclaw-v3-dev-venv/bin/python -B scripts/verify_offline.py`.
+The host `python3` carries neither the hash-pinned `ruff` and `ty` nor the locked
+test dependencies, so the gate reports `FAIL` on a correct package.
+`docs/RUNBOOK.md` §1 says the same thing for the same gate.
+
+`build_release_manifest.py` and `verify_release.py` are the exception: they use
+only the standard library and run on the host `python3`, which is how
+`CONTRIBUTING.md`, `docs/MAINTAINING.md` and the pull-request template invoke
+them.
 
 ### Offline source gate
 
