@@ -1448,6 +1448,7 @@ python3 -B scripts/verify_release.py --pristine
 ├── NOTICE                            # Apache-2.0 attribution notice; travels with redistribution
 ├── THIRD_PARTY_NOTICES.md            # Upstream attribution and license boundary
 ├── SECURITY.md                       # Vulnerability reporting and support policy
+├── CHANGELOG.md                      # Release history, versioning and tag rules
 ├── CONTRIBUTING.md                   # Fork/branch/PR flow, gates to run, DCO sign-off
 ├── DCO                               # Developer Certificate of Origin 1.1, verbatim
 ├── CODE_OF_CONDUCT.md                # Contributor Covenant 2.1, enforcement rewritten

@@ -13,10 +13,10 @@ contact_links:
       the report, the fix, and the advisory together and does not disclose the
       issue before a patch exists. Read SECURITY.md first — it states what is
       in scope, what is deliberately out of scope, and what to include.
-  - name: Contributing, and the sign-off every commit needs
+  - name: Contributing, and the sign-off your commits need
     url: https://github.com/Molecules-Monuments/venture-capital-lead-research/blob/main/CONTRIBUTING.md
     about: >-
       How to propose a change, which gates a pull request has to pass on your
       own machine before it is opened, and the Developer Certificate of Origin
-      sign-off that every commit carries. Read this before opening a pull
-      request, and ask contribution questions here rather than as an issue.
+      sign-off that every contributed commit carries. Read this before opening a
+      pull request, and ask contribution questions here rather than as an issue.

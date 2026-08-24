@@ -24,7 +24,7 @@ body:
       label: Document and section
       description: >-
         The file and the heading or section number, for example
-        `docs/RUNBOOK.md` §9, or `CUSTOMIZATION.md`, "Scoring rubric".
+        `docs/RUNBOOK.md` §9, or `CUSTOMIZATION.md`, "`MUST_CUSTOMIZE` files".
       placeholder: "docs/OPERATIONS.md, \"First install\""
     validations:
       required: true
