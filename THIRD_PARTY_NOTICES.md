@@ -182,6 +182,19 @@ they ship.
 that file states which changes were made; this entry deliberately does not
 restate them, because two copies of the same change list drift apart.
 
+## Developer Certificate of Origin
+
+- Project: Developer Certificate of Origin, version 1.1
+- Text: https://developercertificate.org/
+- Copyright: (C) 2004, 2006 The Linux Foundation and its contributors
+- Terms: verbatim copying and distribution permitted; modification is not
+
+The file `DCO` at the package root is that document reproduced **verbatim**. It
+carries no SPDX header and no local edits, because its own terms forbid changing
+it — a header would be a modification. `CONTRIBUTING.md` describes how a
+contributor certifies it; the certification is the `Signed-off-by:` line in each
+commit, not a separate signed instrument.
+
 ## Research sources and linked content
 
 The venture, academic, standards, security, and practitioner sources linked in

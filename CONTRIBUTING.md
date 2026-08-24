@@ -266,28 +266,43 @@ The same standard applies to new prose. If you write a sentence containing
 and it needs a test that enumerates that world from the source of truth. If you
 cannot back it that way, write the weaker sentence that is true.
 
-## Contributor License Agreement
+## Sign off your commits
 
-Contributions require a signed contributor license agreement before they can be
-merged. There is an individual agreement, and an entity agreement for the case
-where your employer owns the copyright in work you do. The process is manual and
-deliberately small:
+Contributions are accepted under the project's own licence, Apache-2.0, and are
+certified with a **Developer Certificate of Origin** sign-off rather than a
+signed agreement. There is nothing to print, nothing to email, and no personal
+data collected beyond what git already records.
 
-1. Email <mvrecko@moleculesandmonuments.com> and ask for the agreement, saying
-   whether you need the individual or the entity version.
-2. Sign the copy you are sent and email it back.
-3. A maintainer records the signature privately.
-4. Your pull request is merged once that record exists.
+Add `-s` when you commit:
 
-There is no bot, no automated status check on the pull request, and no roster of
-signatories in this repository — nothing will comment on your branch to chase
-it, and nothing about the agreement is published here. Requesting it when you
-open the pull request, or before you start work on anything substantial, keeps
-it off the critical path. It is a one-time step: later contributions from the
-same person or entity are covered by the record already held.
+```sh
+git commit -s -m "Your commit message"
+```
 
-If the agreement is a blocker for you — some employers will not sign one — say
-so early. It is better to find that out before you write the code than after.
+That appends one line to the commit message:
+
+```
+Signed-off-by: Your Name <your.email@example.com>
+```
+
+The name and email must be real and must match the commit author. By adding it
+you certify the [Developer Certificate of Origin 1.1](DCO) — in short, that you
+wrote the change or otherwise have the right to submit it under this project's
+licence, and that you understand the contribution and its sign-off are public
+and kept indefinitely.
+
+Every commit in a pull request needs the line. If you forget on the last commit,
+`git commit --amend -s` fixes it; for a whole branch,
+`git rebase --signoff main` does. There is no bot and no automated status check:
+a maintainer verifies the sign-offs by reading them, the same way the rest of
+the review works.
+
+One thing to know in advance, so it is never a surprise. The maintainers may ask
+for a signed contributor agreement before merging a contribution they intend to
+relicense — for instance into a commercially licensed edition of this software.
+That has not been necessary so far, no such agreement is in force, and the
+sign-off above is all that is asked of you today. If it ever becomes relevant to
+a change of yours, you will be told before the work is merged, not after.
 
 ## Code of conduct
 

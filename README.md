@@ -1448,7 +1448,8 @@ python3 -B scripts/verify_release.py --pristine
 ├── NOTICE                            # Apache-2.0 attribution notice; travels with redistribution
 ├── THIRD_PARTY_NOTICES.md            # Upstream attribution and license boundary
 ├── SECURITY.md                       # Vulnerability reporting and support policy
-├── CONTRIBUTING.md                   # Fork/branch/PR flow, gates to run, CLA process
+├── CONTRIBUTING.md                   # Fork/branch/PR flow, gates to run, DCO sign-off
+├── DCO                               # Developer Certificate of Origin 1.1, verbatim
 ├── CODE_OF_CONDUCT.md                # Contributor Covenant 2.1, enforcement rewritten
 ├── VERSION                           # 3.0.0
 ├── CUSTOMIZATION.md                  # Required fund/deployment decisions
@@ -1536,7 +1537,7 @@ python3 -B scripts/verify_release.py --pristine
 ├── .github/
 │   ├── workflows/offline-gates.yml   # CI: the offline gates on every pull request
 │   ├── ISSUE_TEMPLATE/               # Bug, documentation, and question forms
-│   └── PULL_REQUEST_TEMPLATE.md      # Gate checklist and CLA confirmation
+│   └── PULL_REQUEST_TEMPLATE.md      # Gate checklist and DCO sign-off confirmation
 ├── docs/                             # Runbooks, channels, data, workflows, evidence
 │   ├── MAINTAINING.md                # Engineering rules and the standard an audit is held to
 │   └── *.md / SCHEMA.sql             # Runbook, operations, channels, data model, evidence
