@@ -9,6 +9,24 @@
 .env.*
 !.env.example
 
+# ── Key material ─────────────────────────────────────────────────────────────
+# No key, certificate, or keystore belongs in this repository. The six deployment
+# secrets are generated on the host and materialized under config/runtime/, which
+# is excluded below; a TLS certificate belongs to the reviewed reverse proxy, not
+# here. These patterns are defence in depth against `git add -A`, not the control:
+# verify_release.py --pristine reports ANY undeclared file in the package whether
+# git ignores it or not, and that remains the signal to act on.
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.cer
+*.jks
+*.keystore
+*.asc
+*.gpg
+
 # ── Rendered runtime config & materialized secrets ───────────────────────────
 # render_channel_config.py writes the effective config and the four secret files
 # here on every lifecycle path; they are regenerated from .env and never committed.
