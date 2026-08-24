@@ -66,8 +66,8 @@
     {
       "executable": false,
       "path": ".github/PULL_REQUEST_TEMPLATE.md",
-      "sha256": "9981dd6b525914aea6998bb46d445679997ef909266d15149e9dd2efa1c44578",
-      "size": 3163
+      "sha256": "be14914fc7564178fd9da54886d87f96e6450b029780b8391b74189d015159eb",
+      "size": 3313
     },
     {
       "executable": false,
@@ -108,8 +108,8 @@
     {
       "executable": false,
       "path": "CHANGELOG.md",
-      "sha256": "5e6f8eed1363181c813ef030a74af927868205ab53708872ceacfdee80f0dfe2",
-      "size": 11609
+      "sha256": "2bd1cef64ef66c66079dc1f8a91358fc77878c7f0321e6380bb0d4cf5274b544",
+      "size": 11786
     },
     {
       "executable": false,
@@ -120,8 +120,8 @@
     {
       "executable": false,
       "path": "CONTRIBUTING.md",
-      "sha256": "c88e3c59ac37194268962bda1e504aa81ebd753ff1b773f5cc3eb317fe2d7477",
-      "size": 16927
+      "sha256": "b7cf1c466efa76a718b193ff5d998e787a16c1fafc8c9ee30da82ed75c8bcaa5",
+      "size": 18475
     },
     {
       "executable": false,
@@ -156,8 +156,8 @@
     {
       "executable": false,
       "path": "README.md",
-      "sha256": "c93a52c9166c2e7286932e4b8b038b07772dfbfc71fb4321b28aca5e486ba3d8",
-      "size": 98286
+      "sha256": "620c373369e644d2cccafd4dd7cac30fb4417ab5d7dd2fc44fab93ab2030cb1a",
+      "size": 98851
     },
     {
       "executable": false,
@@ -168,8 +168,8 @@
     {
       "executable": false,
       "path": "THIRD_PARTY_NOTICES.md",
-      "sha256": "9893ee763be650eeea8efdbde587304c293afa21205d639a2f64ab66e3a9ed9f",
-      "size": 12001
+      "sha256": "4a7766212363642413b92d9f128884d8e8c8b2fcadd25ece0e11d0dbc97d2b0d",
+      "size": 12121
     },
     {
       "executable": false,
@@ -258,8 +258,8 @@
     {
       "executable": false,
       "path": "docs/MAINTAINING.md",
-      "sha256": "25ae4338710869b6c3ae289167fc0d7103ca66dd61f432492aa3e3d67acaa736",
-      "size": 14131
+      "sha256": "d89c403feb147c919e789fde51b65349e1adb14d1e443e4cd1854cef250fcdfb",
+      "size": 14265
     },
     {
       "executable": false,

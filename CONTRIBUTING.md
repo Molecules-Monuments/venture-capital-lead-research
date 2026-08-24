@@ -100,9 +100,11 @@ required.
 
 ## Run the checks before you submit
 
-Everything in this section runs on your own machine, offline. No database, no
-Docker, no network and no credential is needed. You need Python 3.11 or newer
-and a POSIX shell.
+The checks themselves run on your own machine: no database, no Docker, no
+running deployment and no credential. The one-time virtualenv install below is
+the exception — it downloads the hash-pinned packages, so it needs network
+access or an approved package cache. After that, everything here is offline. You
+need Python 3.11 or newer and a POSIX shell.
 
 ### Create the developer virtualenv
 
@@ -145,6 +147,12 @@ absorbed. **Read that delta.** Every path in it should be a file you changed on
 purpose. A path you do not recognise is an integrity finding rather than a
 re-pin — find out where it came from before you commit it.
 
+`manifest.json` is a generated file that is **committed with your change**, so
+stage it alongside your edits. It is the one command of the five that writes to
+the tree. If it is missing from the commit, CI fails the pristine check with a
+hash mismatch naming your own file — which means the inventory was never
+re-pinned on the branch, not that anything was tampered with.
+
 `verify_offline.py` is the broad one: the offline test suites plus Python and
 shell syntax, `ruff`, `ty`, skill/agent/router validation, fixed-workflow
 validation, manifest currency, and the pristine release inventory. It resolves
@@ -176,7 +184,7 @@ checkers.
 
 ### The gates you are not expected to run
 
-Three further gates need infrastructure:
+Five further gates need infrastructure:
 
 - **G4**, the database gate (`scripts/run_g4.py`, reached with
   `verify_offline.py --with-g4-database`), creates a disposable local
@@ -184,11 +192,18 @@ Three further gates need infrastructure:
 - **G6**, the image gate (`verify_offline.py --with-g6-image
   vc-lead-research:3.0.0`), probes a built Docker image with the network
   disabled and verifies exact pinned versions.
-- **G8**, the deployment gate (`scripts/run_g8_deployment.py`), exercises a
-  live, commissioned deployment.
+- **G8**, the deployment gate (`scripts/run_g8_deployment.py`, reached with
+  `verify_offline.py --with-deployment`), exercises a live, commissioned
+  deployment.
+- **The retrieval-scale gate** (`scripts/run_retrieval_scale.py`, reached with
+  `verify_offline.py --with-g4-database --with-retrieval-scale`), which needs the
+  same disposable PostgreSQL 17 cluster as G4.
+- **The schema-reference check** (`verify_offline.py --with-schema-reference`),
+  which regenerates `docs/SCHEMA.sql` from the migrations and needs PostgreSQL 17
+  client tools on `PATH`. Run this one if you touched `migrations/`.
 
-They need PostgreSQL 17 tools, Docker, and a real deployment respectively, and
-no outside contributor is expected to have all three. Run whichever ones you
+They need PostgreSQL 17 tools, Docker, and a real deployment, and no outside
+contributor is expected to have all of them. Run whichever ones you
 have if your change touches `migrations/`, `Dockerfile.openclaw`,
 `docker-compose.yml`, or the lifecycle scripts — and either way, say in the pull
 request which gates you ran and which you could not. Continuous integration runs
@@ -307,6 +322,20 @@ relicense — for instance into a commercially licensed edition of this software
 That has not been necessary so far, no such agreement is in force, and the
 sign-off above is all that is asked of you today. If it ever becomes relevant to
 a change of yours, you will be told before the work is merged, not after.
+
+## Licence headers
+
+Every source, script, migration, configuration and workflow file in this
+repository starts with an SPDX identifier in that file's comment syntax:
+
+```
+# SPDX-License-Identifier: Apache-2.0
+```
+
+New files you add should carry it too. There are two deliberate exceptions:
+`DCO`, whose own terms forbid modifying the document, and generated files that
+inherit the header from their generator rather than being edited directly.
+Nothing enforces this automatically — it is checked in review.
 
 ## Code of conduct
 
