@@ -1,7 +1,7 @@
 # Third-party notices
 
 The Apache License, Version 2.0 in `LICENSE` applies to original OpenClaw Lead
-Research project material, Copyright 2026 Molecules and Monuments GmbH. `NOTICE`
+Research project material, Copyright 2026 Molecules & Monuments GmbH. `NOTICE`
 carries the attribution notice that Apache-2.0 §4(d) obliges a redistributor to
 pass on with a derived work; this document is a separate surface and covers
 third-party material. Neither file replaces or overrides the licenses, notices,

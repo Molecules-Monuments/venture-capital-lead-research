@@ -310,7 +310,7 @@ can judge whether a different approach would land.
 
 Because the project is small, it is worth stating the other side of that
 plainly. The system is released under Apache-2.0 (see [LICENSE](LICENSE);
-Copyright 2026 Molecules and Monuments GmbH). That license lets anyone fork this
+Copyright 2026 Molecules & Monuments GmbH). That license lets anyone fork this
 project and carry it in their own direction, including a direction the
 maintainers would not take, and including the case where the maintainers stop
 altogether. A fork is an accepted outcome of a small project rather than a

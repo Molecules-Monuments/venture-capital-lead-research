@@ -1686,7 +1686,7 @@ and affiliation disclaimer is stated below the title of this document and in
 ## License and risk
 
 Original project material is released under the
-[Apache License, Version 2.0](LICENSE), Copyright 2026 Molecules and Monuments
+[Apache License, Version 2.0](LICENSE), Copyright 2026 Molecules & Monuments
 GmbH. It permits use, copying, modification, distribution, and commercial use,
 for a fee or without one, and it adds an express patent licence from every
 contributor — which terminates for anyone who starts patent litigation claiming
