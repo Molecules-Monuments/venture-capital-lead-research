@@ -875,12 +875,22 @@ python3 -B scripts/render_channel_config.py .env
 docker compose -f docker-compose.yml -p vc-lead-research-v3 --env-file .env config --quiet
 docker compose -f docker-compose.yml -p vc-lead-research-v3 --env-file .env run --rm --no-deps openclaw-state-init
 docker compose -f docker-compose.yml -p vc-lead-research-v3 --env-file .env up -d --wait --force-recreate --no-deps openclaw-gateway
+docker compose -f docker-compose.yml -p vc-lead-research-v3 --env-file .env --profile tools up --force-recreate --no-deps --no-start openclaw-cli
 ```
 
 The `openclaw-state-init` run is required, not optional: the gateway reads the
 rendered config from the runtime-config volume, and that one-shot service is the
 only writer of it. Recreating the gateway alone leaves the previous channel
 config mounted. Re-running `./scripts/bootstrap.sh` does the same thing.
+
+The last line is required for the same reason `docs/OPERATIONS.md` gives when
+rotating a secret: `openclaw-cli` sits behind the `tools` profile, so the
+gateway's `--force-recreate` does not touch it, and the stopped container keeps
+the provider and channel values — and the `OPENCLAW_GATEWAY_TOKEN` — it was
+created with, visible to anyone who can run `docker inspect`. Recreating it
+against the new `.env` is what makes the change complete rather than
+partial. (This is distinct from §9's restart-after-failure case, where nothing
+in the configuration changed and `openclaw-cli` genuinely needs nothing.)
 
 The `check_customization.py` step is what makes the profile/environment mismatch
 fail closed here (and on every `update`/`restore`/`rotate` path), before the
