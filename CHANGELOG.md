@@ -154,7 +154,7 @@ this entry.
   Version 2.0**, Copyright 2026 Molecules & Monuments GmbH. Apache-2.0's
   express patent grant is worth more to a system assembled from other people's
   harnesses, plugins, and runtime images than the shorter licence's brevity. All
-  108 `SPDX-License-Identifier` headers moved with it, as did the header
+  113 `SPDX-License-Identifier` headers moved with it, as did the header
   constant that generates `docs/SCHEMA.sql`. `THIRD_PARTY_NOTICES.md` now tells
   a redistributor of the derived image to add `LICENSE` and `NOTICE` to the
   artifact they ship, because `.dockerignore` admits only build inputs and the

@@ -959,8 +959,11 @@ snapshot of the applied migration set (documentation, not a migration). It is
 produced by `scripts/generate_schema_reference.py`, which applies every
 migration to a throwaway cluster and dumps the result; do not hand-edit it.
 `--check` verifies it still matches the migrations, and
-`verify_offline.py --with-schema-reference` runs that check as a gate (both
-need PostgreSQL 17 client tools).
+`verify_offline.py --with-schema-reference` runs that check as a gate. Both need
+PostgreSQL 17 `initdb`, `pg_ctl`, `psql` and `pg_dump` on `PATH` — it builds a
+throwaway cluster, so this is the **server** package (`postgresql-17` on
+Debian/Ubuntu, with `/usr/lib/postgresql/17/bin` on `PATH`; `postgresql@17` via
+Homebrew), not `postgresql-client-17` alone.
 
 ## Controlled evolution
 

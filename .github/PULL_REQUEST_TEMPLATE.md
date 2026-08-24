@@ -16,9 +16,10 @@ in plain words — that sentence is what a release note is written from.
 
 ## Gates
 
-Run from the package root, using the developer virtualenv by path exactly as
-`CONTRIBUTING.md` sets it up — it is never activated, so `$VIRTUAL_ENV` is not
-set for you. The order matters:
+Run from the package root. These commands call the developer virtualenv **by
+path**, the form `CONTRIBUTING.md` uses, so they work whether or not you have
+activated it — README's *Developer quick start* shows the activated form if you
+prefer that. The order matters:
 `build_release_manifest.py` re-pins the inventory that `--pristine` then
 verifies, and `--pristine` must see a tree with no caches in it, which is why
 Python runs with `-B` and Ruff with `--no-cache`.
