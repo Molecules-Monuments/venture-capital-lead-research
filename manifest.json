@@ -108,8 +108,8 @@
     {
       "executable": false,
       "path": "CHANGELOG.md",
-      "sha256": "55a71cb9d8851d03b0bc1fe6e11eb83dfbcbca55fa265b81dbba59a6b0ba5ecd",
-      "size": 11786
+      "sha256": "a14e35d82114720084441fd4f94cf2fece400d8f34b8d7ce20e4887e0ab8e346",
+      "size": 11928
     },
     {
       "executable": false,
@@ -120,8 +120,8 @@
     {
       "executable": false,
       "path": "CONTRIBUTING.md",
-      "sha256": "7cfab3de35a1cb885d7302a57c9fefb7560867d8330335ccf77e7c5b956cd64a",
-      "size": 20089
+      "sha256": "89a614d09564afc17a0ca20c2c2d1221c46f926af190983ff255336892dc0b8d",
+      "size": 20347
     },
     {
       "executable": false,
@@ -156,8 +156,8 @@
     {
       "executable": false,
       "path": "README.md",
-      "sha256": "400fd9d8aaab4d6d80fdbd7b3174c50a794da479c14a63fb6333424c767889da",
-      "size": 99101
+      "sha256": "8fca051b84e05b0ed168b9d33f8072687305f0610ad9ca37307e963daaf89f3a",
+      "size": 99574
     },
     {
       "executable": false,
