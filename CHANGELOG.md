@@ -31,7 +31,7 @@ the exact commands. The repository now has a remote, so each move of the tag is
 a deliberate force-push plus a note to anyone who may already have fetched it —
 plan that as part of the cycle rather than discovering it afterwards.
 
-## [3.0.0] — 2026-08-20
+## [3.0.0] — 2026-08-24
 
 > [!IMPORTANT]
 > **A deployment created from a pre-publication revision cannot be upgraded in
@@ -50,10 +50,12 @@ plan that as part of the cycle rather than discovering it afterwards.
 > and re-load the data by hand. [docs/RUNBOOK.md](docs/RUNBOOK.md) §1 records
 > this in full, including why the change was taken and what remains exempt.
 
-First public release. The date above is the day the publication series was cut
-and its gate matrix measured; everything before it is private development
-history, which is why this file has exactly one entry and no earlier
-version numbers.
+First public release. The date above is the day the published tree was finalised;
+everything before it is private development history, which is why this file has
+exactly one entry and no earlier version numbers. The dates on which each gate
+was last measured are recorded in the evidence documents, not here — they move
+independently of this heading and are maintained by
+`scripts/set_evidence_execution_date.py`.
 
 The Venture Capital Lead Research System 3.0 is an evidence-first, self-hosted
 multi-agent system for venture-capital inbound and outbound lead research. It

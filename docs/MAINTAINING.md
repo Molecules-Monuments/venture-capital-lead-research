@@ -156,7 +156,9 @@ either binary is missing, that step fails rather than being skipped.
 
 ## Auditing this package
 
-Thirteen audit passes established which checks keep working and which decay.
+Repeated audit passes established which checks keep working and which decay.
+The count is deliberately not stated here: nothing enforces it, and an ordinal in
+prose falls behind the history that contradicts it.
 The rules below are binding for every future audit pass, review, or
 pre-publication check of this package.
 

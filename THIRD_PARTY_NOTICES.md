@@ -167,8 +167,10 @@ This project's own material adds to that set rather than being covered by it.
 Apache-2.0 §4 requires a redistributor of this software, or of a work derived
 from it, to include a copy of `LICENSE`, retain the copyright, patent,
 trademark, and attribution notices in the source they carry, mark every file
-they changed as changed, and reproduce the contents of `NOTICE` in the
-documentation or display the derived work uses for notices. The derived image
+they changed as changed, and include a readable copy of the attribution notices
+in `NOTICE` in at least one of the three places §4(d) allows — a NOTICE file
+shipped with the derived work, its documentation, or the display it uses for
+such notices. The derived image
 this repository builds carries neither file — `.dockerignore` admits only the
 build inputs — so a redistributor of that image must add them to the artifact
 they ship.

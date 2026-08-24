@@ -1074,6 +1074,15 @@ Neither check is performed by anything in this repository.
 
 ## Customize, install, and commission
 
+**Before you start, check the host.** This path targets a **Linux** host with
+Docker Engine and the Compose v2 plugin, `python3` available on the host, and
+enough room for the derived image and a PostgreSQL volume. The deployment
+scripts (`bootstrap.sh`, `backup.sh`, `restore.sh`, `update.sh`) are not
+supported on macOS or Windows — only the offline test suites run there.
+[docs/RUNBOOK.md](docs/RUNBOOK.md) §2 is the authoritative prerequisite list,
+including the exact version floors; read it before step 1 rather than after
+`bootstrap.sh` has already run.
+
 The bundled fund thesis, rubric, sources, retention, and reporting policy are
 examples. Read [CUSTOMIZATION.md](CUSTOMIZATION.md) before using them.
 

@@ -16,31 +16,34 @@ in plain words — that sentence is what a release note is written from.
 
 ## Gates
 
-Run from the package root, with the developer virtual environment from
-README's *Developer quick start* activated. The order matters:
+Run from the package root, using the developer virtualenv by path exactly as
+`CONTRIBUTING.md` sets it up — it is never activated, so `$VIRTUAL_ENV` is not
+set for you. The order matters:
 `build_release_manifest.py` re-pins the inventory that `--pristine` then
 verifies, and `--pristine` must see a tree with no caches in it, which is why
 Python runs with `-B` and Ruff with `--no-cache`.
 
 ```sh
-ruff check . --exclude _internal --no-cache
-ty check . --python "$VIRTUAL_ENV" --python-version 3.11 --extra-search-path scripts
-python -B scripts/build_release_manifest.py
-python -B scripts/verify_release.py --pristine
-python -B scripts/verify_offline.py
+VENV="../openclaw-v3-dev-venv"
+
+"$VENV/bin/ruff" check . --exclude _internal --no-cache
+"$VENV/bin/ty"   check . --python "$VENV" --python-version 3.11 --extra-search-path scripts
+python3 -B scripts/build_release_manifest.py
+python3 -B scripts/verify_release.py --pristine
+"$VENV/bin/python" -B scripts/verify_offline.py
 ```
 
 Both linters are also gate steps inside `verify_offline.py`, so the last
 command is the backstop; running them directly is the fast feedback loop while
 you work. Tick what you ran, and say what it reported:
 
-- [ ] `ruff check . --exclude _internal --no-cache` — exit `0`
-- [ ] `ty check . --python "$VIRTUAL_ENV" --python-version 3.11 --extra-search-path scripts` — exit `0`
-- [ ] `python -B scripts/build_release_manifest.py` — re-pinned, and I read the
-      printed delta: every path in it is a change I made deliberately
-- [ ] `python -B scripts/verify_release.py --pristine` — `PASS`
-- [ ] `python -B scripts/verify_offline.py` — `PASS` (paste the totals it
-      printed)
+- [ ] `"$VENV/bin/ruff" check . --exclude _internal --no-cache` — exit `0`
+- [ ] `"$VENV/bin/ty" check . --python "$VENV" --python-version 3.11 --extra-search-path scripts` — exit `0`
+- [ ] `python3 -B scripts/build_release_manifest.py` — re-pinned, I read the
+      printed delta, and `manifest.json` is staged in this pull request
+- [ ] `python3 -B scripts/verify_release.py --pristine` — `PASS`
+- [ ] `"$VENV/bin/python" -B scripts/verify_offline.py` — `PASS` (paste the
+      totals it printed)
 - [ ] Database (G4), image (G6), deployment (G8), and retrieval-scale gates —
       result, or **not run — needs PostgreSQL 17 / Docker**
 
