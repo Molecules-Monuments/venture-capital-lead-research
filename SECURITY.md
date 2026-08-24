@@ -22,9 +22,11 @@ Report privately through GitHub's **Report a vulnerability** button on the
 channel is preferred because it keeps the report, the fix, and the advisory in
 one place and does not disclose the issue before a patch exists.
 
-If that button is not present on the repository, private reporting has not been
-enabled yet. In that case contact the repository owner through their GitHub
-profile and ask them to enable it, rather than filing a public issue.
+If that button is not present, private reporting has not been enabled yet. In
+that case email **mvrecko@moleculesandmonuments.com** — the same address the
+code of conduct uses — rather than filing a public issue. Say only that you have
+a security report and want a private channel; do not put the details in that
+first message until one is open.
 
 Please include:
 
