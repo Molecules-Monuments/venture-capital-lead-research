@@ -6,7 +6,7 @@
 blank_issues_enabled: false
 contact_links:
   - name: Report a security vulnerability privately
-    url: https://github.com/Max-Muc/venture-capital-lead-research/security/advisories/new
+    url: https://github.com/Molecules-Monuments/venture-capital-lead-research/security/advisories/new
     about: >-
       Do not open a public issue for a security problem. Report it through
       GitHub Private Vulnerability Reporting on the Security tab: that keeps
@@ -14,7 +14,7 @@ contact_links:
       issue before a patch exists. Read SECURITY.md first — it states what is
       in scope, what is deliberately out of scope, and what to include.
   - name: Contributing, and the sign-off every commit needs
-    url: https://github.com/Max-Muc/venture-capital-lead-research/blob/main/CONTRIBUTING.md
+    url: https://github.com/Molecules-Monuments/venture-capital-lead-research/blob/main/CONTRIBUTING.md
     about: >-
       How to propose a change, which gates a pull request has to pass on your
       own machine before it is opened, and the Developer Certificate of Origin
