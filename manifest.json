@@ -48,14 +48,14 @@
     {
       "executable": false,
       "path": ".github/ISSUE_TEMPLATE/config.yml",
-      "sha256": "6d21eff9449c87f518a2aa281c1cb45d2d40fe061e36c3e6e72dc642ab6cdd93",
-      "size": 1402
+      "sha256": "d270928906d2989b1907ebe8399242a0da77ea82a63fedb6fbc6909edfe0fe7a",
+      "size": 1413
     },
     {
       "executable": false,
       "path": ".github/ISSUE_TEMPLATE/docs.yml",
-      "sha256": "f7f255fff36b54ddd4674fff15b40266ef5f0e5d253bd85cea1a169b861afd2c",
-      "size": 2105
+      "sha256": "90d74db19221011920d137a909b15b47ba8eba5ba417aa724039e144393bc898",
+      "size": 2113
     },
     {
       "executable": false,
@@ -108,8 +108,8 @@
     {
       "executable": false,
       "path": "CHANGELOG.md",
-      "sha256": "22c85ca4a962dadc1d31a2665e29802e6a3d917c15ff9cb900b9918964daea50",
-      "size": 11593
+      "sha256": "5e6f8eed1363181c813ef030a74af927868205ab53708872ceacfdee80f0dfe2",
+      "size": 11609
     },
     {
       "executable": false,
@@ -120,8 +120,8 @@
     {
       "executable": false,
       "path": "CONTRIBUTING.md",
-      "sha256": "8484ec5509152cd9ae64a494caff9145e537ce639122729c6adc92948fca61bf",
-      "size": 16601
+      "sha256": "c88e3c59ac37194268962bda1e504aa81ebd753ff1b773f5cc3eb317fe2d7477",
+      "size": 16927
     },
     {
       "executable": false,
@@ -156,8 +156,8 @@
     {
       "executable": false,
       "path": "README.md",
-      "sha256": "5df4ddce784618c4bc76ae9017ae0cb8264ff6ed435b0b0384d013cfd5863ffb",
-      "size": 98198
+      "sha256": "c93a52c9166c2e7286932e4b8b038b07772dfbfc71fb4321b28aca5e486ba3d8",
+      "size": 98286
     },
     {
       "executable": false,
@@ -168,8 +168,8 @@
     {
       "executable": false,
       "path": "THIRD_PARTY_NOTICES.md",
-      "sha256": "4db0b3557f8b94fa0fb68d96a6d6e63d7361bd9c91384dcf208fc5a04f5c3479",
-      "size": 11850
+      "sha256": "9893ee763be650eeea8efdbde587304c293afa21205d639a2f64ab66e3a9ed9f",
+      "size": 12001
     },
     {
       "executable": false,

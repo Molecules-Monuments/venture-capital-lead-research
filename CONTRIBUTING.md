@@ -198,7 +198,11 @@ infrastructure gates before merging anything that depends on them.
 ## Commit messages
 
 The existing history is the convention. `git log --format='%s' -40` in a clone
-shows it directly. Match what you see there:
+shows it directly. Match what you see there — with one exception, noted here so
+it does not surprise you: that history carries no `Signed-off-by` trailer. The
+Developer Certificate of Origin was adopted with the 3.0.0 release and applies
+to contributions from then on, so copy the *style* of those messages but add the
+sign-off described under "Sign off your commits":
 
 - A **summary line in the present tense**, imperative or declarative, saying
   what the change does — "Make the release gate runnable on the platform it

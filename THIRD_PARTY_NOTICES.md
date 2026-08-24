@@ -1,7 +1,8 @@
 # Third-party notices
 
-The Apache License, Version 2.0 in `LICENSE` applies to original OpenClaw Lead
-Research project material, Copyright 2026 Molecules & Monuments GmbH. `NOTICE`
+The Apache License, Version 2.0 in `LICENSE` applies to the original material of
+the Venture Capital Lead Research System, Copyright 2026 Molecules & Monuments
+GmbH. `NOTICE`
 carries the attribution notice that Apache-2.0 §4(d) obliges a redistributor to
 pass on with a derived work; this document is a separate surface and covers
 third-party material. Neither file replaces or overrides the licenses, notices,
@@ -192,8 +193,10 @@ restate them, because two copies of the same change list drift apart.
 The file `DCO` at the package root is that document reproduced **verbatim**. It
 carries no SPDX header and no local edits, because its own terms forbid changing
 it — a header would be a modification. `CONTRIBUTING.md` describes how a
-contributor certifies it; the certification is the `Signed-off-by:` line in each
-commit, not a separate signed instrument.
+contributor certifies it; the certification is the `Signed-off-by:` line on each
+contributed commit, not a separate signed instrument. The convention was adopted
+with this release, so the maintainers' own history predates it and does not
+carry the trailer.
 
 ## Research sources and linked content
 

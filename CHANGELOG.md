@@ -3,9 +3,9 @@
 Notable changes to the Venture Capital Lead Research System, newest first. The
 format follows [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/)
 loosely — grouped entries under a dated version heading — with one deliberate
-omission: this file carries no compare-link footer. The repository has no remote
-yet, so every such link would resolve to nothing, and a dead link is a defect
-rather than a convenience. The links go in when there is something to point at.
+omission: this file carries no compare-link footer. 3.0.0 is the first published
+entry, so there is no predecessor to compare it against. The footer goes in with
+the second release, when a comparison exists to point at.
 
 ## Versioning, `VERSION`, and the tag
 
@@ -27,9 +27,9 @@ defects that would have broken every update on the documented host. Each move
 rewrites the tag annotation with that tag's own measured gate figures, so
 `git cat-file -p refs/tags/v3.0.0` tells you what the commit it points at
 actually passed. [docs/MAINTAINING.md](docs/MAINTAINING.md) holds the rule and
-the exact commands. Retagging in place is safe only while the repository has no
-remote; adding one makes a moved tag require an explicit force-push and a note
-to anyone who has already fetched it.
+the exact commands. The repository now has a remote, so each move of the tag is
+a deliberate force-push plus a note to anyone who may already have fetched it —
+plan that as part of the cycle rather than discovering it afterwards.
 
 ## [3.0.0] — 2026-08-20
 
@@ -130,7 +130,7 @@ Measured on the tree this release was cut from:
 | `verify_offline.py` | PASS — 355 tests, 30/30 base checks (31 with `--with-schema-reference`) |
 | `run_g4.py` (disposable PostgreSQL 17) | PASS — 98 tests across 8 checks, migrations applied twice |
 | `run_g6_image.py` | PASS — 8/8 against `vc-lead-research:3.0.0` |
-| `verify_release.py --pristine` | PASS — 341 declared, 341 verified |
+| `verify_release.py --pristine` | PASS — 342 declared, 342 verified |
 | `ruff` 0.12.3 / `ty` 0.0.65 | exit 0 |
 
 The live deployment gate (`run_g8_deployment.py`) was **not re-run for the
