@@ -63,7 +63,9 @@ uses [OpenClaw](https://github.com/openclaw/openclaw) `2026.7.1` as the agent
 harness, PostgreSQL `17.10-bookworm` as the authoritative venture-data store,
 and [Lobster](https://github.com/openclaw/lobster) `2026.6.11` for eighteen
 fixed operational workflows. It runs entirely on the operator's own host and
-nothing phones home. The downloaded package is deliberately unconfigured: it
+the gateway's only unsolicited outbound call is a startup version check that
+downloads and installs nothing, documented in `docs/RUNBOOK.md` §2 and safe to
+deny. The downloaded package is deliberately unconfigured: it
 holds no credentials, selects no channel, and cannot reach a model until an
 operator supplies a reviewed configuration — a safe distribution default, not a
 runtime limitation.

@@ -15,7 +15,10 @@ customizable fixed-denominator rubric, and writes internal memos from a frozen
 snapshot of what was actually supported. It runs on the operator's own host,
 against the operator's own PostgreSQL database, under a set of authority
 boundaries that keep a model lane from approving its own work. There is no
-hosted service and nothing phones home.
+hosted service. The one unsolicited outbound call is the gateway's own update
+check at startup, which is a version comparison that downloads and installs
+nothing; `docs/RUNBOOK.md` §2 documents it, says not to act on it, and notes that
+denying it in an egress policy is a supported configuration.
 
 Two documents matter before you change anything:
 

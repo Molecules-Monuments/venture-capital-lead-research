@@ -131,7 +131,14 @@ Package version: `3.0.0`
 | Python in the derived image | Debian Python 3.11 plus a hash-locked dependency graph |
 | Development test baseline | Hash-locked `requirements-dev.lock` |
 
-The release is production-capable within the documented application scope.
+The release is production-capable within the documented application scope, and
+that scope has a boundary worth reading before you rely on it:
+[docs/PRODUCTION_READINESS.md](docs/PRODUCTION_READINESS.md) records the
+deterministic package and deployment path as VERIFIED while **behavioral
+certification remains BLOCKED** — the agent layer has been exercised against a
+real model for resolution, provider reach, tool-call payloads and the
+timeout/context/watchdog bounds, but decision quality is not certified until
+your own commissioning says so.
 The package verifies source contracts, database behavior, hostile-document
 handling, fixed workflows, recovery logic, and the exact built image. A real
 deployment becomes ready when its operator also completes these environment-
