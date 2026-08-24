@@ -105,8 +105,9 @@ version 2.1, available at
 The Contributor Covenant is licensed under
 [Creative Commons Attribution 4.0 International (CC BY 4.0)][CC BY 4.0], which
 permits adaptation provided the change is stated. **This text has been modified
-for the Venture Capital Lead Research System.** Two changes were made and no
-others: the "Enforcement" section was rewritten so that it describes how this
+for the Venture Capital Lead Research System.** Two changes were made to the
+body of the document and no others, and the upstream attribution sentence was
+replaced by this section: the "Enforcement" section was rewritten so that it describes how this
 project actually handles reports — two maintainers, best effort, and no
 service-level agreement — instead of the upstream promise that complaints are
 reviewed and investigated "promptly and fairly"; and the upstream

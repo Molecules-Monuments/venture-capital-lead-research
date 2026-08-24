@@ -114,8 +114,8 @@
     {
       "executable": false,
       "path": "CODE_OF_CONDUCT.md",
-      "sha256": "73a3bfb15f9653e5c467dc3cfe4d42910eac546eda811b5ce1d9ff614b484526",
-      "size": 7988
+      "sha256": "865c68d480468565b0b639d0546b8c93fbc675ffb4a6816c750f9c4caf2f828b",
+      "size": 8084
     },
     {
       "executable": false,
@@ -162,8 +162,8 @@
     {
       "executable": false,
       "path": "SECURITY.md",
-      "sha256": "fdc3da624fecd77d70da4190d3fe3e0af0367669fab08864c273fdacc498c74f",
-      "size": 6475
+      "sha256": "0316029199725588165cc462a6012cfe94838ff14fb765bb18468559f57e453a",
+      "size": 6599
     },
     {
       "executable": false,
