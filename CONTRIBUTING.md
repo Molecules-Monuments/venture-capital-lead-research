@@ -164,7 +164,10 @@ will report `FAIL` on a perfectly good package.
 ### Why `--no-cache` and `-B`
 
 `verify_release.py --pristine` compares the tree against `manifest.json` and
-treats *any* undeclared file inside the package as a tampering signal. That is
+treats an undeclared file inside the package as a tampering signal. A few
+operator-owned roots are deliberately tolerated — the runtime config and secrets
+it renders, and the inbox and quarantine directories — because an operator is
+invited to put files there; everything else is reported. That is
 its job — it is the operator-facing check that the copy about to be deployed is
 the copy that was released. A `.ruff_cache/` directory left behind by `ruff`, or
 a `__pycache__/` left behind by an ordinary `python3` invocation, is precisely
@@ -193,17 +196,24 @@ Five further gates need infrastructure:
   vc-lead-research:3.0.0`), probes a built Docker image with the network
   disabled and verifies exact pinned versions.
 - **G8**, the deployment gate (`scripts/run_g8_deployment.py`, reached with
-  `verify_offline.py --with-deployment`), exercises a live, commissioned
-  deployment.
+  `verify_offline.py --with-deployment`), builds a throwaway deployment end to
+  end and tears it down. It **refuses to run over an existing one** — `.env` and
+  `config/customization-profile.json` must be absent and the compose project must
+  own no containers or volumes — so it can never disturb a real installation.
 - **The retrieval-scale gate** (`scripts/run_retrieval_scale.py`, reached with
   `verify_offline.py --with-g4-database --with-retrieval-scale`), which needs the
   same disposable PostgreSQL 17 cluster as G4.
 - **The schema-reference check** (`verify_offline.py --with-schema-reference`),
-  which regenerates `docs/SCHEMA.sql` from the migrations and needs PostgreSQL 17
-  client tools on `PATH`. Run this one if you touched `migrations/`.
+  which *verifies* that `docs/SCHEMA.sql` still matches what the migrations
+  produce. It does not regenerate it: if you touched `migrations/`, regenerate
+  first with `python3 -B scripts/generate_schema_reference.py`, then run the
+  check. Both need PostgreSQL 17 `initdb`, `pg_ctl`, `psql` and `pg_dump` on `PATH` — it builds a
+throwaway cluster, so this is the **server** package (`postgresql-17` on
+Debian/Ubuntu, with `/usr/lib/postgresql/17/bin` on `PATH`; `postgresql@17` via
+Homebrew), not `postgresql-client-17` alone.
 
-They need PostgreSQL 17 tools, Docker, and a real deployment, and no outside
-contributor is expected to have all of them. Run whichever ones you
+They need PostgreSQL, Docker, and a host willing to carry a throwaway
+deployment, and no outside contributor is expected to have all of them. Run whichever ones you
 have if your change touches `migrations/`, `Dockerfile.openclaw`,
 `docker-compose.yml`, or the lifecycle scripts — and either way, say in the pull
 request which gates you ran and which you could not. Continuous integration runs
@@ -325,16 +335,29 @@ a change of yours, you will be told before the work is merged, not after.
 
 ## Licence headers
 
-Every source, script, migration, configuration and workflow file in this
-repository starts with an SPDX identifier in that file's comment syntax:
+Every `.py`, `.sh`, `.sql`, `.yml` and `.js` file in this repository starts with
+an SPDX identifier in that file's comment syntax, as do `Dockerfile.openclaw`
+and the executable wrappers under `workspaces/vc-chief/vc/bin/`:
 
 ```
 # SPDX-License-Identifier: Apache-2.0
 ```
 
-New files you add should carry it too. There are two deliberate exceptions:
-`DCO`, whose own terms forbid modifying the document, and generated files that
-inherit the header from their generator rather than being edited directly.
+New files in those categories should carry it too. Everything else does not, and
+should not be given one:
+
+- `DCO`, whose own terms forbid modifying the document.
+- Generated files, which take whatever their generator writes — `docs/SCHEMA.sql`
+  gets its line from `scripts/generate_schema_reference.py`, while
+  `requirements.lock` and `requirements-dev.lock` get none from `pip-compile`.
+- Data and configuration files: every `.json` file, the `config/*.json5`
+  channel overlays, `ruff.toml`, `.env.example`, `.gitignore`, `.gitattributes`,
+  `.dockerignore` and `requirements*.in`. JSON has no comment syntax at all, and
+  the `.json5` overlays are read by a strict parser that rejects comments — a
+  header there would fail the channel render rather than license anything.
+- Documentation, which carries its licence through [LICENSE](LICENSE) and
+  [NOTICE](NOTICE) rather than per-file headers.
+
 Nothing enforces this automatically — it is checked in review.
 
 ## Code of conduct

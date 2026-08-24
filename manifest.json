@@ -66,8 +66,8 @@
     {
       "executable": false,
       "path": ".github/PULL_REQUEST_TEMPLATE.md",
-      "sha256": "be14914fc7564178fd9da54886d87f96e6450b029780b8391b74189d015159eb",
-      "size": 3313
+      "sha256": "09af0cac1e214080e0f1d3451c47ad6162f9d900524d585545c6736c55f64f5e",
+      "size": 3392
     },
     {
       "executable": false,
@@ -108,26 +108,26 @@
     {
       "executable": false,
       "path": "CHANGELOG.md",
-      "sha256": "2bd1cef64ef66c66079dc1f8a91358fc77878c7f0321e6380bb0d4cf5274b544",
+      "sha256": "55a71cb9d8851d03b0bc1fe6e11eb83dfbcbca55fa265b81dbba59a6b0ba5ecd",
       "size": 11786
     },
     {
       "executable": false,
       "path": "CODE_OF_CONDUCT.md",
-      "sha256": "865c68d480468565b0b639d0546b8c93fbc675ffb4a6816c750f9c4caf2f828b",
-      "size": 8084
+      "sha256": "a61790f77735f86a48398af5cdbfa08b7fadc251ec20a56cad7df5ef4f05c57b",
+      "size": 8103
     },
     {
       "executable": false,
       "path": "CONTRIBUTING.md",
-      "sha256": "b7cf1c466efa76a718b193ff5d998e787a16c1fafc8c9ee30da82ed75c8bcaa5",
-      "size": 18475
+      "sha256": "7cfab3de35a1cb885d7302a57c9fefb7560867d8330335ccf77e7c5b956cd64a",
+      "size": 20089
     },
     {
       "executable": false,
       "path": "CUSTOMIZATION.md",
-      "sha256": "16c4696e2e6110172750969861b4aa365a58196fcb05ef74b4ed7affc14778d0",
-      "size": 35343
+      "sha256": "8414d340533e94b5b4de395e334ac00e1f6af2462f9bca3e88f9108949661044",
+      "size": 35527
     },
     {
       "executable": false,
@@ -156,8 +156,8 @@
     {
       "executable": false,
       "path": "README.md",
-      "sha256": "620c373369e644d2cccafd4dd7cac30fb4417ab5d7dd2fc44fab93ab2030cb1a",
-      "size": 98851
+      "sha256": "400fd9d8aaab4d6d80fdbd7b3174c50a794da479c14a63fb6333424c767889da",
+      "size": 99101
     },
     {
       "executable": false,
@@ -792,8 +792,8 @@
     {
       "executable": false,
       "path": "tests/g4/README.md",
-      "sha256": "80406d41241aa7226350e1806b350cc33ccc08f4e54788a057f57f8ed21ee284",
-      "size": 1761
+      "sha256": "b3cac2d109da1ca2da62b4b58cefc12d4f2369a3778e247021e816e59752a5f1",
+      "size": 1853
     },
     {
       "executable": false,
