@@ -64,8 +64,9 @@ enumeration, or a command: those are bound to the tree by tests, and the
 binding is the point.
 -->
 
-## Contributor licence agreement
+## Developer Certificate of Origin
 
-- [ ] I have read the contributor licence agreement section of
-      `CONTRIBUTING.md`, and I have signed and returned the agreement, or will
-      do so before this pull request is merged.
+- [ ] Every commit in this pull request carries a `Signed-off-by:` line
+      matching its author (`git commit -s`), certifying the
+      [Developer Certificate of Origin 1.1](../DCO) as described in
+      `CONTRIBUTING.md`.

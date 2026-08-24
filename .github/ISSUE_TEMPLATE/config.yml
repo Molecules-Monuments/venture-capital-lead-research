@@ -13,11 +13,10 @@ contact_links:
       the report, the fix, and the advisory together and does not disclose the
       issue before a patch exists. Read SECURITY.md first — it states what is
       in scope, what is deliberately out of scope, and what to include.
-  - name: Contributing, and the contributor licence agreement
+  - name: Contributing, and the sign-off every commit needs
     url: https://github.com/Max-Muc/venture-capital-lead-research/blob/main/CONTRIBUTING.md
     about: >-
       How to propose a change, which gates a pull request has to pass on your
-      own machine before it is opened, and the contributor licence agreement
-      that every accepted contribution is made under. Read this before opening
-      a pull request, and ask contribution questions here rather than as an
-      issue.
+      own machine before it is opened, and the Developer Certificate of Origin
+      sign-off that every commit carries. Read this before opening a pull
+      request, and ask contribution questions here rather than as an issue.

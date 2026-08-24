@@ -19,7 +19,7 @@
     "config/runtime/secrets/vcops_approval_pepper",
     "deployment-lock.json"
   ],
-  "file_count": 341,
+  "file_count": 342,
   "files": [
     {
       "executable": false,
@@ -48,8 +48,8 @@
     {
       "executable": false,
       "path": ".github/ISSUE_TEMPLATE/config.yml",
-      "sha256": "8c2492e1d80ca107b07621bd37dd804b88aaf98f2e72c4a121d904a4c720b07f",
-      "size": 1396
+      "sha256": "6393a1e5ade4900ffa44c1252d32e7388f5fa0fc8b754a7c6c87fe3b89991118",
+      "size": 1378
     },
     {
       "executable": false,
@@ -66,8 +66,8 @@
     {
       "executable": false,
       "path": ".github/PULL_REQUEST_TEMPLATE.md",
-      "sha256": "edf4065fa70ed8f5102b7765a1d11da9fb301bcc35dde86af84c25124e853050",
-      "size": 3126
+      "sha256": "9981dd6b525914aea6998bb46d445679997ef909266d15149e9dd2efa1c44578",
+      "size": 3163
     },
     {
       "executable": false,
@@ -120,14 +120,20 @@
     {
       "executable": false,
       "path": "CONTRIBUTING.md",
-      "sha256": "c0d9422b027a1890c3a529b8667d03acaca7b4bfe7db8beeebb77a0e1e53a01f",
-      "size": 16188
+      "sha256": "8484ec5509152cd9ae64a494caff9145e537ce639122729c6adc92948fca61bf",
+      "size": 16601
     },
     {
       "executable": false,
       "path": "CUSTOMIZATION.md",
       "sha256": "16c4696e2e6110172750969861b4aa365a58196fcb05ef74b4ed7affc14778d0",
       "size": 35343
+    },
+    {
+      "executable": false,
+      "path": "DCO",
+      "sha256": "f7ac75b443f4ca16b503241344b41aeff9503b0c30bedc2b119551d83cb0fa90",
+      "size": 1366
     },
     {
       "executable": false,
@@ -150,8 +156,8 @@
     {
       "executable": false,
       "path": "README.md",
-      "sha256": "c8ac19b9a6c1f1ec2041d932482a8b9e879fc0bd424409950bed9e6bac504072",
-      "size": 98096
+      "sha256": "5df4ddce784618c4bc76ae9017ae0cb8264ff6ed435b0b0384d013cfd5863ffb",
+      "size": 98198
     },
     {
       "executable": false,
@@ -162,8 +168,8 @@
     {
       "executable": false,
       "path": "THIRD_PARTY_NOTICES.md",
-      "sha256": "17446a6432cf223ca1ec8849e93248e6146c3d1241266a4d97576a95e82f0fad",
-      "size": 11211
+      "sha256": "4db0b3557f8b94fa0fb68d96a6d6e63d7361bd9c91384dcf208fc5a04f5c3479",
+      "size": 11850
     },
     {
       "executable": false,
