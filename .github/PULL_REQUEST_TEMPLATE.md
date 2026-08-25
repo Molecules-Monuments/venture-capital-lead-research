@@ -72,5 +72,5 @@ binding is the point.
 
 - [ ] Every commit in this pull request carries a `Signed-off-by:` line
       matching its author (`git commit -s`), certifying the
-      [Developer Certificate of Origin 1.1](../DCO) as described in
+      [Developer Certificate of Origin 1.1](https://github.com/Molecules-Monuments/venture-capital-lead-research/blob/main/DCO) as described in
       `CONTRIBUTING.md`.

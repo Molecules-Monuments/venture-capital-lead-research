@@ -156,11 +156,12 @@ this entry.
   Version 2.0**, Copyright 2026 Molecules & Monuments GmbH. Apache-2.0's
   express patent grant is worth more to a system assembled from other people's
   harnesses, plugins, and runtime images than the shorter licence's brevity. All
-  113 `SPDX-License-Identifier` headers moved with it, as did the header
-  constant that generates `docs/SCHEMA.sql`. `THIRD_PARTY_NOTICES.md` now tells
-  a redistributor of the derived image to add `LICENSE` and `NOTICE` to the
-  artifact they ship, because `.dockerignore` admits only build inputs and the
-  image carries neither.
+  `SPDX-License-Identifier` headers moved with it — 112 in the published tree,
+  every file the convention in `CONTRIBUTING.md` covers and no other — as did
+  the header constant that generates `docs/SCHEMA.sql`.
+  `THIRD_PARTY_NOTICES.md` now tells a redistributor of the derived image to
+  add `LICENSE` and `NOTICE` to the artifact they ship, because `.dockerignore`
+  admits only build inputs and the image carries neither.
 - **Renamed** to the Venture Capital Lead Research System 3.0. The published
   name drops the harness it happens to be built on: that name belongs to the
   upstream dependency, not to this system. The project-derived identifier is now

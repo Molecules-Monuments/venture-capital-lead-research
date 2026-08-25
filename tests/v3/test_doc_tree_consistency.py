@@ -564,7 +564,7 @@ class RuffRuleInventoryTests(unittest.TestCase):
     them from ruff instead of trusting the sentence.
     """
 
-    def test_claude_md_rule_and_family_counts_match_ruff(self):
+    def test_maintaining_rule_and_family_counts_match_ruff(self):
         import subprocess
 
         # Resolve ruff exactly the way the gate's own `ruff` step does, rather

@@ -21,6 +21,30 @@ following principal projects:
 - Copyright notice in the reviewed upstream license: Copyright (c) 2026
   OpenClaw Foundation
 - License text: https://github.com/openclaw/openclaw/blob/v2026.7.1/LICENSE
+- Upstream's own third-party notices:
+  https://github.com/openclaw/openclaw/blob/v2026.7.1/THIRD_PARTY_NOTICES.md
+
+The reviewed upstream `LICENSE` does not end at the MIT warranty clause. Its
+last line — "Third-party notices for incorporated or adapted code are recorded
+in THIRD_PARTY_NOTICES.md." — is why GitHub's classifier reports the upstream
+repository as `NOASSERTION` rather than MIT, and it carries a notice this
+document would otherwise omit: portions of OpenClaw are adapted from **Pi /
+pi-mono**, and OpenClaw depends on `@earendil-works/pi-tui` for terminal UI
+rendering. Both are MIT, **Copyright (c) 2025 Mario Zechner**
+(https://github.com/earendil-works/pi-mono). MIT obliges a redistributor to
+carry that notice alongside the OpenClaw Foundation's.
+
+Do not expect to rediscover it from the built artifact. Measured in
+`vc-lead-research:3.0.0`: `@earendil-works/pi-tui` 0.80.3 is present under
+`/app/node_modules/`, ships no licence file of its own, and carries in its
+`package.json` only `"license": "MIT"` and `"author": "Mario Zechner"` — the
+holder's name, but not the copyright notice MIT requires be reproduced — while
+upstream's `LICENSE` and `THIRD_PARTY_NOTICES.md` are not in the image at all.
+A software bill of materials generated from the image therefore yields
+`pi-tui`, MIT, and no notice to reproduce, and cannot see the adapted-from-Pi
+source portion at all. The upstream file linked above is the only route to
+that obligation. Lobster is not affected: its `LICENSE` is plain MIT and that
+repository publishes no third-party notices file.
 
 The derived Docker image uses the pinned official OpenClaw image recorded in
 `manifest.json`, `.env.example`, and `Dockerfile.openclaw`. OpenClaw names and

@@ -66,14 +66,14 @@
     {
       "executable": false,
       "path": ".github/PULL_REQUEST_TEMPLATE.md",
-      "sha256": "09af0cac1e214080e0f1d3451c47ad6162f9d900524d585545c6736c55f64f5e",
-      "size": 3392
+      "sha256": "7acb1a095ed7db86bd93c785368e486c3e312f3dc5697a23b275b2c5151334cb",
+      "size": 3468
     },
     {
       "executable": false,
       "path": ".github/workflows/offline-gates.yml",
-      "sha256": "bef3861d2fb90c321d11f48e7b5d55cd26efcdbccb1bfb30f7b0370c1d06fac6",
-      "size": 4199
+      "sha256": "a603499ff110d9196400d165874bab292d14e4c6699c2564363924c74511440a",
+      "size": 4285
     },
     {
       "executable": false,
@@ -108,8 +108,8 @@
     {
       "executable": false,
       "path": "CHANGELOG.md",
-      "sha256": "a14e35d82114720084441fd4f94cf2fece400d8f34b8d7ce20e4887e0ab8e346",
-      "size": 11928
+      "sha256": "394fbd364346b4958563bdf092378b70fbd9c00176e5c651079ef9b33738c614",
+      "size": 12027
     },
     {
       "executable": false,
@@ -162,14 +162,14 @@
     {
       "executable": false,
       "path": "SECURITY.md",
-      "sha256": "0316029199725588165cc462a6012cfe94838ff14fb765bb18468559f57e453a",
-      "size": 6599
+      "sha256": "1743e36b26bd2041e5976e226fbb65f024e9b8e09a2e48d5463f6fc47ac3f494",
+      "size": 6554
     },
     {
       "executable": false,
       "path": "THIRD_PARTY_NOTICES.md",
-      "sha256": "4a7766212363642413b92d9f128884d8e8c8b2fcadd25ece0e11d0dbc97d2b0d",
-      "size": 12121
+      "sha256": "a7f09148a1b185e809bd8c3c4b63e9b2487fc9115bcec7af21182509d73d1b34",
+      "size": 13704
     },
     {
       "executable": false,
@@ -924,8 +924,8 @@
     {
       "executable": false,
       "path": "tests/v3/test_doc_tree_consistency.py",
-      "sha256": "9b3717130deafd9c9ca48bec12cd620d57a5be122ffbba5fc780ab1d959dd6d8",
-      "size": 63724
+      "sha256": "ab1e2b2b031b17aee6e9a7d3855b0c353ce152ec19549e834a3e6f4ab46c0aa9",
+      "size": 63726
     },
     {
       "executable": false,
