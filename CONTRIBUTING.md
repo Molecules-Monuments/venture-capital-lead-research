@@ -227,10 +227,11 @@ infrastructure gates before merging anything that depends on them.
 
 The existing history is the convention. `git log --format='%s' -40` in a clone
 shows it directly. Match what you see there — with one exception, noted here so
-it does not surprise you: that history carries no `Signed-off-by` trailer. The
-Developer Certificate of Origin was adopted with the 3.0.0 release and applies
-to contributions from then on, so copy the *style* of those messages but add the
-sign-off described under "Sign off your commits":
+it does not surprise you: most of that history carries no `Signed-off-by`
+trailer. The Developer Certificate of Origin was adopted during the 3.0.0
+release, so only the commits from its adoption onward carry one, and it applies
+to every contribution from then on. Copy the *style* of those messages and add
+the sign-off described under "Sign off your commits":
 
 - A **summary line in the present tense**, imperative or declarative, saying
   what the change does — "Make the release gate runnable on the platform it
@@ -338,9 +339,10 @@ a change of yours, you will be told before the work is merged, not after.
 
 ## Licence headers
 
-Every `.py`, `.sh`, `.sql`, `.yml` and `.js` file in this repository starts with
-an SPDX identifier in that file's comment syntax, as do `Dockerfile.openclaw`
-and the executable wrappers under `workspaces/vc-chief/vc/bin/`:
+Every `.py`, `.sh`, `.sql`, `.yml`, `.js` and `.lobster` file in this repository
+starts with an SPDX identifier in that file's comment syntax, as do
+`Dockerfile.openclaw` and the executable wrappers under
+`workspaces/vc-chief/vc/bin/`:
 
 ```
 # SPDX-License-Identifier: Apache-2.0

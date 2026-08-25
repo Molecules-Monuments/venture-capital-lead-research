@@ -111,6 +111,23 @@ to enforce:
 - Denial of service from an operator-controlled workload (unbounded document
   volume, an over-permissive cron cadence).
 
+## Known advisories the pins cannot clear
+
+The derived image installs `runtime-packages/package-lock.json` with `npm ci`,
+so every advisory against that graph ships in the image until the pin moves.
+Most can be moved here and are. Some cannot: the `@openclaw/*` channel plugins
+ship their HTTP stack as **bundled dependencies** inside their own published
+tarballs, which an npm `overrides` entry does not reach. For those, the pin
+moves only when upstream publishes a release — and this package deliberately
+tracks the latest *stable* upstream release, not a beta.
+
+Where that applies, the exposure is scoped to the channels an operator actually
+enables: a plugin that is not activated is not in the request path. Check the
+current position with the repository's dependency graph and with `npm audit`
+against `runtime-packages/`, rather than against a list here that would go
+stale. `docs/MAINTAINING.md` §"Updating a pinned dependency" records what a
+maintainer must do to move one.
+
 ## Hardening the deployment
 
 `docs/RUNBOOK.md` §5 (commissioning checklist) and §9 (incident fail-closed

@@ -49,7 +49,7 @@ archive (excluded from the published package).
 Each figure in the table below is the measurement of a **2026-08-20**
 re-execution against this tree — except where the cell quoting it names an
 earlier run — and against the derived image rebuilt from it
-with `docker build --no-cache --pull` on 2026-08-20, after that day's edits to the image-baked `workspaces/` files, `Dockerfile.openclaw` itself, and the host-side recovery-lifecycle scripts — not a
+with `docker build --no-cache --pull` on 2026-08-25, after that day's edits to the image-baked `workspaces/` files, `Dockerfile.openclaw` itself, and the host-side recovery-lifecycle scripts — not a
 figure carried forward from the 2026-07-23 session. That re-execution was necessary rather than ceremonial: the
 migrations, `vcops.py`, the eighteen `.lobster` workflows and
 `Dockerfile.openclaw` — the file that defines the very image G6 and G8 build —

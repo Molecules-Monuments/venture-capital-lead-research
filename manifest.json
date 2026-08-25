@@ -108,8 +108,8 @@
     {
       "executable": false,
       "path": "CHANGELOG.md",
-      "sha256": "394fbd364346b4958563bdf092378b70fbd9c00176e5c651079ef9b33738c614",
-      "size": 12027
+      "sha256": "77a6b0ddbeeaffab9e35553e3101b90495d1ddbd5402e117ef8a4132359ba6a7",
+      "size": 12120
     },
     {
       "executable": false,
@@ -120,8 +120,8 @@
     {
       "executable": false,
       "path": "CONTRIBUTING.md",
-      "sha256": "89a614d09564afc17a0ca20c2c2d1221c46f926af190983ff255336892dc0b8d",
-      "size": 20347
+      "sha256": "0b775253279f19593645afdf4512101a7ede7914aa747b3368415d184af4f90f",
+      "size": 20431
     },
     {
       "executable": false,
@@ -138,7 +138,7 @@
     {
       "executable": false,
       "path": "Dockerfile.openclaw",
-      "sha256": "07473ed940a65cecde58734898e55548e68ff65f3efea6c12fafa2678386a2ff",
+      "sha256": "3d5a27b159ebcf7ed110150c232ca499812d4eac305e1307d5921f326a7d3662",
       "size": 14128
     },
     {
@@ -162,8 +162,8 @@
     {
       "executable": false,
       "path": "SECURITY.md",
-      "sha256": "1743e36b26bd2041e5976e226fbb65f024e9b8e09a2e48d5463f6fc47ac3f494",
-      "size": 6554
+      "sha256": "60e741fa78687bfdff5539395a250b803213bb677bf30d59240e45ff02cb51a9",
+      "size": 7542
     },
     {
       "executable": false,
@@ -258,8 +258,8 @@
     {
       "executable": false,
       "path": "docs/MAINTAINING.md",
-      "sha256": "d89c403feb147c919e789fde51b65349e1adb14d1e443e4cd1854cef250fcdfb",
-      "size": 14265
+      "sha256": "44cb5d2bd25c7e8032c8bebb2a80fcdf3b1cfb0954bc3e0d31ffa23622c407a0",
+      "size": 16430
     },
     {
       "executable": false,
@@ -276,14 +276,14 @@
     {
       "executable": false,
       "path": "docs/PRODUCTION_READINESS.md",
-      "sha256": "c181c971fbd240a8a114a9d675940bc00dace18f3b661c5f03ee3dbc8c0e0d5a",
+      "sha256": "e98d6bdd29b5d63fb071955f66d08f7a06305eeb0b9936be777106c683f12fd3",
       "size": 15483
     },
     {
       "executable": false,
       "path": "docs/RUNBOOK.md",
-      "sha256": "6f0298cb8df193ae2d7bd6752fb434b2d9a78c3b15455253f65eaec3e6572524",
-      "size": 102557
+      "sha256": "fc056064ed63152b50b27d304ef68a825a90126d62eb934835b8866ca4e5386e",
+      "size": 102671
     },
     {
       "executable": false,
@@ -300,7 +300,7 @@
     {
       "executable": false,
       "path": "docs/V3_RELEASE_EVIDENCE.md",
-      "sha256": "5c46d7272624ebc058ef962d0d65d6f615078799b294f0e5c681991482b22e4a",
+      "sha256": "b2a71927fbd8c1f02bc8923038b4c1baa0243b27fbf3369d123cfe64711626aa",
       "size": 13865
     },
     {
@@ -312,7 +312,7 @@
     {
       "executable": false,
       "path": "evals/V3_EVAL_RESULTS.md",
-      "sha256": "e5e3dc306d13535da124a80e290ecff5a136d734fda6aa17b16b30c9568f291d",
+      "sha256": "a5dc51bc16ec4cfbfd0ca8c7e702ba246afdf2ab119b94daa2a8911624df6355",
       "size": 11032
     },
     {
@@ -582,7 +582,7 @@
     {
       "executable": false,
       "path": "runtime-packages/package-lock.json",
-      "sha256": "25ded7f84c2ffec5d03aa91055e84f098994e4e0cd1767904b7c2351e2d153fc",
+      "sha256": "54047bf23195ff88a7709893db1383b601dc10bde8dff9fbdf3deb2054064333",
       "size": 154695
     },
     {

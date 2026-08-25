@@ -31,7 +31,7 @@ the exact commands. The repository now has a remote, so each move of the tag is
 a deliberate force-push plus a note to anyone who may already have fetched it —
 plan that as part of the cycle rather than discovering it afterwards.
 
-## [3.0.0] — 2026-08-24
+## [3.0.0] — 2026-08-25
 
 > [!IMPORTANT]
 > **A deployment created from a pre-publication revision cannot be upgraded in
@@ -45,7 +45,9 @@ plan that as part of the cycle rather than discovering it afterwards.
 > the Docker volume names from the Compose project name, so Compose creates
 > empty volumes and leaves the populated ones dangling — silently, because every
 > script addresses its volumes through `docker compose -p`. Recovery points
-> taken earlier fail `restore.sh --validate-lock`. There is no upgrade path
+> taken earlier are refused by `restore.sh`, whose lock validation step runs
+> `record_images.py --validate-lock` against the recovery point. There is no
+> upgrade path
 > across this boundary and none is offered; re-bootstrap from a fresh install
 > and re-load the data by hand. [docs/RUNBOOK.md](docs/RUNBOOK.md) §1 records
 > this in full, including why the change was taken and what remains exempt.

@@ -154,6 +154,37 @@ Both gate steps resolve the checker from the gate's own interpreter before
 falling back to `PATH`, so the pinned versions are what decide the result. If
 either binary is missing, that step fails rather than being skipped.
 
+## Updating a pinned dependency
+
+Every lockfile in this repository is pinned by SHA-256 in `manifest.json`:
+`requirements.lock`, `requirements-dev.lock` and
+`runtime-packages/package-lock.json`. A change to any of them is therefore **two
+edits in one commit** — the bump, and `python3 -B scripts/build_release_manifest.py`
+to re-pin the inventory. A commit carrying only the bump fails the offline gate
+on `release-pristine` and `manifest-current`, which is the contract working: an
+unpinned dependency change is exactly what those checks exist to refuse.
+
+This is why **Dependabot security updates are switched off** while **Dependabot
+alerts are left on**. An automated bump PR can only ever change the lockfile, so
+it cannot pass the required `offline-gates` check and cannot be merged as
+opened. Alerts still surface a pin that picks up an advisory; a maintainer then
+makes the bump and the re-pin together. Do not re-enable automated security
+updates without also giving the bot a way to re-pin, or the Actions tab fills
+with red PRs that no reviewer can make green.
+
+`runtime-packages/` is additionally an image-baked source tree
+(`BAKED_SOURCE_TREES` in `scripts/record_images.py`), so a change there does not
+reach a deployment until the image is rebuilt. A dependency bump in that tree
+carries the same obligations as any other baked-tree change: rebuild with
+`docker build --no-cache --pull`, re-run `scripts/run_g6_image.py`, and move the
+recorded rebuild date with `scripts/set_evidence_execution_date.py` — including
+the two hand-edits that tool names but deliberately does not make.
+
+Not every advisory is fixable here. The `@openclaw/*` channel plugins ship their
+HTTP stack as **bundled dependencies** inside their own tarballs, so an npm
+`overrides` entry does not move them; only an upstream release does. When that
+is the situation, record it rather than leaving the alert unexplained.
+
 ## Auditing this package
 
 Repeated audit passes established which checks keep working and which decay.
@@ -251,9 +282,12 @@ documented host.
 Two conditions on the annotation:
 
 - It must carry **this tag's own measured figures** — offline tests and checks,
-  G4/G6/G8 results, manifest file count — taken from the run that just
-  finished, never copied forward from the previous annotation. Verify each
-  number against the gate output before writing it.
+  manifest file count, and the result of every heavyweight gate (G4/G6/G8) the
+  cycle actually re-ran — taken from the run that just finished, never copied
+  forward from the previous annotation. Verify each number against the gate
+  output before writing it. A cycle that touches no input to one of those
+  gates does not re-run it; say so by name and restate no figure for it, which
+  is the only reading that does not force a copied-forward number.
 - It must say what moved and why, so a reader can tell a re-tag of the same
   release from a new release.
 
