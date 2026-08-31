@@ -50,6 +50,11 @@ tests pass (see the banner above):
     exec openclaw-gateway openclaw sessions cleanup --all-agents
   ```
 
+  **That command provably does not touch archived transcripts** (measured: a
+  planted archive survived `sessions cleanup --enforce`), so the weekly list
+  needs an archive sweep of its own alongside it. Until one is written into
+  this procedure, archived transcript bytes accumulate indefinitely.
+
   `--all-agents` is load-bearing: without it the command maintains only the
   configured default agent's store, and the other agents' transcripts age past
   the configured period unnoticed. Run the `--dry-run` form first — it prints
@@ -207,12 +212,34 @@ second gap list with a test behind it:
 - **The harness retention keys are eight, not four.** `session.maintenance`
   accepts `mode`, `pruneAfter`, `archiveDashboardAfter`, `maxEntries`,
   `preserveRecent`, `resetArchiveRetention`, `maxDiskBytes` and
-  `highWaterBytes`. Only the first, second and fourth are set in
-  `config/openclaw.json`. `resetArchiveRetention` and `maxDiskBytes` matter on
-  the `2026.8.1` base in a way they did not before: `resetArchiveRetention`
-  stopped inheriting `pruneAfter` and now keeps reset archives until the disk
-  budget evicts them, and that eviction lane runs behind `cron.enabled`, which
-  is off here. Unset means "kept", not "pruned with everything else".
+  `highWaterBytes`. Four are set in `config/openclaw.json`: `mode`,
+  `pruneAfter`, `maxEntries` and — new on the `2026.8.1` base —
+  `resetArchiveRetention`. Unset means "kept", not "pruned with everything
+  else": `resetArchiveRetention` stopped inheriting `pruneAfter` at `2026.8.1`.
+
+  **The `resetArchiveRetention` pin is inert as this release ships, and it is
+  kept deliberately.** Measured both directions on `vc-lead-research:3.0.1`:
+  `cleanupArchivedTranscripts` reaches exactly one call site, `sweepCronRunSessions`,
+  whose only caller is the cron timer-tick batch, gated on `cron.enabled !== false`
+  — and `cron.enabled` is `false` here. With cron off, retention `1s` and a
+  planted eight-month-old archive, nothing was removed by `sessions cleanup
+  --enforce`, by a real `sessions delete`, by a further agent turn, by
+  `openclaw doctor`, or by a cold restart. **Archived transcript bytes and their
+  `session_transcript_archives` rows are therefore retained until an operator
+  removes them**, so the 30-day figure in this document is a policy statement
+  with a manual procedure behind it, not something the harness enforces.
+  Enabling cron would not make the key mean what its name says: with cron on,
+  the reaper removed the `*.deleted.*` archives in one pass and left the
+  `*.reset.*` archive untouched, because on the SQLite store every archive plan
+  is written with reason `deleted` and the reaper passes only that rule. The pin
+  stays because it costs nothing and restores the pre-`2026.8.1` meaning of the
+  unset key the day cron is enabled.
+
+  `maxDiskBytes` is deliberately unset. Its eviction lane is **not** cron-gated
+  — it fires from the ordinary session-entry write seam on a 30-minute throttle
+  and from `sessions cleanup`, with defaults of 10 GiB / 8 GiB always resolving
+  — so growth is bounded by that lane rather than by a byte ceiling this package
+  invents.
 - **Derived memory outside any database.** Each workspace can accumulate a
   `MEMORY.md` and, if the memory plugin's dreaming lane is ever enabled, a
   `DREAMS.md`. They are plain files on the state volume, they are captured by

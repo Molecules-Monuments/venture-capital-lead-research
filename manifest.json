@@ -126,8 +126,8 @@
     {
       "executable": false,
       "path": "CUSTOMIZATION.md",
-      "sha256": "7ab4d48a9f30fa34d924112ed4b2b395952770be845c22d7b92917a971ea3658",
-      "size": 37041
+      "sha256": "a9edd4dd4c4f1d086aa74d1c9cc1632aaa3824b47573872fd04e0d96111cef80",
+      "size": 37624
     },
     {
       "executable": false,
@@ -1632,8 +1632,8 @@
     {
       "executable": false,
       "path": "workspaces/vc-chief/vc/data_retention.md",
-      "sha256": "48f3a3e4c8a66ace30a62d439ac0cd7c7d7df608438dbfbaa56e2812066d6ebe",
-      "size": 15044
+      "sha256": "26d6f6f8a2768cf8f04c47903a7d2260b654215fd4a343dd2352a8781f8ed9d9",
+      "size": 16815
     },
     {
       "executable": false,
