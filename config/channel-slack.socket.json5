@@ -26,7 +26,7 @@
       "dangerouslyAllowNameMatching": false,
       "contextVisibility": "allowlist",
       "execApprovals": { "enabled": false },
-      "implicitMentions": { "threadParticipation": false },
+      "implicitMentions": { "replyToBot": false, "quotedBot": false, "threadParticipation": false },
       "streaming": { "mode": "off" },
       "unfurlLinks": false,
       "unfurlMedia": false,

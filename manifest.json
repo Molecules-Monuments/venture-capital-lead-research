@@ -126,8 +126,8 @@
     {
       "executable": false,
       "path": "CUSTOMIZATION.md",
-      "sha256": "a9edd4dd4c4f1d086aa74d1c9cc1632aaa3824b47573872fd04e0d96111cef80",
-      "size": 37624
+      "sha256": "2be9763772c39fef6415f8dd419efd4e52789203f71e2a9b0b6522d0a3417af3",
+      "size": 37794
     },
     {
       "executable": false,
@@ -138,8 +138,8 @@
     {
       "executable": false,
       "path": "Dockerfile.openclaw",
-      "sha256": "6a44a615244ad55700f07ed717dd1b47a7ded6b186d766db0cac3afd91647072",
-      "size": 20178
+      "sha256": "e7eca82032261a7c907396b6be4c6ebe3182bb011a4d4e5f80275ed435544afe",
+      "size": 20197
     },
     {
       "executable": false,
@@ -198,8 +198,8 @@
     {
       "executable": false,
       "path": "config/channel-slack.socket.json5",
-      "sha256": "8808ef0cd919904aaa03cf468c0596b7086100c77eeb764c832e0baf9d5a71fd",
-      "size": 1610
+      "sha256": "780b10e3cb3deffe92a96aaf4b2fd93c3c079dc5a28c9218fe7410a3557f817b",
+      "size": 1651
     },
     {
       "executable": false,
@@ -240,14 +240,14 @@
     {
       "executable": false,
       "path": "docker-compose.yml",
-      "sha256": "a456fa5e60739f42e7fffb09fc7b1b68cc414d7b1983ec29004a2a3e778742e3",
-      "size": 18382
+      "sha256": "ccda2e7b1c46da242a66a71a72dcd64483b0209745809592f29728ddbe4a2ebf",
+      "size": 18823
     },
     {
       "executable": false,
       "path": "docs/CHANNELS.md",
-      "sha256": "777f62fc47a0692cd5c56b5d274804abc1c02da38ae0680c9e12ae94b57229c4",
-      "size": 27869
+      "sha256": "10fdddc0ba2f173c383e509c5be2a87efd80bc8108f0a55e2e83144d77012cb6",
+      "size": 28427
     },
     {
       "executable": false,
@@ -276,8 +276,8 @@
     {
       "executable": false,
       "path": "docs/PRODUCTION_READINESS.md",
-      "sha256": "420e72182a53502dcac52e11ef6a4a3663a27e27447e677a1df62ed1aef026a4",
-      "size": 16122
+      "sha256": "32275c8ef4cdaddffb80819dc53fbdd4a80c1858ec3b952f64ff83fd3d28de90",
+      "size": 16215
     },
     {
       "executable": false,
@@ -300,8 +300,8 @@
     {
       "executable": false,
       "path": "docs/V3_RELEASE_EVIDENCE.md",
-      "sha256": "0054f89f074b811ce2e5161aaea0cad9ba9675af832b00525aeac3f6cfd62996",
-      "size": 13932
+      "sha256": "bfd012bb07ebf0ae4cd24e8d1225dbe6a23bff8c13c4329824394cbc27f47ef3",
+      "size": 13931
     },
     {
       "executable": false,
@@ -312,7 +312,7 @@
     {
       "executable": false,
       "path": "evals/V3_EVAL_RESULTS.md",
-      "sha256": "59de0b7a32a7464d306641d1aebe59a12df882b4f188fe4c4f51a05a0487dd75",
+      "sha256": "b3277e6cb7cb83c7ccf6038fbceabfd1af1e5931f36a6efefc3388935abdf50c",
       "size": 11034
     },
     {
@@ -624,8 +624,8 @@
     {
       "executable": true,
       "path": "scripts/check_env.py",
-      "sha256": "1db917970f3370ae33bf3ddc24c8d9ff607ed2d8a2eab956f706a01adeb106ac",
-      "size": 43193
+      "sha256": "ef2121cde2ff4de3cfebffab529f89fc32306b205e6337740e2f2fab5419db54",
+      "size": 45174
     },
     {
       "executable": true,
@@ -660,8 +660,8 @@
     {
       "executable": true,
       "path": "scripts/render_channel_config.py",
-      "sha256": "4fedd7334c5e3af0e789edb8cf89e60967d7a859b1f72e128e10af8f8ede0618",
-      "size": 30089
+      "sha256": "297b89322a0221753e5eff1faffa5addd155384c3ec2558ff7d624321a71fd89",
+      "size": 31455
     },
     {
       "executable": true,
@@ -966,8 +966,8 @@
     {
       "executable": false,
       "path": "tests/v3/test_runtime_provider_and_context.py",
-      "sha256": "8be21273400bb4dac938c972aa2daa248a6f03615cb0582c3cf813861799d674",
-      "size": 57581
+      "sha256": "2d44a045b50c806afb1891458a7e29ded8767bb9ed2e6d34f40468b9efeb2223",
+      "size": 60327
     },
     {
       "executable": false,

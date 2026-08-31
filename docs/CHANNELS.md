@@ -266,7 +266,16 @@ beyond the Recommended manifest.
 DMs are allowlisted. The selected channel is allowlisted, mention-gated, and
 restricted to the same user list. Bot senders, name matching, native commands,
 channel actions, unfurls, and native exec approvals are disabled. Thread
-replies require an explicit mention. Slack-hosted files are best-effort;
+replies require an explicit mention.
+
+`2026.8.1` replaced `2026.7.1`'s single `requireExplicitMention` with three
+positive flags under `implicitMentions` — `replyToBot`, `quotedBot` and
+`threadParticipation` — and the profile pins **all three** to `false`. Pinning
+only `threadParticipation`, as the first migration of this profile did, left
+`replyToBot` at its upstream default, and a plain reply to one of the bot's own
+messages then activated a turn in a channel this document describes as
+mention-gated. The three-flag pin is what makes CH-05 true; do not drop any of
+them individually. Slack-hosted files are best-effort;
 thread-starter hydration may fail, in which case the user must attach the file
 to the current request.
 

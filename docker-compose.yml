@@ -240,7 +240,10 @@ services:
       # before it has read any config, where 7.1 in the same posture gets past
       # that point (both measured). Sized to hold a copy of state/openclaw.sqlite
       # and charged to mem_limit; the mount is normally empty.
-      - /home/node/.cache:rw,noexec,nosuid,size=256m
+      # uid/gid/mode are load-bearing: this service runs as `node` (uid 1000) and a
+      # tmpfs defaults to root:root 0755, so without them the runtime cannot create
+      # /home/node/.cache/openclaw-1000 and the gateway aborts on start.
+      - /home/node/.cache:rw,noexec,nosuid,size=256m,uid=1000,gid=1000,mode=0700
     networks: [backend, egress]
     extra_hosts: ["host.docker.internal:host-gateway"]
     healthcheck:
@@ -314,7 +317,9 @@ services:
     # with "Unable to create fallback OpenClaw temp dir".
     tmpfs:
       - /tmp:rw,noexec,nosuid,size=64m
-      - /home/node/.cache:rw,noexec,nosuid,size=64m
+      # Same ownership requirement as the gateway: this service also runs as
+      # `node` (uid 1000), and a tmpfs defaults to root:root 0755.
+      - /home/node/.cache:rw,noexec,nosuid,size=64m,uid=1000,gid=1000,mode=0700
     networks: [backend, egress]
     extra_hosts: ["host.docker.internal:host-gateway"]
     security_opt: ["no-new-privileges:true"]

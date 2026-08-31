@@ -413,6 +413,52 @@ class RuntimeProviderTests(unittest.TestCase):
                             "and openKeyedStore then throws for it.",
                         )
 
+    def test_rendered_config_keeps_the_reviewed_posture_pins(self) -> None:
+        # The renderer OWNS the provider/channel/search shape of `models` and
+        # `plugins.entries` and rebuilds both from scratch. Two reviewed posture
+        # pins also live in those subtrees, and a wholesale assignment dropped
+        # them: the gateway reads the RENDERED file, so
+        # `models.catalogRefresh.enabled:false` and
+        # `plugins.entries["memory-core"].config.dreaming.enabled:false` were
+        # absent at runtime while `config/openclaw.json` and every test over it
+        # stayed green. Measured before the fix: the catalogue refresh completed
+        # against catalog.openclaw.ai and a "Memory Dreaming Promotion" cron row
+        # was written for vc-chief.
+        #
+        # This asserts the rendered output, not the source, because that is the
+        # only artifact the gateway ever loads. A source-only assertion cannot
+        # see this class of defect at all.
+        for channel in ("none", "telegram"):
+            with self.subTest(channel=channel):
+                body = replace_line(configured_example(), "PRIMARY_CHANNEL", channel)
+                if channel == "telegram":
+                    for key, value in {
+                        "TELEGRAM_BOT_TOKEN": "123456789:AAHrendertestinerttokenvalue00000000",
+                        "TELEGRAM_ALLOWED_USER_IDS": "123456789",
+                        "TELEGRAM_ALLOWED_GROUP_ID": "-1001234567890",
+                    }.items():
+                        body = replace_line(body, key, value)
+                rendered = self.render(body)
+                models = rendered.get("models") or {}
+                self.assertEqual(
+                    {"enabled": False},
+                    models.get("catalogRefresh"),
+                    "models.catalogRefresh must survive the render; without it the "
+                    "gateway refreshes a remote model catalogue at startup and "
+                    "every six hours, which is unsolicited egress this release "
+                    "states it does not perform",
+                )
+                entries = (rendered.get("plugins") or {}).get("entries") or {}
+                memory_core = entries.get("memory-core") or {}
+                self.assertIs(
+                    False,
+                    ((memory_core.get("config") or {}).get("dreaming") or {}).get("enabled"),
+                    "plugins.entries['memory-core'].config.dreaming.enabled must "
+                    "survive the render; without it memory-core writes a "
+                    "'Memory Dreaming Promotion' cron row at every gateway start, "
+                    "which its reconciler does regardless of cron.enabled",
+                )
+
     def test_rendered_config_disables_the_harness_heartbeat(self) -> None:
         # The harness runs a periodic main-session agent turn independently of
         # cron, and it is ON unless explicitly switched off. In the pinned

@@ -539,6 +539,20 @@ def _valid_custom_base_url(value: str) -> bool:
     )
 
 
+def _parse_docker_bytes(value: str) -> int | None:
+    """Bytes for a Docker byte-size string, or None when it is not one.
+
+    The suffix set matches the validator above: an optional k/m/g/t with an
+    optional trailing b, or a bare b, case-insensitively.
+    """
+    match = re.fullmatch(r"([1-9][0-9]*)([kKmMgGtT])?[bB]?", value)
+    if not match:
+        return None
+    scale = {"k": 1024, "m": 1024**2, "g": 1024**3, "t": 1024**4}
+    suffix = (match.group(2) or "").lower()
+    return int(match.group(1)) * scale.get(suffix, 1)
+
+
 def validate_runtime_selection(values: dict[str, str]) -> list[str]:
     errors: list[str] = []
     mode = values.get("VC_MODEL_PROVIDER", "")
@@ -857,6 +871,28 @@ def main() -> int:
         value = values.get(key, "")
         if value and not re.fullmatch(r"[1-9][0-9]*(?:[kKmMgGtT](?:[bB])?|[bB])?", value):
             errors.append(f"{key} must be a positive Docker byte-size value")
+
+    # The 2026.8.1 state-init lane loads the reviewed exec-approvals policy into
+    # SQLite through Node, which needs materially more memory than the JSON copy
+    # it replaced. Measured on the 2026.8.1 image: 64m and 96m are OOM-killed
+    # with ZERO bytes of output, 128m and 256m succeed. The compose default is
+    # already 256m, but `${OPENCLAW_INIT_MEMORY_LIMIT:-256m}` cannot apply to an
+    # operator whose .env carries the 64m that release 3.0.0's .env.example
+    # shipped -- and the kill lands AFTER migrate.sh has run, so the deployment
+    # is half-updated when it fails. Refuse the value instead.
+    init_memory = values.get("OPENCLAW_INIT_MEMORY_LIMIT", "")
+    if init_memory:
+        parsed_init = _parse_docker_bytes(init_memory)
+        if parsed_init is not None and parsed_init < 128 * 1024 * 1024:
+            errors.append(
+                "OPENCLAW_INIT_MEMORY_LIMIT must be at least 128m: below that the "
+                "state-init lane is OOM-killed with zero bytes of output, and the "
+                "kill lands after migrate.sh has already run, so the deployment is "
+                "half-updated when it fails. Measured on the 2026.8.1 image: 64m "
+                "and 96m are killed, 128m and 256m succeed. Release 3.0.0 shipped "
+                "64m in .env.example, so an upgraded deployment carries it unless "
+                "the value is raised; 256m is the shipped default."
+            )
     for key in (
         "POSTGRES_CPU_LIMIT",
         "OPENCLAW_INIT_CPU_LIMIT",

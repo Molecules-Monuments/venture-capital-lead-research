@@ -52,7 +52,7 @@ Originally executed 2026-07-23; **the complete matrix was last re-executed on
 with `docker build --no-cache --pull` on 2026-08-25, after that day's edits to the image-baked `workspaces/` files, `Dockerfile.openclaw` itself, and the host-side recovery-lifecycle scripts. Every
 count below is that run's measurement, not a carried-forward one.
 
-- 363 offline unittest cases pass, 0 fail, 0 skip; 30/30 offline checks pass.
+- 364 offline unittest cases pass, 0 fail, 0 skip; 30/30 offline checks pass.
 - Disposable PostgreSQL G4 passes **98/98** across seven suites with migrations
   001–018 applied and registered twice, including step-interpreter execution
   of all eighteen real `.lobster` workflows across the three executing G4 suites

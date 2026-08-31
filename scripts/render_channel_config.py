@@ -10,6 +10,7 @@ import os
 import re
 import sys
 import tempfile
+from copy import deepcopy
 from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -198,6 +199,17 @@ def _model_entry(model_id: str, env: dict[str, str], *, native_ollama: bool = Fa
 
 def apply_runtime_selection(config: dict[str, Any], selected_channel: str, env: dict[str, str]) -> None:
     plugins = config.setdefault("plugins", {})
+    # The renderer OWNS the provider/channel/search shape of `models` and
+    # `plugins.entries` and rebuilds both from scratch below. It does not own the
+    # reviewed posture pins that also live there. Capture them first and merge
+    # them back after the rebuild: a wholesale assignment silently dropped
+    # `models.catalogRefresh.enabled:false` and
+    # `plugins.entries["memory-core"].config.dreaming.enabled:false`, so the
+    # gateway read a rendered config with remote catalogue refresh live and a
+    # "Memory Dreaming Promotion" cron row written, while the reviewed source
+    # file and every test over it stayed green.
+    reviewed_models = deepcopy(config.get("models") or {})
+    reviewed_entries = deepcopy((plugins.get("entries") or {}))
     # plugins.allow is an exclusive allowlist and it gates bundled plugins too,
     # so the base image's own Readability extractor has to be admitted by name
     # or tools.web.fetch.readability below is dead config: web_fetch would fall
@@ -356,6 +368,16 @@ def apply_runtime_selection(config: dict[str, Any], selected_channel: str, env: 
     # trusted-context extension under /opt/openclaw-extensions.
     paths = [path for path in paths if not path.startswith("/app/extensions/")]
     plugins["load"] = {"paths": list(dict.fromkeys(paths))}
+    # Reviewed pins the renderer does not own survive its rebuild. `providers`
+    # is renderer-owned (it encodes the selected model mode); everything else in
+    # `models` is reviewed policy. For entries, a reviewed key the renderer never
+    # writes is a posture pin and is preserved as-is.
+    for key, value in reviewed_models.items():
+        if key != "providers" and key not in config["models"]:
+            config["models"][key] = value
+    for plugin_id, value in reviewed_entries.items():
+        if plugin_id not in entries:
+            entries[plugin_id] = value
     plugins["entries"] = entries
 
     # Agents reason in the operator's timezone, not the packaged default. The

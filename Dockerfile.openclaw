@@ -122,7 +122,8 @@ RUN npm ci --prefix /opt/openclaw-runtime \
             && node --input-type=module \
                  -e "await import('openclaw/plugin-sdk/runtime-doctor')" ) \
        && ( cd "$ext" \
-            && node --input-type=module -e "import {readFileSync} from 'node:fs'; const pkg = JSON.parse(readFileSync('package.json', 'utf8')); const missing = []; for (const dep of Object.keys(pkg.dependencies || {})) { try { await import(dep); } catch (error) { if (error.code === 'ERR_MODULE_NOT_FOUND') missing.push(dep); } } if (missing.length) { console.error('ERROR: ' + pkg.name + ' cannot resolve its declared dependencies after the move: ' + missing.join(', ')); process.exit(1); }" ); \
+            && node --input-type=module -e "import {readFileSync} from 'node:fs'; const pkg = JSON.parse(readFileSync('package.json', 'utf8')); const missing = []; for (const dep of Object.keys(pkg.dependencies || {})) { try { await import(dep); } catch (error) { if (error.code === 'ERR_MODULE_NOT_FOUND') missing.push(dep); } } if (missing.length) { console.error('ERROR: ' + pkg.name + ' cannot resolve its declared dependencies after the move: ' + missing.join(', ')); process.exit(1); }" ) \
+       || exit 1; \
      done
 
 # Exact Debian point-release pins are a deliberate part of the reviewed release
