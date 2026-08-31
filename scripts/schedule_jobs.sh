@@ -88,8 +88,12 @@ compose() {
 # Check first and refuse, naming the step that was skipped: the documented
 # opt-in enables cron (RUNBOOK steps 1-3) BEFORE this script (step 4).
 #
-# `openclaw cron status --json` returns {enabled, storePath, storage,
-# sqlitePath, jobs, nextWakeAtMs} on the pinned 2026.7.1 image.
+# `openclaw cron status --json` returns {enabled, triggersEnabled, storePath,
+# storage, sqlitePath, jobs, nextWakeAtMs} on the pinned 2026.8.1 image.
+# `triggersEnabled` is new in 2026.8.1 and `storePath` now equals `sqlitePath`.
+# The grep below is unaffected: it anchors on the opening quote of `"enabled"`,
+# which `"triggersEnabled"` does not carry. Keep that anchor if this pattern is
+# ever rewritten — dropping it would make a disabled scheduler read as enabled.
 scheduler_status="$(compose exec -T openclaw-gateway openclaw cron status --json)" || {
   echo "cannot read cron scheduler status from the gateway; is the deployment healthy?" >&2
   exit 1

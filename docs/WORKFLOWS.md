@@ -8,7 +8,7 @@ caller-supplied command, invokes a communication provider, or uses
 
 ## Compatibility and authority
 
-The files target OpenClaw `2026.7.1` and Lobster `2026.6.11`. Pinned-source and
+The files target OpenClaw `2026.8.1` and Lobster `2026.6.11`. Pinned-source and
 image tests establish that workflow arguments become quoted
 `LOBSTER_ARG_<NAME>` environment values; nested step JSON references, `run`,
 `env`, `stdin`, `condition`, `timeout_ms`, and approval steps are supported;

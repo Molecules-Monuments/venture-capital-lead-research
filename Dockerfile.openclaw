@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-ARG OPENCLAW_IMAGE=ghcr.io/openclaw/openclaw:2026.7.1@sha256:6a31d44b2944e7adcd2b582bf6fb463111264ebca97a0201795b799135bd102c
+ARG OPENCLAW_IMAGE=ghcr.io/openclaw/openclaw:2026.8.1@sha256:e7849cb6c1ef1ead39ab4be7d85edb2df89611f486e283284c7cf35ce39a20d4
 FROM ${OPENCLAW_IMAGE}
 
 USER root
@@ -8,18 +8,31 @@ USER root
 # Slack, Teams, and Discord distributions. Install the complete reviewed runtime
 # graph from its committed npm lock. `npm ci` verifies every registry integrity
 # before exposing the one fixed Lobster CLI used by vcrun.
+#
+# What that lock has to look like changed with the base. npm 12.0.2, which the
+# 2026.8.1 base ships, validates the lock against an ideal tree that expands the
+# peer and platform-optional edges *inside* a bundled dependency tree, while one
+# `npm install` records only the nodes it reified. A lock written by a single
+# install therefore fails this step with "Missing: <name>@<version> from lock
+# file" for packages reachable only inside @openclaw/slack's and
+# @openclaw/discord's bundled trees (@types/express, @snazzah/davey-*).
+# Regenerating runtime-packages/package-lock.json means repeating `npm install`
+# until the file stops changing — measured on this base: 333 entries, then 359,
+# unchanged on the third pass — after which `npm ci` accepts it. npm 11.13.0 in
+# the 2026.7.1 base accepted a single-pass lock, so this is a consequence of the
+# base bump, not a standing property of npm.
 COPY runtime-packages/package.json runtime-packages/package-lock.json /opt/openclaw-runtime/
 RUN npm ci --prefix /opt/openclaw-runtime \
       --omit=dev --omit=peer --ignore-scripts --no-audit --no-fund \
   && test "$(node -p "require('/opt/openclaw-runtime/node_modules/@clawdbot/lobster/package.json').version")" = "2026.6.11" \
-  && test "$(node -p "require('/opt/openclaw-runtime/node_modules/@openclaw/slack/package.json').version")" = "2026.7.1" \
-  && test "$(node -p "require('/opt/openclaw-runtime/node_modules/@openclaw/msteams/package.json').version")" = "2026.7.1" \
-  && test "$(node -p "require('/opt/openclaw-runtime/node_modules/@openclaw/discord/package.json').version")" = "2026.7.1" \
-  && test "$(node -p "require('/opt/openclaw-runtime/node_modules/@openclaw/firecrawl-plugin/package.json').version")" = "2026.7.1" \
-  && test "$(node -p "require('/opt/openclaw-runtime/node_modules/@openclaw/tavily-plugin/package.json').version")" = "2026.7.1" \
-  && test "$(node -p "require('/app/extensions/duckduckgo/package.json').version")" = "2026.7.1" \
-  && test "$(node -p "require('/app/extensions/ollama/package.json').version")" = "2026.7.1" \
-  && test "$(node -p "require('/app/extensions/telegram/package.json').version")" = "2026.7.1" \
+  && test "$(node -p "require('/opt/openclaw-runtime/node_modules/@openclaw/slack/package.json').version")" = "2026.8.1" \
+  && test "$(node -p "require('/opt/openclaw-runtime/node_modules/@openclaw/msteams/package.json').version")" = "2026.8.1" \
+  && test "$(node -p "require('/opt/openclaw-runtime/node_modules/@openclaw/discord/package.json').version")" = "2026.8.1" \
+  && test "$(node -p "require('/opt/openclaw-runtime/node_modules/@openclaw/firecrawl-plugin/package.json').version")" = "2026.8.1" \
+  && test "$(node -p "require('/opt/openclaw-runtime/node_modules/@openclaw/tavily-plugin/package.json').version")" = "2026.8.1" \
+  && test "$(node -p "require('/opt/openclaw-runtime/node_modules/@openclaw/duckduckgo-plugin/package.json').version")" = "2026.8.1" \
+  && test "$(node -p "require('/app/extensions/ollama/package.json').version")" = "2026.8.1" \
+  && test "$(node -p "require('/app/extensions/telegram/package.json').version")" = "2026.8.1" \
   && ln -s /opt/openclaw-runtime/node_modules/@clawdbot/lobster/bin/lobster.js /usr/local/bin/openclaw-lobster \
   && ln -s /opt/openclaw-runtime /opt/openclaw-channel-plugins \
 # Put the three reinstalled channel distributions where the harness's own
@@ -39,22 +52,29 @@ RUN npm ci --prefix /opt/openclaw-runtime \
 #
 # Moved, not copied: /opt/openclaw-runtime keeps one source of truth for
 # everything else (Lobster, the search plugins), and duplicating these three
-# would add ~159 MB to the image. The version assertions above run first and
-# still gate exactly which bytes get moved, so the hash-locked npm graph remains
-# the only provenance for this code. run_g6_image.py reads them from the new
-# location.
+# would add ~89 MB to the image. Re-measure that figure on every base bump
+# rather than carrying it forward — it tracks what each release chooses to
+# bundle, and this one moved a lot: 36/73/50 MB for slack/msteams/discord in the
+# 2026.7.1-based image, 41/1/47 MB here, because msteams stopped bundling. The
+# version assertions above run first and still gate exactly which bytes get
+# moved, so the hash-locked npm graph remains the only provenance for this code.
+# run_g6_image.py reads them from the new location.
   && mv /opt/openclaw-runtime/node_modules/@openclaw/slack /app/dist/extensions/slack \
   && mv /opt/openclaw-runtime/node_modules/@openclaw/msteams /app/dist/extensions/msteams \
   && mv /opt/openclaw-runtime/node_modules/@openclaw/discord /app/dist/extensions/discord \
-# These three npm builds import the host runtime by bare specifier
-# ("openclaw/plugin-sdk/..."). A *bundled* plugin gets that specifier for free
-# by Node self-reference from /app/package.json (name "openclaw", with a
-# ./plugin-sdk/* exports map); a moved npm package cannot, because its nearest
-# package.json is @openclaw/<name>, and `openclaw` is an optional peer that
-# --omit=peer above never installs. The gateway's plugin loader installs its
-# own alias resolver, so the providers themselves run either way — but the CLI
-# paths that lazily import a plugin's doctor / security-audit chunk do not.
-# Measured on this image before the symlink: `openclaw doctor` and
+# The move breaks two kinds of module resolution. Both are repaired per
+# extension by the loop below, and both are re-asserted there so a future
+# upstream release cannot quietly reintroduce either.
+#
+# (1) The bare host specifier. These three npm builds import the host runtime by
+# bare specifier ("openclaw/plugin-sdk/..."). A *bundled* plugin gets that
+# specifier for free by Node self-reference from /app/package.json (name
+# "openclaw", with a ./plugin-sdk/* exports map); a moved npm package cannot,
+# because its nearest package.json is @openclaw/<name>, and `openclaw` is an
+# optional peer that --omit=peer above never installs. The gateway's plugin
+# loader installs its own alias resolver, so the providers themselves run either
+# way — but the CLI paths that lazily import a plugin's doctor / security-audit
+# chunk do not. Measured on this image before the symlink: `openclaw doctor` and
 # `openclaw security audit` both exit 1 with
 # "ERR_MODULE_NOT_FOUND: Cannot find package 'openclaw' imported from
 # /app/dist/extensions/discord/dist/doctor-*.js" whenever PRIMARY_CHANNEL is
@@ -62,21 +82,63 @@ RUN npm ci --prefix /opt/openclaw-runtime \
 # mandate for commissioning. Slack carries the same latent defect in its
 # security-audit chunk. One symlink per extension restores the resolution the
 # bundled layout would have given them.
+#
+# (2) The declared dependencies the package does not bundle. Whether a channel
+# distribution ships its own node_modules is a per-release publishing decision,
+# not a constant: @openclaw/msteams@2026.8.1 sets
+# `"release": {"bundleRuntimeDependencies": false}` and dropped its
+# bundledDependencies array, so its tarball fell from 9,827 files to 35 and npm
+# hoists its six runtime dependencies to /opt/openclaw-runtime/node_modules.
+# `mv` then orphans them, and the failure is deferred rather than loud: the
+# entry point still loads, every version assertion above still passes, and the
+# runtime-doctor probe below still reports OK, but the dynamic imports the Teams
+# provider performs while starting fail with ERR_MODULE_NOT_FOUND for
+# @microsoft/teams.apps, @microsoft/teams.api and @azure/identity — one of the
+# four rendered channel profiles ships dead with the whole gate matrix green.
+# slack and discord still bundle at 2026.8.1; that is measured, not assumed, and
+# the loop re-derives it from each package's own manifest on every build. Each
+# unbundled name is symlinked back to the hoisted copy, which is also what keeps
+# the *declared* version in force: /app/node_modules carries the host's own
+# express, typebox and zod, so a bare resolution would silently walk up to those
+# instead. The import probe then loads every declared dependency, because a
+# structural check cannot see this failure class.
   && for id in slack msteams discord; do \
-       mkdir -p "/app/dist/extensions/$id/node_modules" \
-       && ln -sfn /app "/app/dist/extensions/$id/node_modules/openclaw" \
-       && ( cd "/app/dist/extensions/$id/dist" \
+       ext="/app/dist/extensions/$id" \
+       && mkdir -p "$ext/node_modules" \
+       && ln -sfn /app "$ext/node_modules/openclaw" \
+       && deps=$(node -p "Object.keys(require('$ext/package.json').dependencies||{}).join(' ')") \
+       && for dep in $deps; do \
+            [ -e "$ext/node_modules/$dep" ] && continue; \
+            [ -e "/opt/openclaw-runtime/node_modules/$dep" ] || { \
+              echo "ERROR: $id declares the runtime dependency $dep but neither bundles it nor leaves" >&2; \
+              echo "it in /opt/openclaw-runtime/node_modules, so the move above would orphan it." >&2; \
+              echo "Add it to runtime-packages/package.json so npm ci installs it, then rebuild." >&2; \
+              exit 1; }; \
+            mkdir -p "$(dirname "$ext/node_modules/$dep")" \
+            && ln -sfn "/opt/openclaw-runtime/node_modules/$dep" "$ext/node_modules/$dep" \
+            || exit 1; \
+          done \
+       && ( cd "$ext/dist" \
             && node --input-type=module \
-                 -e "await import('openclaw/plugin-sdk/runtime-doctor')" ); \
+                 -e "await import('openclaw/plugin-sdk/runtime-doctor')" ) \
+       && ( cd "$ext" \
+            && node --input-type=module -e "import {readFileSync} from 'node:fs'; const pkg = JSON.parse(readFileSync('package.json', 'utf8')); const missing = []; for (const dep of Object.keys(pkg.dependencies || {})) { try { await import(dep); } catch (error) { if (error.code === 'ERR_MODULE_NOT_FOUND') missing.push(dep); } } if (missing.length) { console.error('ERROR: ' + pkg.name + ' cannot resolve its declared dependencies after the move: ' + missing.join(', ')); process.exit(1); }" ); \
      done
 
 # Exact Debian point-release pins are a deliberate part of the reviewed release
 # contract: these ten package versions, plus the rest of the apt closure they
 # pull in, reproduced by the snapshot timestamp below rather than by pins of
-# their own — in the reviewed build, 38 of the 45 packages this step adds to
+# their own — in the reviewed build, 37 of the 44 packages this step adds to
 # the base image carry no version pin. The bookworm main pool keeps only the
 # current revision of each package, so when Debian ships the next point release
 # these exact pins are eventually superseded and drop out of deb.debian.org.
+# A base-image bump is the other way a pin stops working, and it is the opposite
+# failure: the newer build is present and installable, and apt refuses the pin
+# as a downgrade. The 2026.7.1 -> 2026.8.1 bump did exactly that to
+# ca-certificates, whose reviewed pin 20230311+deb12u1 the 2026.8.1 base already
+# supersedes with 20250419~deb12u1. That class is NOT recoverable with the
+# snapshot recipe below — the newer build comes from bookworm-security, which
+# the recipe deliberately adds — so it is re-measured and re-pinned instead.
 # RECOVERY (documented in docs/RUNBOOK.md "Rebuilding after a Debian point
 # release"): point apt at a snapshot dated at or after the date the reviewed
 # image was built (docs/V3_RELEASE_EVIDENCE.md records 2026-08-25), delete the
@@ -92,8 +154,11 @@ RUN npm ci --prefix /opt/openclaw-runtime \
 # and rebuild; or bump the pins here and re-run every release gate.
 # tests/v3/test_snapshot_recipe_currency.py holds the SNAPSHOT literal above to
 # the one in docs/RUNBOOK.md and to that recorded rebuild date. The wrapper
-# below turns the otherwise-opaque "E: Version '<version>' for '<package>' was not found" apt error into
-# that actionable message instead of a bare non-zero exit.
+# below reads apt's own output and turns each of the two failures into the
+# message that matches it instead of a bare non-zero exit: "E: Version
+# '<version>' for '<package>' was not found" is the superseded-and-dropped case
+# the snapshot recipe fixes, and "E: Packages were downgraded and -y was used
+# without --allow-downgrades" is the newer-base case it cannot.
 # libpoppler126 is pinned alongside poppler-utils deliberately. poppler-utils
 # declares `Depends: libpoppler126 (= <same version>)`, and the library is a
 # separate binary package from the same source. Pinning only the tool left the
@@ -106,7 +171,7 @@ RUN npm ci --prefix /opt/openclaw-runtime \
 # scripts/run_g6_image.py and tests/infrastructure.
 RUN apt-get update \
   && { apt-get install -y --no-install-recommends \
-        ca-certificates=20230311+deb12u1 \
+        ca-certificates=20250419~deb12u1 \
         curl=7.88.1-10+deb12u15 \
         file=1:5.44-3 \
         jq=1.6-2.1+deb12u2 \
@@ -116,13 +181,28 @@ RUN apt-get update \
         python3=3.11.2-1+b1 \
         python3-pip=23.0.1+dfsg-1 \
         python3-venv=3.11.2-1+b1 \
-     || { echo "ERROR: a pinned Debian package version is no longer installable from the bookworm pool." >&2; \
-          echo "Either the version was superseded and dropped, or a security update moved a package this" >&2; \
-          echo "one depends on. This is the reviewed exact-pin release contract. Rebuild reproducibly by" >&2; \
-          echo "pointing apt at a snapshot.debian.org timestamp that still carries these versions (see the" >&2; \
-          echo "RECOVERY comment in Dockerfile.openclaw and docs/RUNBOOK.md), or bump the pins together and" >&2; \
-          echo "re-run every release gate." >&2; \
+        >/tmp/apt-install.log 2>&1 \
+     || { cat /tmp/apt-install.log >&2; \
+          if grep -q "were downgraded" /tmp/apt-install.log; then \
+            echo "ERROR: the base image already carries a NEWER build of a pinned Debian package than this file" >&2; \
+            echo "pins, so apt refuses the pin as a downgrade. This is a base-image bump, not a Debian point" >&2; \
+            echo "release: the pinned version is still in the pool, and the snapshot.debian.org RECOVERY recipe" >&2; \
+            echo "in Dockerfile.openclaw and docs/RUNBOOK.md CANNOT fix it, because it deliberately adds the" >&2; \
+            echo "bookworm-security archive the newer build comes from. Re-measure every pin against the new" >&2; \
+            echo "base (dpkg-query -W for what it already carries, apt-cache policy for the rest), bump the ones" >&2; \
+            echo "that moved here and in scripts/run_g6_image.py and tests/infrastructure, and re-run every" >&2; \
+            echo "release gate." >&2; \
+          else \
+            echo "ERROR: a pinned Debian package version is no longer installable from the bookworm pool." >&2; \
+            echo "Either the version was superseded and dropped, or a security update moved a package this" >&2; \
+            echo "one depends on. This is the reviewed exact-pin release contract. Rebuild reproducibly by" >&2; \
+            echo "pointing apt at a snapshot.debian.org timestamp that still carries these versions (see the" >&2; \
+            echo "RECOVERY comment in Dockerfile.openclaw and docs/RUNBOOK.md), or bump the pins together and" >&2; \
+            echo "re-run every release gate." >&2; \
+          fi; \
           exit 1; }; } \
+  && cat /tmp/apt-install.log \
+  && rm -f /tmp/apt-install.log \
   && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.lock /tmp/requirements.lock
@@ -160,9 +240,9 @@ ENV PATH="/opt/vcops-venv/bin:${PATH}" \
     PYTHONUNBUFFERED=1
 
 # Without this the derived image reports the base image's identity unchanged:
-# title "OpenClaw", version 2026.7.1, licenses MIT, source/revision/url pointing
+# title "OpenClaw", version 2026.8.1, licenses MIT, source/revision/url pointing
 # at the upstream repository. That is wrong for an artifact that is version
-# 3.0.0, is not an upstream build, and adds LGPL-3.0-only psycopg and GPL
+# 3.0.1, is not an upstream build, and adds LGPL-3.0-only psycopg and GPL
 # poppler-utils. Nothing in this package reads .Config.Labels, so this is
 # provenance for whoever inspects the built image, not an input to any gate.
 # licenses is NOASSERTION deliberately: THIRD_PARTY_NOTICES.md declines to state
@@ -179,7 +259,7 @@ ENV PATH="/opt/vcops-venv/bin:${PATH}" \
 #   * .base.name / .base.digest — docker.io/library/node:24-bookworm-slim and
 #     its digest. These name the base of the PINNED OPENCLAW IMAGE, not the
 #     image this one is built FROM: the FROM above is
-#     ghcr.io/openclaw/openclaw:2026.7.1 at the digest pinned in OPENCLAW_IMAGE,
+#     ghcr.io/openclaw/openclaw:2026.8.1 at the digest pinned in OPENCLAW_IMAGE,
 #     and these labels arrive from it unchanged. They are left that way on
 #     purpose — THIRD_PARTY_NOTICES.md describes them with exactly that
 #     attribution ("the base the pinned OpenClaw image is built on ... recorded
@@ -201,7 +281,7 @@ ENV PATH="/opt/vcops-venv/bin:${PATH}" \
 # Placed last on purpose: LABEL after FROM would invalidate the build cache for
 # every layer below it, and label order does not affect the resulting config.
 LABEL org.opencontainers.image.title="Venture Capital Lead Research" \
-      org.opencontainers.image.version="3.0.0" \
+      org.opencontainers.image.version="3.0.1" \
       org.opencontainers.image.description="Independent OpenClaw-derived lead-research runtime; not an official OpenClaw Foundation product" \
       org.opencontainers.image.licenses="NOASSERTION" \
       org.opencontainers.image.source="" \

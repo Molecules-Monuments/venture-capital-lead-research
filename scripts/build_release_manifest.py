@@ -223,7 +223,7 @@ def expected_manifest() -> dict[str, Any]:
     return {
         "manifest_version": 1,
         "package": "vc-lead-research",
-        "package_version": "3.0.0",
+        "package_version": "3.0.1",
         "created_on": "2026-07-20",
         "based_on": {
             "package_version": "2.0.0",
@@ -232,11 +232,11 @@ def expected_manifest() -> dict[str, Any]:
         },
         "upstream": {
             "openclaw": {
-                "version": "2026.7.1",
-                "commit": "2d2ddc43d0dcf71f31283d780f9fe9ff4cc04fe4",
+                "version": "2026.8.1",
+                "commit": "ea806575e6450e4d1efdfc72c19f04be982a1b9b",
                 "image": (
-                    "ghcr.io/openclaw/openclaw:2026.7.1@"
-                    "sha256:6a31d44b2944e7adcd2b582bf6fb463111264ebca97a0201795b799135bd102c"
+                    "ghcr.io/openclaw/openclaw:2026.8.1@"
+                    "sha256:e7849cb6c1ef1ead39ab4be7d85edb2df89611f486e283284c7cf35ce39a20d4"
                 ),
             },
             "lobster": {

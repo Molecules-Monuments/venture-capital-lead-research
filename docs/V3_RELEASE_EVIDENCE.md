@@ -14,9 +14,9 @@ image rebuilt from it with `docker build --no-cache --pull` on **2026-08-25**,
 after that day's edits to the image-baked `workspaces/` files, `Dockerfile.openclaw` itself, and the host-side recovery-lifecycle scripts. Earlier in the same
 session `bootstrap.sh` also built the image during the live channel exercise,
 and the G8 deployment gate's own bootstrap built and tore down another. The gates: `verify_offline.py`
-(**355 tests, 30/30** base checks), and each opt-in gate individually —
+(**363 tests, 30/30** base checks), and each opt-in gate individually —
 `run_g4.py` (**98/98** across seven suites, migrations 001–018 applied
-twice on PostgreSQL 17.10), `run_g6_image.py` (**8/8**, against an image rebuilt from this tree with
+twice on PostgreSQL 17.10), `run_g6_image.py` (**10/10**, against an image rebuilt from this tree with
 `docker build --no-cache --pull` and again against the one `bootstrap.sh`
 builds during the deployment gate; both load `vc-trusted-context` from
 `/opt/openclaw-extensions`), `run_g8_deployment.py` (**PASS** — five checks
@@ -29,7 +29,7 @@ frozen 250 ms p95 threshold — see the note on that figure below),
 still installs from the live Debian pool. For reference, `c72d8b9` — the last
 commit before the channel-setup rewrite — measures 210 offline tests across
 these same suites, so everything from that rewrite through the pre-publication
-audit remediation added one hundred and forty-five in total; the per-suite figures in the table
+audit remediation added one hundred and fifty-three in total; the per-suite figures in the table
 below are authoritative and sum to the aggregate.
 
 ## 2026-07-23 final-audit evidence
@@ -52,9 +52,9 @@ Every gate below was executed after those changes:
 
 | Surface | Result | Command |
 | --- | ---: | --- |
-| Offline verification (the nine declared suites listed under "Passing evidence" below, ruff, ty, shell syntax, fixed workflows, skill system, manifest currency, pristine) | **PASS — 355 tests, 30/30 checks** | `python3 -B scripts/verify_offline.py` |
+| Offline verification (the nine declared suites listed under "Passing evidence" below, ruff, ty, shell syntax, fixed workflows, skill system, manifest currency, pristine) | **PASS — 363 tests, 30/30 checks** | `python3 -B scripts/verify_offline.py` |
 | Disposable Postgres hard gate | **PASS — 98/98** across seven suites, migrations 001–018 applied twice | `python3 -B scripts/run_g4.py` |
-| Exact-image gate against the image rebuilt from this tree | **PASS — 8/8** (provenance, workshop guard, all five channel schemas, unknown-field fail-closed) | `python3 -B scripts/run_g6_image.py --image vc-lead-research:3.0.0` |
+| Exact-image gate against the image rebuilt from this tree | **PASS — 10/10** (provenance, workshop guard, all five channel schemas, unknown-field fail-closed, Dockerfile-bound package versions, exec-approvals SQLite row) | `python3 -B scripts/run_g6_image.py --image vc-lead-research:3.0.1` |
 | Real deployment gate (bootstrap → negative-auth proof → live fixed workflows → replay/tamper semantics → teardown) | **PASS** | `python3 -B scripts/run_g8_deployment.py` |
 | Reference retrieval scale (100k companies / 1m facts) | PASS, all frozen thresholds met | `python3 -B scripts/run_retrieval_scale.py` |
 | Pristine release inventory | PASS — `verified_files` == `declared_files`, 0 errors | `python3 -B scripts/verify_release.py --pristine` |
@@ -90,11 +90,11 @@ invokes a model.
 | Surface | Result | Reproducible command |
 | --- | ---: | --- |
 | Agent schemas/contracts | 42/42 | `python3 -B -m unittest discover -s tests/contracts -p 'test*.py' -v` |
-| Version 3 providers/context/orchestration/customization/skill system | 132/132 | `python3 -B -m unittest discover -s tests/v3 -p 'test*.py' -v` |
+| Version 3 providers/context/orchestration/customization/skill system | 139/139 | `python3 -B -m unittest discover -s tests/v3 -p 'test*.py' -v` |
 | Exact skill/agent/router/workflow inventory | 26 skills, 12 agents, **18 workflows**, 0 findings | `python3 -B scripts/validate_skill_system.py` |
 | Retrieval policy contracts | 7/7 | `python3 -B -m unittest discover -s tests/retrieval -p 'test*.py' -v` |
 | Infrastructure contracts | 38/38 | `python3 -B -m unittest discover -s tests/infrastructure -p 'test*.py' -v` |
-| G6 image/channel contract (offline) | 4/4 | `python3 -B -m unittest discover -s tests/g6 -p 'test*.py' -v` |
+| G6 image/channel contract (offline) | 5/5 | `python3 -B -m unittest discover -s tests/g6 -p 'test*.py' -v` |
 | Fixed workflow/runner boundary | 61/61 | `python3 -B -m unittest discover -s tests/g5 -p 'test*.py' -v` |
 | Recovery/release lifecycle | 44/44 | `python3 -B -m unittest discover -s tests/g7 -p 'test*.py' -v` |
 | Scoring/helper semantics | 8/8 | `VCOPS_HELPER=workspaces/vc-chief/vc/bin/vcops.py python3 -B -m unittest discover -s tests/g4 -p 'test_semantics.py' -v` |
@@ -109,7 +109,7 @@ row here. That declaration is what the gate runs: a test directory `SUITES`
 does not name is not executed by `verify_offline.py`, so a new suite has to be
 added to `SUITES` and to this table together.
 
-The aggregate deterministic offline suites pass 355 tests with no failures or
+The aggregate deterministic offline suites pass 363 tests with no failures or
 skips (30/30 offline checks). The per-suite rows above sum to that total. The G4 runner created a disposable PostgreSQL 17
 cluster, applied and registered migrations **001–018** twice, and — in addition
 to the prior trusted-context/preference/idempotency/approval/document coverage —
@@ -133,7 +133,7 @@ base, and tore the deployment down.
 ## Image digests — regenerate at deployment
 
 The local image ID is host-specific: `bootstrap.sh` rebuilds
-`vc-lead-research:3.0.0` from this tree and `record_images.py` records
+`vc-lead-research:3.0.1` from this tree and `record_images.py` records
 the resulting digest in `deployment-lock.json` at install time. The G6 gate was
 re-run on 2026-08-25 against an image rebuilt from this tree with `docker build
 --no-cache --pull` (8/8), and the retrieval-scale gate was re-run on 2026-08-06,

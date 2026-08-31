@@ -2,7 +2,7 @@
 
 Status: Version 3 package gates passed; exact live deployment gate not yet passed  
 Audit date: 2026-07-17  
-OpenClaw target: `v2026.7.1`, commit `2d2ddc43d0dcf71f31283d780f9fe9ff4cc04fe4`  
+OpenClaw target when this audit ran: `v2026.7.1`, commit `2d2ddc43d0dcf71f31283d780f9fe9ff4cc04fe4`. The package now pins `v2026.8.1`; the audit was not re-run against it because nothing it depends on moved — the execution path is the standalone `@clawdbot/lobster` CLI rather than the OpenClaw plugin this document analyses (see "Exposure and isolation"), `@clawdbot/lobster@2026.6.11` is unchanged, its `engines.node` is byte-identical between the two upstream releases, and upstream pins no Lobster version. Re-run it if any of those three stop holding.  
 Embedded Lobster runtime: `@clawdbot/lobster@2026.6.11`, source tag `v2026.6.11`, commit `86b8cc20a867f18c08ae8e3f4fec9ee7d52bf8c9`
 
 Source citations below use the prefixes `upstream_openclaw/` and
@@ -77,6 +77,19 @@ Those checkouts are audit evidence, not release payload.
 ## Lobster operational contract
 
 ### Exposure and isolation
+
+**Read this section knowing what it is and is not about.** Everything below
+analyses the upstream **OpenClaw Lobster plugin** — the surface this deployment
+deliberately does not use. Lobster reaches this package a different way, and
+that fact is durable across upstream releases: `@clawdbot/lobster` is installed
+as an ordinary npm package into `/opt/openclaw-runtime/node_modules`, symlinked
+to `/usr/local/bin/openclaw-lobster`, and executed by `vcrun` as a **standalone
+CLI subprocess**. `@openclaw/lobster` is not in `runtime-packages/package.json`,
+is not installed, and is not on that path — so no OpenClaw plugin, tool schema,
+or plugin API sits between `vcrun` and the runner. The analysis below is
+therefore the record of a surface that was closed, not a description of the
+execution path in use; the path in use is bounded by `vcrun` alone, in "Fixed
+`vcrun` boundary" below.
 
 - The tool is optional and the factory returns no tool at all when `ctx.sandboxed` is true (`upstream_openclaw/extensions/lobster/index.ts:6-23`). Adding Lobster to sandbox tool policy does not override this behavior.
 - A usable Lobster call is therefore a non-sandboxed, or "ground/host", workflow. There is no upstream `unsafe`, `allowGround`, or workflow-command allowlist flag in the plugin manifest; the plugin config schema has no properties (`upstream_openclaw/extensions/lobster/openclaw.plugin.json:1-20`).
@@ -329,7 +342,7 @@ openclaw backup verify <archive.tar.gz> --json
 
 The upstream backup command snapshots SQLite safely with `VACUUM INTO` and intentionally skips WAL/SHM and other volatile files (`upstream_openclaw/docs/cli/backup.md:31-48`). The package recovery point instead takes an exclusive lifecycle lock and stops gateway and CLI before archiving `/home/node/.openclaw`, so Task Flow SQLite, inbound-media state, and Lobster continuation files are quiesced. While consumers remain stopped it also captures Postgres (including verified principals and bounded preferences), the read-only operator inbox, and the named quarantine volume; validates database local-artifact URIs and hashes against the staged archives; excludes generated runtime configuration and exec approvals; writes to a new private partial directory; and publishes with one rename only after all checks pass. This establishes a structurally consistent package recovery point, but only the disposable-target checks below can establish live recoverability.
 
-OpenClaw v2026.7.1 provides `backup create` and `backup verify`, but no `openclaw backup restore` command (`upstream_openclaw/src/cli/program/register.backup.ts:11-93`). The package's restore script is custom. It must be tested on a disposable deployment with these hard checks:
+OpenClaw v2026.7.1 provided `backup create` and `backup verify` but no `openclaw backup restore` command (`upstream_openclaw/src/cli/program/register.backup.ts:11-93`), which is why the package's restore script is custom. That gap closed upstream: the pinned `2026.8.1` CLI does offer `backup restore` (measured — `openclaw backup --help` lists `create`, `disable`, `enable`, `git`, `restore`, `sqlite`, `verify`). **The custom script stays.** Upstream's restores a verified archive to a *fresh staging directory*; this package's restore reconciles a Postgres dump, the OpenClaw state volume, Lobster continuations, the quarantine volume and the deployment lock into a live deployment under the lifecycle lock. They are not substitutes, and the checks below still apply to ours. It must be tested on a disposable deployment with these hard checks:
 
 1. archive hash verification succeeds before destructive changes;
 2. gateway and every CLI/state consumer are stopped before state replacement;
@@ -348,7 +361,7 @@ G5 passes only when every row has retained machine-readable evidence from the pa
 
 | Evaluation | Hard pass condition |
 |---|---|
-| Exact versions | Running host reports OpenClaw `2026.7.1`; installed Lobster package resolves to `2026.6.11`; image digest is recorded |
+| Exact versions | Running host reports the OpenClaw version this release pins — read it from `VERSION`'s companion pin in `README.md`'s release contract rather than from this row, which must not carry a literal; installed Lobster package resolves to `2026.6.11`; image digest is recorded |
 | Direct tool exposure | Effective tool inventory proves `lobster` is unavailable to `vc-chief`, `data-steward`, every specialist, and every sandboxed or non-sandboxed agent context |
 | Fixed dispatcher | Only `data-steward` can execute exact-path `vcrun`; negative tests reject paths, pipelines, shell text, unknown workflows/args, collisions, traversal, environment/cwd/limit overrides, tokens/decisions, resume/cancel, and trailing arguments |
 | Operator separation | `vcrun-control` and `vcops-operator` are absent from every agent tool/exec policy; only the authenticated administrative path can run them; spoofed caller environment cannot select operator mode or identity |

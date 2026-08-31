@@ -29,7 +29,7 @@ body:
     attributes:
       label: Package version
       description: The contents of the `VERSION` file in the package root (`cat VERSION`).
-      placeholder: "3.0.0"
+      placeholder: "3.0.1"
     validations:
       required: true
   - type: input

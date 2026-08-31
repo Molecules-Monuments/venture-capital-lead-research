@@ -1,6 +1,6 @@
 # Data Model and Persistence Contract
 
-System version: `3.0.0`  
+System version: `3.0.1`  
 PostgreSQL target: `17`  
 Schema migrations: immutable ordered series; discover and apply every numbered
 file through the manifest's current highest migration. Never infer the current

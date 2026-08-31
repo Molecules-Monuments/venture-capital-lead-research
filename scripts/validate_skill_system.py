@@ -384,7 +384,7 @@ def validate_skills_and_agents(config: dict[str, Any], findings: list[Finding]) 
     if "skill_workshop" not in config.get("tools", {}).get("subagents", {}).get("tools", {}).get("deny", []):
         add(findings, "workshop_authority", CONFIG_PATH, "subagent defaults must deny Skill Workshop")
     workshop = config.get("skills", {}).get("workshop", {})
-    if workshop.get("autonomous") != {"enabled": False} or workshop.get("approvalPolicy") != "pending":
+    if workshop.get("autonomous") != {"mode": "off"} or workshop.get("approvalPolicy") != "pending":
         add(findings, "workshop_config", CONFIG_PATH, "autonomous review must be disabled and approval policy pending")
     if workshop.get("allowSymlinkTargetWrites") is not False or workshop.get("maxPending") != 10 or workshop.get("maxSkillBytes") != 40000:
         add(findings, "workshop_config", CONFIG_PATH, "reviewed Workshop bounds changed")

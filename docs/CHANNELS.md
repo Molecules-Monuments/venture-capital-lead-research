@@ -93,11 +93,11 @@ channel provider.
 
 ## Plugin provenance
 
-- Slack: `@openclaw/slack@2026.7.1`.
-- Teams: `@openclaw/msteams@2026.7.1`.
-- Discord: `@openclaw/discord@2026.7.1`.
-- Telegram: bundled plugin `2026.7.1`.
-- Trusted context: image-owned project extension `3.0.0`.
+- Slack: `@openclaw/slack@2026.8.1`.
+- Teams: `@openclaw/msteams@2026.8.1`.
+- Discord: `@openclaw/discord@2026.8.1`.
+- Telegram: bundled plugin `2026.8.1`.
+- Trusted context: image-owned project extension `3.0.1`.
 
 The exact npm graph is locked in `runtime-packages/package-lock.json`. The G6
 image gate verifies installed versions and validates every profile inside the

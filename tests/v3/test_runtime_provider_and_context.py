@@ -30,15 +30,17 @@ overwrites them — must refuse anything but the package `.env`.
 
 `TrustedContextTests` executes the shipped Node extension. Its correctness is
 entirely conformance to the harness, so every hook payload there is shaped the
-way OpenClaw 2026.7.1 builds it; the class comment records the shapes that are
+way OpenClaw 2026.8.1 builds it; the class comment records the shapes that are
 not obvious, including the absence of a run id at `message_received`. The two
 properties that keep the unsupported-attachment refusal working under load are
-driven on an explicit clock: a capture must survive the longest turn
-`config/openclaw.json` permits — read from `stuckSessionAbortMs` rather than
-hardcoded, so raising the budget raises this with it — and a claim must
-outlive the run that owns it, because `before_prompt_build` runs once per
-attempt. `vcops.verify_trusted_context`, the other end of the same token, must
-reject tampering, expiry, and a scope the token was not minted for.
+driven on an explicit clock: a capture must survive the longest turn the
+harness permits — `UPSTREAM_STUCK_SESSION_ABORT_MS` below, which 2026.8.1 makes
+a constant we no longer configure — and a claim must outlive the run that owns
+it, because `before_prompt_build` runs once per attempt. The five hooks the
+extension registers are enumerated against 2026.8.1's own conversation-hook
+world, because three of them now depend on one config flag rather than two.
+`vcops.verify_trusted_context`, the other end of the same token, must reject
+tampering, expiry, and a scope the token was not minted for.
 """
 
 from __future__ import annotations
@@ -64,6 +66,56 @@ ROOT = Path(__file__).resolve().parents[2]
 CHECK_ENV_PATH = ROOT / "scripts/check_env.py"
 VCOPS_PATH = ROOT / "workspaces/vc-chief/vc/bin/vcops.py"
 PLUGIN_PATH = ROOT / "runtime-extensions/vc-trusted-context/index.js"
+
+# The longest agent turn the pinned harness permits before it aborts the run.
+#
+# Through 2026.7.1 this was ours to set and these tests read it out of
+# config/openclaw.json. 2026.8.1 retired `diagnostics.stuckSessionWarnMs` and
+# `diagnostics.stuckSessionAbortMs` with no replacement — they are now
+# unrecognized keys that make the gateway exit 78 — so the budget is an upstream
+# constant, measured from the pinned dist rather than restated from prose.
+# `resolveStuckSessionWarnMs` returns a flat 120_000 ms, the abort floor
+# `MIN_STALLED_EMBEDDED_RUN_ABORT_MS` is 300_000 ms, and the warn multiplier is
+# 3, so `resolveStuckSessionAbortMs` yields max(300_000, 120_000 x 3), which is
+# 360_000 ms (dist/diagnostic-DSnchdd7.js:684-686 and :897-905 in the 2026.8.1
+# tarball).
+#
+# This is a capability loss, recorded as one: we cannot raise it. It moves only
+# when the pinned base moves, and then only against a fresh measurement.
+# tests/v3/test_upstream_posture_pins.py refuses the retired keys, so a
+# well-meaning re-add cannot quietly reinstate the old number here.
+UPSTREAM_STUCK_SESSION_ABORT_MS = 360_000
+
+# The hooks runtime-extensions/vc-trusted-context/index.js registers, and which
+# of them 2026.8.1 classes as "conversation" hooks — the ones a non-bundled
+# plugin may only register when the deployment sets
+# plugins.entries.vc-trusted-context.hooks.allowConversationAccess=true.
+#
+# 2026.8.1 widened that world: `conversationHookNameSet` grew from seven names
+# to nine, gaining `agent_turn_prepare` and `before_prompt_build`
+# (dist/hook-runner-global-BphT2xdR.js:390-401 versus 2026.7.1's
+# CONVERSATION_HOOK_NAMES at dist/command-registration-tKF3dsKu.js:170-179). So
+# the single flag now gates three of our five hooks instead of two, including
+# the one that mints the trusted-context token, and a registration blocked by a
+# missing flag is only a warning — the plugin still reports as loaded.
+PLUGIN_HOOKS = (
+    "before_tool_call",
+    "message_received",
+    "before_model_resolve",
+    "before_prompt_build",
+    "before_agent_run",
+)
+UPSTREAM_CONVERSATION_HOOKS = frozenset({
+    "before_model_resolve",
+    "agent_turn_prepare",
+    "before_prompt_build",
+    "before_agent_reply",
+    "llm_input",
+    "llm_output",
+    "before_agent_finalize",
+    "agent_end",
+    "before_agent_run",
+})
 
 
 def load_module(name: str, path: Path):
@@ -485,9 +537,13 @@ class RuntimeProviderTests(unittest.TestCase):
         # never loads its own Readability extractor and web_fetch falls back to
         # whole-page raw HTML (and to a fetch provider, if one is loaded).
         # Without the hooks flag OpenClaw discards this extension's
-        # before_model_resolve and before_agent_run registrations outright,
-        # because it only grants conversation hooks to plugins it bundled
-        # itself — and the unsupported-attachment block stops running.
+        # before_model_resolve, before_prompt_build and before_agent_run
+        # registrations outright, because it only grants conversation hooks to
+        # plugins it bundled itself — and both the trusted-context token and the
+        # unsupported-attachment block stop being produced. 2026.8.1 added
+        # before_prompt_build to that set, so this flag went from guarding two
+        # of the extension's hooks to guarding three, including the one that
+        # mints the token; TrustedContextTests enumerates the intersection.
         keyed = replace_line(configured_example(), "VC_WEB_SEARCH_PROVIDER", "tavily")
         keyed = replace_line(keyed, "TAVILY_API_KEY", "test-only-tavily-key")
         for body in (configured_example(), keyed):
@@ -581,7 +637,7 @@ class RuntimeProviderTests(unittest.TestCase):
 
 
 class TrustedContextTests(unittest.TestCase):
-    # Every hook payload below is shaped the way OpenClaw 2026.7.1 actually
+    # Every hook payload below is shaped the way OpenClaw 2026.8.1 actually
     # builds it, because the extension's correctness is entirely a question of
     # conformance to the harness:
     #   - message_received carries NO runId. The run id is created when the
@@ -660,27 +716,80 @@ console.log(JSON.stringify({{
         self.assertEqual([], second["media_paths"])
         self.assertEqual("unsupported_attachment_type", rendered["secondBlocked"]["reason"])
 
+    def test_plugin_registers_every_hook_the_deployment_depends_on(self) -> None:
+        # Not "the plugin loads". A conversation-hook registration that the
+        # deployment has not opted into by name is dropped with a warning while
+        # the plugin still reports as loaded and its other hooks still work, so
+        # "vc-trusted-context is in `plugins list`" proves nothing about the
+        # token or the attachment refusal.
+        #
+        # Enumerate both sides: the five hooks this extension registers, and
+        # which of them 2026.8.1 classes as conversation hooks. That second set
+        # grew this release, taking `before_prompt_build` — the hook that mints
+        # the token — from unguarded to guarded. Asserting the intersection
+        # rather than a remembered count means the next widening fails here.
+        script = f"""
+const plugin = (await import({json.dumps(PLUGIN_PATH.as_uri())})).default;
+const registered = [];
+plugin.register({{on: (name) => registered.push(name)}});
+console.log(JSON.stringify({{id: plugin.id, registered}}));
+"""
+        process = subprocess.run(
+            ["node", "--input-type=module", "-e", script],
+            text=True,
+            encoding="utf-8",
+            capture_output=True,
+            check=False,
+        )
+        self.assertEqual(0, process.returncode, process.stderr)
+        rendered = json.loads(process.stdout)
+        self.assertEqual("vc-trusted-context", rendered["id"])
+        self.assertEqual(list(PLUGIN_HOOKS), rendered["registered"])
+
+        guarded = sorted(set(PLUGIN_HOOKS) & UPSTREAM_CONVERSATION_HOOKS)
+        self.assertEqual(
+            ["before_agent_run", "before_model_resolve", "before_prompt_build"],
+            guarded,
+            "the set of this extension's hooks that OpenClaw gates behind "
+            "plugins.entries.vc-trusted-context.hooks.allowConversationAccess "
+            "changed; re-read the flag's blast radius before moving this",
+        )
+        # The flag those three depend on has to be in the reviewed artifact the
+        # release ships — the extension is path-loaded, never bundled, so
+        # without it three of five hooks silently deregister. The rendered
+        # copy is asserted separately, in RuntimeProviderTests.
+        shipped = json.loads((ROOT / "config/openclaw.json").read_text(encoding="utf-8"))
+        entry = shipped["plugins"]["entries"]["vc-trusted-context"]
+        self.assertIs(True, entry["hooks"]["allowConversationAccess"])
+
     def test_plugin_survives_a_turn_longer_than_the_stuck_session_budget(self) -> None:
         # A capture waits for the run that claims it, and a run can sit behind a
-        # long one. config/openclaw.json allows a turn up to stuckSessionAbortMs,
-        # and the reference host measures a 331 s first turn, so a capture window
-        # shorter than that budget silently drops the token — and with it the
-        # unsupported-attachment refusal. A claim must likewise outlive the run
-        # that owns it, because before_prompt_build runs once per attempt. The
-        # clock is driven explicitly rather than by sleeping.
+        # long one. The harness allows a turn up to its stuck-session abort
+        # budget, and the reference host measures a 331 s first turn, so a
+        # capture window shorter than that budget silently drops the token — and
+        # with it the unsupported-attachment refusal. A claim must likewise
+        # outlive the run that owns it, because before_prompt_build runs once per
+        # attempt. The clock is driven explicitly rather than by sleeping.
         #
         # The advance is READ FROM the budget, not hardcoded below it. This test
         # previously drove 900 s against a 960 s budget, so a capture window set
         # anywhere in 900_001..960_000 ms passed it while still dropping tokens
-        # inside the turn length the configuration permits — the test could not
-        # fail for the reason it names. Driving one millisecond past the budget
-        # means any window shorter than the configured maximum turn fails here,
-        # and raising the budget in config/openclaw.json raises this with it.
+        # inside the turn length the deployment permits — the test could not fail
+        # for the reason it names. Driving one millisecond past the budget means
+        # any window shorter than the maximum turn fails here.
+        #
+        # The budget used to come out of config/openclaw.json. 2026.8.1 retired
+        # that key, so it now comes from UPSTREAM_STUCK_SESSION_ABORT_MS, which
+        # is measured from the pinned dist. That number went *down* (960_000 ->
+        # 360_000), which makes this test weaker than it was, not stronger: the
+        # plugin's own PENDING_TTL_MS is 1_200_000, so it now clears the budget
+        # by a wide margin. Do not "tighten" PENDING_TTL_MS to match — the
+        # margin is the only thing left standing in for a queue depth we no
+        # longer control.
         dm_key = "agent:vc-chief:slack:direct:u12345678"
         deck = "/home/node/.openclaw/media/inbound/deck---550e8400-e29b-41d4-a716-446655440000.pdf"
         macro = "/home/node/.openclaw/media/inbound/book---550e8400-e29b-41d4-a716-446655440001.xlsm"
-        shipped = json.loads((ROOT / "config/openclaw.json").read_text(encoding="utf-8"))
-        stuck_session_abort_ms = shipped["diagnostics"]["stuckSessionAbortMs"]
+        stuck_session_abort_ms = UPSTREAM_STUCK_SESSION_ABORT_MS
         with tempfile.TemporaryDirectory(prefix="trusted-plugin-clock-") as raw:
             key_path = Path(raw) / "key"
             key_path.write_bytes(b"k" * 64)

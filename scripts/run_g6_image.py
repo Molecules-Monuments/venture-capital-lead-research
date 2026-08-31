@@ -20,21 +20,29 @@ from typing import Any
 
 PACKAGE = Path(__file__).resolve().parent.parent
 RENDERER = PACKAGE / "scripts/render_channel_config.py"
+# The two reviewed artifacts this gate validates directly rather than through a
+# render. Both are hash-pinned by scripts/check_customization.py, so what is
+# read here is what the release ships.
+REVIEWED_CONFIG = PACKAGE / "config/openclaw.json"
+REVIEWED_EXEC_APPROVALS = PACKAGE / "config/exec-approvals.json"
 PROFILES = ("none", "slack", "msteams", "discord", "telegram")
 # The gate must run exactly these checks: image provenance, the workshop guard,
-# one schema validation per profile, and the hostile unknown-field rejection.
-# Single-sourced so the offline contract test asserts the count behaviorally
-# rather than grepping this file for a literal.
+# the exec-approvals store round trip, one schema validation per profile, the
+# reviewed artifact's own schema validation, and the hostile unknown-field
+# rejection. Single-sourced so the offline contract test asserts the count
+# behaviorally rather than grepping this file for a literal.
 EXPECTED_CHECK_NAMES = (
     "image-package-provenance",
     "image-workshop-guard",
+    "image-exec-approvals-row",
     *(f"openclaw-schema:{profile}" for profile in PROFILES),
+    "openclaw-schema:reviewed-artifact",
     "openclaw-schema:unknown-field-rejected",
 )
 RUNTIME_VALUES = {
     "VC_MODEL_PROVIDER": "openai",
-    "VC_PRIMARY_MODEL": "openai/gpt-5.6",
-    "VC_FAST_MODEL": "openai/gpt-5.6",
+    "VC_PRIMARY_MODEL": "openai/gpt-5.6-sol",
+    "VC_FAST_MODEL": "openai/gpt-5.6-sol",
     "VC_MODEL_INPUT": "text",
     "VC_MODEL_REASONING": "true",
     "VC_MODEL_CONTEXT_WINDOW": "272000",
@@ -54,15 +62,15 @@ RUNTIME_VALUES = {
 }
 EXPECTED_PACKAGES = {
     "lobster": "2026.6.11",
-    "slack": "2026.7.1",
-    "msteams": "2026.7.1",
-    "discord": "2026.7.1",
-    "telegram": "2026.7.1",
-    "firecrawl": "2026.7.1",
-    "tavily": "2026.7.1",
-    "duckduckgo": "2026.7.1",
-    "ollama": "2026.7.1",
-    "trusted_context": "3.0.0",
+    "slack": "2026.8.1",
+    "msteams": "2026.8.1",
+    "discord": "2026.8.1",
+    "telegram": "2026.8.1",
+    "firecrawl": "2026.8.1",
+    "tavily": "2026.8.1",
+    "duckduckgo": "2026.8.1",
+    "ollama": "2026.8.1",
+    "trusted_context": "3.0.1",
 }
 # Scope of this exact-pin set: it fixes the revisions of the package *names*
 # written on the `apt-get install` line of Dockerfile.openclaw — the same list
@@ -74,7 +82,13 @@ EXPECTED_PACKAGES = {
 # Dockerfile.openclaw (docs/RUNBOOK.md, "Rebuilding after a Debian point
 # release"), not these pins.
 EXPECTED_DEBIAN_PACKAGES = {
-    "ca-certificates": "20230311+deb12u1",
+    # Moved with the 2026.8.1 base, which already ships 20250419~deb12u1 from
+    # bookworm-security. The old pin is still in the pool at priority 500, so
+    # apt does not fail to find it — it refuses to *downgrade* to it
+    # (`E: Packages were downgraded and -y was used without --allow-downgrades`,
+    # measured exit 100). Re-measured against the 8.1 base: of the ten pinned
+    # names this is the only one that moved.
+    "ca-certificates": "20250419~deb12u1",
     "curl": "7.88.1-10+deb12u15",
     "file": "1:5.44-3",
     "jq": "1.6-2.1+deb12u2",
@@ -86,7 +100,7 @@ EXPECTED_DEBIAN_PACKAGES = {
     "poppler-utils": "22.12.0-2+deb12u3",
     # These two are the python3-defaults metapackages, so their `3.11.2` is that
     # source's revision and not the interpreter's: measured in
-    # vc-lead-research:3.0.0, `/usr/bin/python3` is a symlink owned by
+    # vc-lead-research:3.0.1, `/usr/bin/python3` is a symlink owned by
     # python3-minimal, while the interpreter binary `/usr/bin/python3.11` belongs
     # to python3.11-minimal=3.11.2-6+deb12u8, which the digest-pinned base image
     # already carries. The interpreter revision is therefore inherited, not
@@ -172,8 +186,8 @@ def docker_config_command(image: str, config: Path, values: dict[str, str]) -> l
         "OPENCLAW_STATE_DIR=/tmp/state", "-e",
         "OPENCLAW_CONFIG_PATH=/config/openclaw.json", "-e",
         "OPENCLAW_GATEWAY_TOKEN=offline-validation-token-00000000000000000000000000000000",
-        "-e", "VC_PRIMARY_MODEL=openai/gpt-5.6", "-e",
-        "VC_FAST_MODEL=openai/gpt-5.6",
+        "-e", "VC_PRIMARY_MODEL=openai/gpt-5.6-sol", "-e",
+        "VC_FAST_MODEL=openai/gpt-5.6-sol",
     ]
     for key, value in sorted(values.items()):
         if key != "PRIMARY_CHANNEL":
@@ -205,7 +219,7 @@ def package_provenance(image: str) -> dict[str, Any]:
         "telegram:read('/app/extensions/telegram/package.json'),"
         "firecrawl:read('/opt/openclaw-runtime/node_modules/@openclaw/firecrawl-plugin/package.json'),"
         "tavily:read('/opt/openclaw-runtime/node_modules/@openclaw/tavily-plugin/package.json'),"
-        "duckduckgo:read('/app/extensions/duckduckgo/package.json'),"
+        "duckduckgo:read('/opt/openclaw-runtime/node_modules/@openclaw/duckduckgo-plugin/package.json'),"
         "ollama:read('/app/extensions/ollama/package.json'),"
         "trusted_context:read('/opt/openclaw-extensions/vc-trusted-context/package.json')}));"
     )
@@ -249,6 +263,84 @@ def package_provenance(image: str) -> dict[str, Any]:
         "installed_packages": versions,
         "installed_debian_packages": debian_versions,
     }
+
+
+def exec_approvals_row_probe(image: str) -> dict[str, Any]:
+    """Seed the reviewed exec-approvals policy, then read it back out of the store.
+
+    2026.8.1 moved exec approvals out of `$OPENCLAW_STATE_DIR/exec-approvals.json`
+    and into `state/openclaw.sqlite#exec_approvals_config`, so any check that
+    reads the file proves nothing about the policy the runtime enforces. That is
+    why this asserts the store path as well as the contents: measured, the
+    2026.8.1 image reports
+    `<state>/state/openclaw.sqlite#exec_approvals_config` while the 2026.7.1
+    image reports `<state>/exec-approvals.json` for the identical command. An
+    image that still answers with a file fails here instead of certifying a
+    policy the gateway ignores.
+
+    Two things the round trip does not preserve, both measured rather than
+    assumed, so do not add them back to the comparison: the stored policy is
+    rooted at `file`, and each allowlist entry loses its `source`. `id` and
+    `pattern` survive, and they are what the boundary is built on.
+
+    The expectation is derived from the seed rather than restated here — a
+    second copy of the policy inside the gate would be one more thing to drift.
+    """
+    result = run(
+        [
+            "docker", "run", "--rm", "--network", "none", "--read-only",
+            "--tmpfs", "/tmp:rw,noexec,nosuid,size=64m", "--cap-drop", "ALL",
+            "--security-opt", "no-new-privileges:true", "--pids-limit", "128",
+            "--memory", "512m", "-e", "HOME=/tmp/home",
+            # 2026.8.1 needs a writable cache root before it will open a SQLite
+            # store at all; without it the CLI dies with "Unable to create
+            # fallback OpenClaw temp dir". Point it inside the one tmpfs this
+            # container already has so --read-only still holds.
+            "-e", "XDG_CACHE_HOME=/tmp/cache",
+            "-e", "OPENCLAW_STATE_DIR=/tmp/state",
+            "--mount",
+            f"type=bind,src={REVIEWED_EXEC_APPROVALS},target=/seed/exec-approvals.json,readonly",
+            "--entrypoint", "sh", image, "-c",
+            "node dist/index.js approvals set --file /seed/exec-approvals.json >/dev/null"
+            " && node dist/index.js approvals get --json",
+        ],
+        timeout=120,
+    )
+    if result.returncode:
+        raise RuntimeError(result.stderr.strip() or "exec approvals store probe failed")
+    stored = json.loads(result.stdout)
+    path = str(stored.get("path", ""))
+    if not path.endswith("state/openclaw.sqlite#exec_approvals_config"):
+        raise RuntimeError(
+            "exec approvals are not held in the state database; this image would "
+            f"read a policy the gateway ignores: path={path!r}"
+        )
+    if stored.get("exists") is not True:
+        raise RuntimeError("the exec approvals row is absent after seeding it")
+    reviewed = json.loads(REVIEWED_EXEC_APPROVALS.read_text(encoding="utf-8"))
+    graded = ("security", "ask", "askFallback", "autoAllowSkills")
+
+    def projection(policy: dict[str, Any]) -> dict[str, Any]:
+        agents = policy.get("agents") or {}
+        steward = agents.get("data-steward") or {}
+        return {
+            "version": policy.get("version"),
+            "defaults": policy.get("defaults"),
+            "agents": sorted(agents),
+            "data-steward": {key: steward.get(key) for key in graded},
+            "allowlist": sorted(
+                (str(entry.get("id")), str(entry.get("pattern")))
+                for entry in steward.get("allowlist") or []
+            ),
+        }
+
+    expected = projection(reviewed)
+    actual = projection(stored.get("file") or {})
+    if actual != expected:
+        raise RuntimeError(
+            f"the stored exec approvals policy differs: expected={expected}, actual={actual}"
+        )
+    return {"path": path, "hash": stored.get("hash"), "policy": actual}
 
 
 def workshop_guard_probe(image: str) -> dict[str, Any]:
@@ -307,7 +399,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--image",
-        default="vc-lead-research:3.0.0",
+        default="vc-lead-research:3.0.1",
         help="already-built local Version 3 image",
     )
     args = parser.parse_args()
@@ -320,6 +412,8 @@ def main() -> int:
         checks.append({"name": "image-package-provenance", "result": "PASS"})
         workshop_guard_probe(args.image)
         checks.append({"name": "image-workshop-guard", "result": "PASS"})
+        exec_approvals_row_probe(args.image)
+        checks.append({"name": "image-exec-approvals-row", "result": "PASS"})
         with tempfile.TemporaryDirectory(prefix="openclaw-v3-g6-") as raw:
             directory = Path(raw)
             rendered_profiles: dict[str, tuple[Path, dict[str, str]]] = {}
@@ -335,6 +429,26 @@ def main() -> int:
                         "detail": None if passed else (validated.stderr + validated.stdout)[-10_000:],
                     }
                 )
+
+            # The reviewed artifact, validated as committed rather than through
+            # a render. Every profile check above validates the renderer's
+            # output, so a key that only the base file carries — the whole of
+            # `diagnostics`, `cron`, `commands`, `skills.workshop` — is judged
+            # only after apply_runtime_selection has had its say. Upstream's
+            # schema is strict everywhere in 2026.8.1 and the gateway exits 78
+            # on an unrecognized key, so validate what the release ships.
+            reviewed = run(
+                docker_config_command(args.image, REVIEWED_CONFIG, env_values("none")),
+                timeout=90,
+            )
+            passed = reviewed.returncode == 0 and "Config valid:" in reviewed.stdout
+            checks.append(
+                {
+                    "name": "openclaw-schema:reviewed-artifact",
+                    "result": "PASS" if passed else "FAIL",
+                    "detail": None if passed else (reviewed.stderr + reviewed.stdout)[-10_000:],
+                }
+            )
 
             slack_path, slack_values = rendered_profiles["slack"]
             hostile = json.loads(slack_path.read_text(encoding="utf-8"))
@@ -385,6 +499,8 @@ def main() -> int:
         "failures": failures,
         "evidence_paths": [
             "Dockerfile.openclaw",
+            "config/exec-approvals.json",
+            "config/openclaw.json",
             "runtime-packages/package-lock.json",
             "runtime-extensions/vc-trusted-context/index.js",
             "scripts/run_g6_image.py",

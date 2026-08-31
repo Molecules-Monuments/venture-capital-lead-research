@@ -2,7 +2,7 @@
 """This suite guards the G6 gate itself, not the image the gate certifies.
 
 `scripts/run_g6_image.py` only runs where Docker and a built
-`vc-lead-research:3.0.0` image exist, and `verify_offline.py` invokes it solely
+`vc-lead-research:3.0.1` image exist, and `verify_offline.py` invokes it solely
 behind the opt-in `--with-g6-image`. Its own self-check compares the checks it
 emitted against `EXPECTED_CHECK_NAMES` — a tuple it derives from `PROFILES`.
 Drop a profile and the check disappears from both sides of that comparison at
@@ -11,14 +11,20 @@ that can quietly stop running a check and still report PASS is worse than no
 gate, because the report is what the release record keeps.
 
 So the inventory is pinned here instead, in the `g6` suite that
-`verify_offline.py` always runs: the eight check names spelled out as literals,
+`verify_offline.py` always runs: the ten check names spelled out as literals,
 the count as a literal, `PROFILES` as a literal, the locked runtime package
-set, and `workshop_guard_probe` and `docker_config_command` asserted callable
-so a rename cannot silently drop a check. The same suite pins the shape of the
-validation container — `--network none`, `--read-only`, `--cap-drop`,
-`no-new-privileges` — because a gate that gained network access would still
-pass every check while no longer being the offline gate the evidence documents
-describe.
+set, and `workshop_guard_probe`, `exec_approvals_row_probe` and
+`docker_config_command` asserted callable so a rename cannot silently drop a
+check. The same suite pins the shape of the validation container —
+`--network none`, `--read-only`, `--cap-drop`, `no-new-privileges` — because a
+gate that gained network access would still pass every check while no longer
+being the offline gate the evidence documents describe.
+
+The package *versions* are pinned against Dockerfile.openclaw's own build-time
+assertions, not merely the key set. A key set alone let a typo in a version
+literal be invisible to every check that runs without Docker: the Dockerfile
+would build the image the gate then declared unexpected, and the two would only
+be compared on a host that could do both.
 
 The Debian pins are read back out of `Dockerfile.openclaw` rather than counted:
 a count-only pin let a name or version swap inside the gate's own list pass
@@ -30,6 +36,7 @@ were read as package pins and failed this test with a package-drift message.
 from __future__ import annotations
 
 import importlib.util
+import json
 import re
 import tempfile
 import unittest
@@ -84,6 +91,53 @@ class ImageChannelGateContractTests(unittest.TestCase):
         )
         self.assertEqual(declared, dict(gate.EXPECTED_DEBIAN_PACKAGES))
 
+    def test_expected_package_versions_are_bound_to_the_dockerfile(self) -> None:
+        # The test above pins *which* packages the gate reads. This pins what it
+        # expects to find, which nothing offline did: a mistyped version literal
+        # in EXPECTED_PACKAGES produced an image the gate then rejected as
+        # unexpected, and the two were only ever compared on a host that could
+        # both build and run Docker.
+        #
+        # Nine of the ten are asserted by Dockerfile.openclaw at build time as
+        # `test "$(node -p "require('<manifest>').version")" = "<version>"`.
+        # Derive this gate's key from the package directory in that path,
+        # dropping the `-plugin` suffix the npm names carry
+        # (@openclaw/firecrawl-plugin -> firecrawl,
+        # @openclaw/duckduckgo-plugin -> duckduckgo), so the binding survives a
+        # package moving between the bundled tree and the npm runtime.
+        dockerfile = (PACKAGE / "Dockerfile.openclaw").read_text(encoding="utf-8")
+        pairs = re.findall(
+            r'''require\('([^']+)/package\.json'\)\.version"\)" = "([^"]+)"''',
+            dockerfile,
+        )
+        asserted = {
+            path.rsplit("/", 1)[-1].removesuffix("-plugin"): version
+            for path, version in pairs
+        }
+        self.assertEqual(
+            len(pairs), len(asserted), "two Dockerfile assertions map to one gate key"
+        )
+        self.assertEqual(
+            {
+                name: version
+                for name, version in gate.EXPECTED_PACKAGES.items()
+                if name != "trusted_context"
+            },
+            asserted,
+        )
+        # The tenth is ours, not upstream's: vc-trusted-context is baked from
+        # this tree, so bind it to VERSION rather than to the Dockerfile. Both
+        # ends are pinned because moving VERSION without the extension manifest
+        # produces an image G6 rejects only after a rebuild.
+        version = (PACKAGE / "VERSION").read_text(encoding="utf-8").strip()
+        self.assertEqual(version, gate.EXPECTED_PACKAGES["trusted_context"])
+        manifest = json.loads(
+            (PACKAGE / "runtime-extensions/vc-trusted-context/package.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        self.assertEqual(version, manifest["version"])
+
     def test_fixture_envs_are_secure_literal_complete_families(self) -> None:
         with tempfile.TemporaryDirectory() as raw:
             for profile in gate.PROFILES:
@@ -107,24 +161,33 @@ class ImageChannelGateContractTests(unittest.TestCase):
 
     def test_gate_declares_the_complete_check_inventory(self) -> None:
         # Behavioral contract (not a self-grep): the gate must run exactly image
-        # provenance, the workshop guard, one schema validation per profile, and
-        # the hostile unknown-field rejection — eight checks, single-sourced.
+        # provenance, the workshop guard, the exec-approvals store round trip,
+        # one schema validation per profile, the reviewed artifact's own schema
+        # validation, and the hostile unknown-field rejection — ten checks,
+        # single-sourced.
         self.assertEqual(
             gate.EXPECTED_CHECK_NAMES,
             (
                 "image-package-provenance",
                 "image-workshop-guard",
+                "image-exec-approvals-row",
                 "openclaw-schema:none",
                 "openclaw-schema:slack",
                 "openclaw-schema:msteams",
                 "openclaw-schema:discord",
                 "openclaw-schema:telegram",
+                "openclaw-schema:reviewed-artifact",
                 "openclaw-schema:unknown-field-rejected",
             ),
         )
-        self.assertEqual(8, len(gate.EXPECTED_CHECK_NAMES))
+        self.assertEqual(10, len(gate.EXPECTED_CHECK_NAMES))
         self.assertTrue(callable(gate.workshop_guard_probe))
+        self.assertTrue(callable(gate.exec_approvals_row_probe))
         self.assertTrue(callable(gate.docker_config_command))
+        # Both new checks read a reviewed artifact rather than a render, so the
+        # gate must actually address those files.
+        self.assertTrue(gate.REVIEWED_CONFIG.is_file())
+        self.assertTrue(gate.REVIEWED_EXEC_APPROVALS.is_file())
 
 
 if __name__ == "__main__":

@@ -57,17 +57,22 @@ tests pass (see the banner above):
   (The generated-media `media.ttlHours` sweep is intentionally not enabled: it
   prunes empty directories including the workflow inbound-media root. Inbound
   document snapshots are product data, retained by the product operation below.)
-  Turning the optional `cron` job on brings two further retention keys into
-  scope, both unset in `config/openclaw.json` today. Cron run history is
-  written to the `cron_run_logs` table of the SQLite state database in the
-  persistent `openclaw-state` volume, and its `summary` column holds the run's
-  reply text; it is pruned by `cron.runLog.keepLines` (harness default: 2000
-  rows per job) and is outside `openclaw sessions cleanup`, whose own
-  documentation states that it does not prune cron run history. The completed
-  session each cron run leaves behind is additionally pruned by
-  `cron.sessionRetention` (harness default: 24h), which fires sooner than
-  `session.maintenance.pruneAfter`. Set both to the firm's period in the same
-  edit that sets `cron.enabled: true`.
+  Turning the optional `cron` job on brings one further retention key into
+  scope, unset in `config/openclaw.json` today: the completed session each cron
+  run leaves behind is pruned by `cron.sessionRetention` (harness default:
+  `24h`), which fires sooner than `session.maintenance.pruneAfter`. Set it to
+  the firm's period in the same edit that sets `cron.enabled: true`.
+
+  Cron run history is **no longer a retention decision you can make**. On the
+  `2026.8.1` base the `cron_run_logs` table is gone — opening the state
+  database migrates its rows into `task_runs` and drops it — and
+  `cron.runLog.keepLines`, which used to bound it, is retired with no
+  replacement (upstream's own migration note records the fixed retention as
+  2000 runs per job). Those rows carry each run's reply text, they live in the
+  persistent `openclaw-state` volume, they ride into every recovery point, and
+  `openclaw sessions cleanup` does not prune them. Treat that as a fixed-size
+  store outside the firm's period rather than as something to tune, and size
+  the retention narrative around it.
 - **Product data** (companies, leads, facts, evidence, memos in Postgres) is
   governed by the reviewed, approval-gated `vcops data-erase-lead` operation
   (operator lane). It consumes a scoped one-time approval in the **same
@@ -163,3 +168,70 @@ tests pass (see the banner above):
   listed above, and covering those gaps is outside the software; document and
   rehearse the out-of-band steps for both lanes before a deployment relies on
   either path.
+
+### The erasure guarantee is PostgreSQL-scoped
+
+The enumeration above is complete **for PostgreSQL and for nothing else.** It
+is derived from `docs/SCHEMA.sql` and enforced against it by
+`tests/v3/test_erasure_gap_enumeration.py`, so a new PostgreSQL table cannot
+slip past it — and by exactly the same construction, a store that is not a
+PostgreSQL table is invisible to it. The harness keeps a subject's words in
+several such stores. Read this list as the boundary of the guarantee, not as a
+second gap list with a test behind it:
+
+- **The full-text index of every message, which cannot be turned off.** Each
+  agent's `openclaw-agent.sqlite` carries `session_transcript_fts`, an FTS5
+  virtual table created without a `content=` option, so SQLite keeps a
+  **verbatim second copy** of every user and assistant message in its own
+  shadow table. It is created unconditionally as part of the agent schema:
+  there is no configuration key for it anywhere in the `2026.8.1` runtime, and
+  it did not exist at all on `2026.7.1`. Personal data planted in a
+  conversation was read back out of the index directly. Message text therefore
+  lives in three places at once — `transcript_events.event_json`,
+  `session_transcript_archives.archive_blob`, and that index — and an erasure
+  procedure that reaches only one of them has not erased anything. The
+  surrounding tables (`session_transcript_active_events`,
+  `transcript_event_identities`, `session_transcript_index_state`) hold
+  positions and identifiers rather than text and cascade from
+  `transcript_events`.
+- **Session deletion and pruning are archival, not erasure.** After
+  `openclaw sessions delete` reports `"status":"deleted"`, a compressed archive
+  file *and* a `session_transcript_archives.archive_blob` row both persist, and
+  the deleted plaintext is still recoverable from the live `.sqlite` and its
+  `-wal` sidecar: the database runs with `secure_delete=0`, so freed pages keep
+  their contents. `scripts/backup.sh` captures all of it. The only
+  residue-removing mechanism measured here was taking a VACUUMed copy —
+  `openclaw backup sqlite create` — after which the planted strings were gone.
+  A deployment that must *erase* rather than *retire* a transcript needs that
+  step written into its procedure; nothing runs it for you.
+- **The harness retention keys are eight, not four.** `session.maintenance`
+  accepts `mode`, `pruneAfter`, `archiveDashboardAfter`, `maxEntries`,
+  `preserveRecent`, `resetArchiveRetention`, `maxDiskBytes` and
+  `highWaterBytes`. Only the first, second and fourth are set in
+  `config/openclaw.json`. `resetArchiveRetention` and `maxDiskBytes` matter on
+  the `2026.8.1` base in a way they did not before: `resetArchiveRetention`
+  stopped inheriting `pruneAfter` and now keeps reset archives until the disk
+  budget evicts them, and that eviction lane runs behind `cron.enabled`, which
+  is off here. Unset means "kept", not "pruned with everything else".
+- **Derived memory outside any database.** Each workspace can accumulate a
+  `MEMORY.md` and, if the memory plugin's dreaming lane is ever enabled, a
+  `DREAMS.md`. They are plain files on the state volume, they are captured by
+  backup, and no erasure path touches them. This release pins dreaming off, so
+  the second file should not appear — check for it rather than assuming.
+- **Per-agent memory tables.** `openclaw-agent.sqlite` also holds
+  `memory_index_chunks`, `memory_index_chunk_provenance` (new in `2026.8.1`,
+  recording an origin class and session kind per chunk),
+  `memory_index_chunk_recall_metadata`, `memory_index_sources`,
+  `memory_index_meta`, `memory_index_state`, `memory_embedding_cache` and
+  `memory_entry_origins`. Memory search is disabled in this release, which
+  stops chunks being *retrieved*; it is not a promise that nothing was ever
+  written.
+
+Two consequences for the policy this document records. A subject-erasure
+commitment that is not qualified will be wrong: state the guarantee as
+PostgreSQL-scoped and describe the harness stores as an operator-run procedure,
+the way the PostgreSQL gaps above are already described. And widening
+`tests/v3/test_erasure_gap_enumeration.py` past `docs/SCHEMA.sql` — so the
+harness stores get a closed world of their own — is deliberately **not** done
+in this release; until it is, this section is prose backed by measurement
+rather than by a gate, and it needs re-checking against each upstream bump.

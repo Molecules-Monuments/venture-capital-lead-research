@@ -108,7 +108,7 @@ def main() -> int:
         )
     except (OSError, json.JSONDecodeError, ValueError) as exc:
         fail(f"manifest is unavailable or invalid: {exc}")
-    if manifest.get("manifest_version") != 1 or manifest.get("package_version") != "3.0.0":
+    if manifest.get("manifest_version") != 1 or manifest.get("package_version") != "3.0.1":
         fail("unsupported manifest/package version")
     if manifest.get("excluded_review_directories") != sorted(REVIEW_ONLY_ROOTS):
         fail("manifest review-only directory contract is missing or unexpected")

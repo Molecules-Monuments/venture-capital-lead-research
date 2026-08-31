@@ -7,9 +7,13 @@
 | 3.0.x | Yes |
 | 2.x and earlier | No |
 
-This is a self-hosted package. There is no hosted service and no automatic
-update channel: patches are published as a new release that the operator
-applies with `scripts/update.sh`.
+This is a self-hosted package. There is no hosted service, and nothing updates
+this package automatically: patches are published as a new release that the
+operator applies with `scripts/update.sh`. The bundled harness can check its
+own upstream release channel at startup, and the Control UI offers a one-click
+update beside the resulting banner — neither is a supported path here, both are
+pinned off, so that check does not run, and `docs/RUNBOOK.md` §2 enumerates it
+along with the two other unsolicited outbound calls the harness makes.
 
 ## Reporting a vulnerability
 

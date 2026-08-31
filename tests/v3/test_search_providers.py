@@ -30,8 +30,8 @@ ALL_PROVIDERS = set(render.SEARCH_PACKAGES)
 
 def base_env(search):
     return {
-        "VC_MODEL_PROVIDER": "openai", "VC_PRIMARY_MODEL": "openai/gpt-5.6",
-        "VC_FAST_MODEL": "openai/gpt-5.6", "VC_MODEL_REASONING": "true", "VC_MODEL_INPUT": "text",
+        "VC_MODEL_PROVIDER": "openai", "VC_PRIMARY_MODEL": "openai/gpt-5.6-sol",
+        "VC_FAST_MODEL": "openai/gpt-5.6-sol", "VC_MODEL_REASONING": "true", "VC_MODEL_INPUT": "text",
         "VC_MODEL_CONTEXT_WINDOW": "272000", "VC_MODEL_MAX_TOKENS": "16384",
         "VC_MODEL_TIMEOUT_SECONDS": "300", "VC_WEB_SEARCH_PROVIDER": search,
         "VC_WEB_FETCH_PROVIDER": "default",
@@ -125,7 +125,7 @@ class SearchProviderRenderTests(unittest.TestCase):
             "VC_MODEL_PROVIDER": "openai", "OPENAI_API_KEY": "sk-x",
             "VC_WEB_SEARCH_PROVIDER": "brave", "BRAVE_API_KEY": "brv-x",
             "VC_WEB_FETCH_PROVIDER": "default", "VC_CHANNEL_MEDIA_MAX_MB": "25",
-            "VC_PRIMARY_MODEL": "openai/gpt-5.6", "VC_FAST_MODEL": "openai/gpt-5.6",
+            "VC_PRIMARY_MODEL": "openai/gpt-5.6-sol", "VC_FAST_MODEL": "openai/gpt-5.6-sol",
         })
         with_key = check_env.validate_runtime_selection(base)
         self.assertNotIn(

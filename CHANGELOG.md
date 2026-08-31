@@ -3,9 +3,10 @@
 Notable changes to the Venture Capital Lead Research System, newest first. The
 format follows [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/)
 loosely — grouped entries under a dated version heading — with one deliberate
-omission: this file carries no compare-link footer. 3.0.0 is the first published
-entry, so there is no predecessor to compare it against. The footer goes in with
-the second release, when a comparison exists to point at.
+omission: this file carries no compare-link footer. It was left out at 3.0.0,
+which had no predecessor to compare against, and it stays out for now: the
+repository's release pages already carry the comparison and a hand-maintained
+footer would be a second copy to keep true.
 
 ## Versioning, `VERSION`, and the tag
 
@@ -14,12 +15,14 @@ Two artifacts carry the number, and they deliberately do not move together:
 
 - **`VERSION`** at the repository root names the **release**. It changes only
   when a new release is cut.
-- **The annotated git tag `v3.0.0`** names the **commit that currently _is_
-  that release**. Every audit or fix cycle ends by moving that tag to the new
-  `HEAD` while `VERSION` stays at `3.0.0`, because such a cycle produces no new
-  release — it corrects the one that already exists.
+- **The annotated tag `v<VERSION>`** — today `v3.0.1` — names the **commit that
+  currently _is_ that release**. Every audit or fix cycle ends by moving that
+  tag to the new `HEAD` while `VERSION` stays where it is, because such a cycle
+  produces no new release — it corrects the one that already exists. Tags of
+  superseded releases are left alone: `v3.0.0` still points at the 2026.7.1-based
+  release and is not moved by work on 3.0.1.
 
-A moved `v3.0.0` is therefore not a re-release, and the tag is expected to move.
+A moved release tag is therefore not a re-release, and the tag is expected to move.
 The convention exists because a tag left pointing at a commit whose defects have
 since been fixed is a trap for anyone who checks it out expecting the release:
 during development the tag once sat six commits behind `main`, spanning two
@@ -30,6 +33,94 @@ actually passed. [docs/MAINTAINING.md](docs/MAINTAINING.md) holds the rule and
 the exact commands. The repository now has a remote, so each move of the tag is
 a deliberate force-push plus a note to anyone who may already have fetched it —
 plan that as part of the cycle rather than discovering it afterwards.
+
+## [3.0.1] — 2026-08-31
+
+Upstream base moved from OpenClaw `2026.7.1` to `2026.8.1`. This is a reviewed
+release-engineering cycle, not an in-place update: the harness changed where it
+stores exec approvals, retired configuration keys this package relied on, and
+grew its unsolicited outbound surface. `VERSION` moves to `3.0.1` and a new
+annotated `v3.0.1` tag is cut; `v3.0.0` stays where it is.
+
+> [!IMPORTANT]
+> **`scripts/update.sh` is the only supported path from 3.0.0, and the exec
+> approval store changes underneath it.** `2026.8.1` reads the reviewed exec
+> allowlist from the `exec_approvals_config` row of the OpenClaw state database
+> rather than from `$OPENCLAW_STATE_DIR/exec-approvals.json`, and a leftover
+> copy of that file makes every approvals read *and* write throw. The
+> initializer now loads the image-baked seed into that row and asserts the old
+> file is gone. A deployment that skipped this step would come up with no
+> allowlist at all — every Lobster workflow silently refused — while every
+> offline gate stayed green, which is why the assertion reads the row back
+> instead of the file.
+
+### Changed
+
+- **Upstream harness `2026.7.1` → `2026.8.1`**, with the base image re-pinned by
+  digest and the channel plugins moved to matching `2026.8.1` releases. The
+  `duckduckgo` search extension is no longer bundled in the base image and is
+  now a pinned npm plugin like Firecrawl and Tavily.
+- **Exec approvals move to the state database.** The reviewed seed stays
+  read-only and image-baked at `/opt/openclaw-seed/exec-approvals.json`, outside
+  the state directory, and is loaded into `exec_approvals_config`. The harness's
+  socket token now lives in that row, so the old rationale for leaving a
+  writable JSON copy in the state volume is void and the documents that carried
+  it have been corrected.
+- **Retired configuration keys removed, and the pins that replace them added.**
+  `diagnostics.stuckSessionWarnMs`/`stuckSessionAbortMs`,
+  `cron.maxConcurrentRuns`, `cron.runLog`, `commands.useAccessGroups` and
+  `tools.exec.timeoutSec` are gone from the schema; `agents.defaults.memorySearch`
+  became `memory.search` and `skills.workshop.autonomous.enabled` became
+  `.mode`. Every one of them was startup-fatal or a silent default flip, so the
+  migration is by hand: `openclaw doctor --fix` remains forbidden here, and on
+  this configuration it was measured to exit 1 without migrating anything.
+- **Defaults pinned rather than inherited**, where `2026.8.1` moved them:
+  `gateway.terminal.enabled: false` (upstream flipped it opt-in → opt-out,
+  which would have exposed a browser-reachable shell inside the gateway
+  container), `skills.workshop.autonomous.mode: "off"`,
+  `plugins.entries["memory-core"].config.dreaming.enabled: false`,
+  `memory.search.rememberAcrossConversations: false`,
+  `agents.defaults.maxConcurrent: 3`, `agents.defaults.utilityModel: ""`,
+  `agents.defaults.modelSelectionScope: "session"`, an explicit
+  `agents.defaults.modelPolicy.allow`, and `telemetry.enabled: false`.
+- **Default model.** `openai/gpt-5.6` was removed from the `2026.8.1` OpenAI
+  catalogue, so the shipped default moves to a model that is still in it.
+
+### Security and privacy
+
+- **The unsolicited outbound surface is three hosts, not one.** The version
+  check moved to `telemetry.openclaw.ai`; a model-catalogue refresh to
+  `catalog.openclaw.ai` is new and runs every six hours; and a plugin-feed
+  prewarm to `clawhub.ai` is new, unconditional, and **has no configuration
+  switch of any kind**. The first two are pinned off. The third is deniable only
+  by host egress policy, and denying it degrades nothing. `docs/RUNBOOK.md` §2
+  enumerates all three with trigger, cadence, payload and off-switch, and §5.1
+  names the log lines to expect under a deny.
+- **`plugins.allow` is documented as what it is.** It was never a complete
+  plugin boundary: the harness fills its default memory slot before consulting
+  the allowlist, so `memory-core` loads regardless — on `2026.7.1` as well as
+  `2026.8.1`. The claim has been corrected rather than the behaviour changed;
+  the plugin stays loaded with `dreaming` pinned off, and unloading it is a
+  separate reviewed change because the agent tool allowlists reference the tool
+  names it supplies.
+- **The erasure guarantee is stated as PostgreSQL-scoped.**
+  `workspaces/vc-chief/vc/data_retention.md` now names what sits outside it,
+  including an always-on full-text index of every message that `2026.8.1` adds
+  with no key to disable it, and the archival-not-erasure semantics of session
+  deletion.
+
+### Known losses
+
+- **Stuck-session watchdog tuning is gone.** Warn is a fixed 120 s and abort a
+  derived 360 s, with no key, so a model call that produces no streaming output
+  for longer is aborted whatever `VC_MODEL_TIMEOUT_SECONDS` says. The
+  mitigations left are host-side. This is upstream's removal, accepted rather
+  than worked around.
+- **Five `skill_workshop` actions are deliberately unreachable.** The tool grew
+  from eight actions to fifteen; the image-owned guard is fail-closed and its
+  allowlist did not change, so `read`, `prepare_patch`, `patch`, `evaluate` and
+  `history` are refused alongside the lifecycle actions this design always
+  refused. Widening it is a behaviour change with its own review.
 
 ## [3.0.0] — 2026-08-25
 
@@ -64,10 +155,11 @@ multi-agent system for venture-capital inbound and outbound lead research. It
 uses [OpenClaw](https://github.com/openclaw/openclaw) `2026.7.1` as the agent
 harness, PostgreSQL `17.10-bookworm` as the authoritative venture-data store,
 and [Lobster](https://github.com/openclaw/lobster) `2026.6.11` for eighteen
-fixed operational workflows. It runs entirely on the operator's own host and
-the gateway's only unsolicited outbound call is a startup version check that
-downloads and installs nothing, documented in `docs/RUNBOOK.md` §2 and safe to
-deny. The downloaded package is deliberately unconfigured: it
+fixed operational workflows. It runs entirely on the operator's own host and,
+**on the `2026.7.1` base this release pinned**, the gateway's only unsolicited
+outbound call was a startup version check to `registry.npmjs.org` that
+downloaded and installed nothing. That count is specific to this release: see
+3.0.1 below, and `docs/RUNBOOK.md` §2 for the current enumeration. The downloaded package is deliberately unconfigured: it
 holds no credentials, selects no channel, and cannot reach a model until an
 operator supplies a reviewed configuration — a safe distribution default, not a
 runtime limitation.

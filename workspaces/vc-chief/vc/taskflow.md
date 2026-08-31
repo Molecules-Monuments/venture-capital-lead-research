@@ -118,13 +118,16 @@ Task Flow statuses are `queued`, `running`, `waiting`, `blocked`, `succeeded`,
 optimistic. Carry the returned revision forward. On `revision_conflict`, re-read
 the flow and decide again; never guess or increment locally.
 
-In the pinned `2026.7.1` plugin SDK the mutation-capable runtime is
+In the pinned `2026.8.1` plugin SDK the mutation-capable runtime is
 `api.runtime.tasks.managedFlows`; `api.runtime.tasks.flows` and
-`api.runtime.tasks.runs` are read-only views, `api.runtime.tasks.flow` is a
-**deprecated alias** for `managedFlows`, and `api.runtime.taskFlow` is a legacy
-runtime alias. OpenClaw may create a mirrored one-task flow for detached
-data-steward work. Standalone `vcrun` does not create a managed Task Flow and
-must not claim one.
+`api.runtime.tasks.runs` are read-only session-bound views. The two legacy
+aliases that 2026.7.1 still carried — `api.runtime.tasks.flow` and
+`api.runtime.taskFlow` — were **removed** in 2026.8.1: the runtime now exposes
+exactly `runs`, `flows` and `managedFlows`, and the deprecation record that
+announced their removal is gone from the tree. Code written against either alias
+fails with an undefined property rather than a warning. OpenClaw may create a
+mirrored one-task flow for detached data-steward work. Standalone `vcrun` does
+not create a managed Task Flow and must not claim one.
 
 The upstream direct Lobster tool also has managed fields:
 
@@ -135,11 +138,16 @@ The upstream direct Lobster tool also has managed fields:
   decision.
 
 This is compatibility information, not an enabled Version 3 route. In pinned
-OpenClaw v2026.7.1, a successful Lobster `cancelled` envelope is mapped by the
-managed adapter to Task Flow `finish`, which can mislabel rejection as
-`succeeded`. The direct resume schema also supplies a Boolean decision but no
-hard authenticated approver binding. Do not enable managed Lobster until both
-defects are corrected and live-tested.
+OpenClaw v2026.8.1 the first of the two defects is **reported fixed upstream and
+not verified here**: the managed adapter's documented mapping gained `cancelled`
+as its own terminal status (`succeeded`/`failed`/`cancelled` on completion,
+where v2026.7.1 documented only `succeeded`/`failed`), so a rejected run should
+no longer be mislabelled `succeeded`. That is upstream's own documentation, not
+a measurement of ours — the adapter is not exercisable from this package. The
+second defect stands unchanged: the direct resume schema still supplies only a
+Boolean decision plus a token or approval id, with no hard authenticated
+approver binding. Do not enable managed Lobster until both are corrected **and**
+live-tested here.
 
 ## Approval boundary
 

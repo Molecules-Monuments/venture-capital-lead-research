@@ -15,14 +15,14 @@ following principal projects:
 ## OpenClaw
 
 - Project: https://github.com/openclaw/openclaw
-- Reviewed release: `2026.7.1`
-- Reviewed commit: `2d2ddc43d0dcf71f31283d780f9fe9ff4cc04fe4`
+- Reviewed release: `2026.8.1`
+- Reviewed commit: `ea806575e6450e4d1efdfc72c19f04be982a1b9b`
 - License: MIT
 - Copyright notice in the reviewed upstream license: Copyright (c) 2026
   OpenClaw Foundation
-- License text: https://github.com/openclaw/openclaw/blob/v2026.7.1/LICENSE
+- License text: https://github.com/openclaw/openclaw/blob/v2026.8.1/LICENSE
 - Upstream's own third-party notices:
-  https://github.com/openclaw/openclaw/blob/v2026.7.1/THIRD_PARTY_NOTICES.md
+  https://github.com/openclaw/openclaw/blob/v2026.8.1/THIRD_PARTY_NOTICES.md
 
 The reviewed upstream `LICENSE` does not end at the MIT warranty clause. Its
 last line — "Third-party notices for incorporated or adapted code are recorded
@@ -35,7 +35,7 @@ rendering. Both are MIT, **Copyright (c) 2025 Mario Zechner**
 carry that notice alongside the OpenClaw Foundation's.
 
 Do not expect to rediscover it from the built artifact. Measured in
-`vc-lead-research:3.0.0`: `@earendil-works/pi-tui` 0.80.3 is present under
+`vc-lead-research:3.0.1`: `@earendil-works/pi-tui` 0.84.2 is present under
 `/app/node_modules/`, ships no licence file of its own, and carries in its
 `package.json` only `"license": "MIT"` and `"author": "Mario Zechner"` — the
 holder's name, but not the copyright notice MIT requires be reproduced — while
@@ -51,12 +51,15 @@ The derived Docker image uses the pinned official OpenClaw image recorded in
 marks belong to their respective owner. This project is independent and is not
 presented as an official OpenClaw Foundation product.
 
-The same derived image contains the OpenClaw `2026.7.1` DuckDuckGo search,
-Ollama provider, and Telegram channel extensions supplied by that upstream
-release, plus the exact `@openclaw/firecrawl-plugin@2026.7.1`,
-`@openclaw/tavily-plugin@2026.7.1`, `@openclaw/slack@2026.7.1`,
-`@openclaw/msteams@2026.7.1`, and `@openclaw/discord@2026.7.1` packages locked
-in `runtime-packages/package-lock.json`. They remain OpenClaw components under
+The same derived image contains the OpenClaw `2026.8.1` Ollama provider and
+Telegram channel extensions supplied by that upstream release, plus the exact
+`@openclaw/duckduckgo-plugin@2026.8.1`, `@openclaw/firecrawl-plugin@2026.8.1`,
+`@openclaw/tavily-plugin@2026.8.1`, `@openclaw/slack@2026.8.1`,
+`@openclaw/msteams@2026.8.1`, and `@openclaw/discord@2026.8.1` packages locked
+in `runtime-packages/package-lock.json`. DuckDuckGo moved between those two
+sentences with this release: `2026.8.1` no longer bundles it as an image
+extension, so it is now a pinned npm plugin like Firecrawl and Tavily. The
+vendor, endpoint and licence are unchanged. They remain OpenClaw components under
 the upstream repository's MIT license. The local `vc-trusted-context` extension is
 original project material covered by this repository's Apache-2.0 license.
 
@@ -126,12 +129,14 @@ The derived image also inherits the base the pinned OpenClaw image is built on
 `org.opencontainers.image.base.name`/`.base.digest` labels — plus the Debian
 packages `Dockerfile.openclaw` installs. That base contributes **Node.js
 24.16.0** with npm 11.13.0, corepack 0.35.0 and yarn 1.22.22, installed from
-upstream tarballs rather than from apt; pnpm is not in the base and arrives
-with the build (third bullet). None of them appear in either Python
+upstream tarballs rather than from apt (third bullet). None of them appear in either Python
 lockfile, either npm lockfile, or `dpkg`, and their notices are not gathered
-into one file. Measured in the built image `vc-lead-research:3.0.0`,
-with the pinned base (`node@sha256:242549cd…`) measured separately because
-the two do not agree everywhere:
+into one file. Measured against the pinned `OPENCLAW_IMAGE` base
+(`ghcr.io/openclaw/openclaw:2026.8.1`) and confirmed identical in the image
+built from it: the derived build installs into `/opt` and through `apt`, and
+adds nothing under `/usr/local`, so the counts below are the base's. That
+equality was itself measured — on the previous release the base and
+`vc-lead-research:3.0.0` both returned the same three numbers:
 
 - Node.js, npm and corepack unpack into `/usr/local`, and their own notices —
   Node.js MIT plus the bundled OpenSSL, ICU, V8, c-ares, llhttp and zlib texts,
@@ -140,28 +145,32 @@ the two do not agree everywhere:
   two levels of `/usr/local` (`find /usr/local -maxdepth 2 -iname
   'LICEN[SC]E*'`), which is not the same claim as its being the only licence
   file under `/usr/local`. Dropping the depth limit,
-  `find /usr/local -iname 'LICEN[SC]E*' | wc -l` returns **172** in the built
-  image: the aggregate, 148 under `/usr/local/lib/node_modules/npm`, 22 under
+  `find /usr/local -iname 'LICEN[SC]E*' | wc -l` returns **173**: the
+  aggregate, 151 under `/usr/local/lib/node_modules/npm`, 20 under
   `/usr/local/share/corepack`, and corepack's own
-  `/usr/local/lib/node_modules/corepack/LICENSE.md`. The pinned base returns
-  **150** for the same command — it has no `/usr/local/share/corepack` at all,
-  which is the third bullet's subject. npm's and corepack's standalone copies
-  duplicate text the aggregate already carries; the other 169 are npm's bundled
-  dependencies and that vendored pnpm tree. Do not assume the aggregate stands
+  `/usr/local/lib/node_modules/corepack/LICENSE.md`. On the previous
+  `2026.7.1` base the same command returned 172, split 148/22 — the totals move
+  with every base bump, which is why they are re-measured rather than carried
+  forward. npm's and corepack's standalone copies duplicate text the aggregate
+  already carries; the other **170** are npm's bundled dependencies and the
+  vendored pnpm tree. Do not assume the aggregate stands
   in for them — `grep -ci yallist` and `grep -ci sigstore` against
   `/usr/local/LICENSE` both return `0`.
 - **yarn 1.22.22** (BSD-2-Clause) is unpacked into `/opt/yarn-v1.22.22`, 5.2 MB
   outside `/usr/local`, and carries its own `LICENSE` there. This one *is*
   identical in the pinned base. `/usr/local/LICENSE` does not cover it:
   `grep -ci yarn /usr/local/LICENSE` returns `0`.
-- **pnpm 11.2.2** (MIT) is not in the pinned base — `command -v pnpm` there
-  finds nothing. The build materialises it through corepack into
-  `/usr/local/share/corepack/v1/pnpm/11.2.2`, where `pnpm --version` answers
-  `11.2.2` under `docker run --network none`, so the bytes are in the built
-  image rather than fetched on first use. Its own `LICENSE` and the
-  licence files of its bundled dependencies under `dist/node_modules/` are the
-  22 files that tree contributes. `grep -ci pnpm /usr/local/LICENSE` also
-  returns `0`.
+- **pnpm 12.1.0** (MIT) ships **in the pinned base**, materialised through
+  corepack at `/usr/local/share/corepack/v1/pnpm/12.1.0` and reachable as
+  `/usr/local/bin/pnpm`, where `pnpm --version` answers `12.1.0` under
+  `docker run --network none` — so the bytes are in the image rather than
+  fetched on first use. Earlier revisions of this document said pnpm was absent
+  from the base and arrived with the build; that was measured against a
+  different image and is wrong for the one this package pins, on `2026.7.1` as
+  well as `2026.8.1`. It makes no difference to the obligation, only to where
+  you look. Its own `LICENSE` and the licence files of its bundled dependencies
+  under `dist/node_modules/` are the 20 files that tree contributes.
+  `grep -ci pnpm /usr/local/LICENSE` returns `0`.
 
 A redistributor who preserves `/usr/local/LICENSE` alone therefore ships yarn,
 pnpm, and npm's bundled dependencies with no notice. Preserve the licence files

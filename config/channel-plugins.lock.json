@@ -1,24 +1,28 @@
 {
-  "openclawVersion": "2026.7.1",
+  "openclawVersion": "2026.8.1",
   "packages": {
     "@clawdbot/lobster": {
       "version": "2026.6.11",
       "integrity": "sha512-zeNyXvDqYajDHxFlMy7wn6TfBUsMOIJgiw0lDn+ltGiQUH/F3w+8SWHCOyMNmzoZfXSQw9uJK44SVCzEkxXsUw=="
     },
     "@openclaw/discord": {
-      "version": "2026.7.1",
-      "integrity": "sha512-tZfdC1YA8oVLvc2BK1w0F6rUljS5ugCOp2uWe0vPsbG1fbzVVIO4V32RoqZznGHe5u2R9u4n1aV5Z/qa1m2oFg=="
+      "version": "2026.8.1",
+      "integrity": "sha512-PQ1tKQmNajKkJvNSScovtLhyxeMS/BR1V9Lqf1kyCO/iguKS8WNDqrRP4w5sykgqrgdll+Ilba0mO503oYZv2w=="
+    },
+    "@openclaw/duckduckgo-plugin": {
+      "version": "2026.8.1",
+      "integrity": "sha512-z21BtNmUpX8IigDyjJ0TUCyf7xcY3c3PQUsEOx1w8ZNOayXhdGG61nXyL/TjALf+VMQxQEXG3N7qKpNyzG9BYA=="
     },
     "@openclaw/msteams": {
-      "version": "2026.7.1",
-      "integrity": "sha512-gG/Yk6HZAguHwrmKjsqdONbFz5WNy126PEAXQWNW/TulO1kIifQ6tktM16BQPNLnkmWqLbj+TrrO55Cjas1aFg=="
+      "version": "2026.8.1",
+      "integrity": "sha512-3Su5LxGcWgZfaNAf/HA57/RnUmGkRJkXlVo2DhaWnVXrnJwoiLTgj8nPVgwGUwkI6BHWJjH4z4RSzlMrJaoL/w=="
     },
     "@openclaw/slack": {
-      "version": "2026.7.1",
-      "integrity": "sha512-dwVGEVCmoTQrOIeZaSCIOPg8pT7hB883QQEXdp9EZUDzTGuvSc+KxH2iERSOV/59hROQctYdcobGn/vdB1H4XA=="
+      "version": "2026.8.1",
+      "integrity": "sha512-lEWjBsBb7Dk/E2N+mlcluwfAhGdqxGH04Ne3q4yakDgNOKSeCyQkQYTMAg6zlhbpGkwoMnM/e+5I6XHdjGWJZw=="
     },
     "@openclaw/telegram": {
-      "version": "2026.7.1",
+      "version": "2026.8.1",
       "distribution": "bundled-private"
     }
   }

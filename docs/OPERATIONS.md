@@ -244,7 +244,7 @@ checksums; and `BACKUP_AUTHENTICATION`. Backup verifies each database artifact
 against staged bytes and authenticates the exact checksum manifest with
 HMAC-SHA-256 before atomic publication.
 
-Generated `openclaw.json`, persistent `exec-approvals.json`, volatile `exec-approvals.sock`, `.env`, database secret files, and provider/channel credentials are intentionally excluded. The target's reviewed approval seed is validated/recreated before the restored gateway starts. The state archive can nevertheless contain sessions and Lobster continuation material and the database dump contains business data: protect the entire backup as restricted operational data.
+Generated `openclaw.json`, any legacy `exec-approvals.json`, the volatile `exec-approvals.sock`, `.env`, database secret files, and provider/channel credentials are intentionally excluded. The reviewed exec allowlist is not a file in the recovery point on the `2026.8.1` base: it lives in the `exec_approvals_config` row of the state database, which the state archive does capture, and the harness's socket token lives in that same row. The target's reviewed approval seed is therefore re-asserted from the read-only image-baked `/opt/openclaw-seed/exec-approvals.json` and read back from the row before the restored gateway starts — a restore that only checked for the absent file would prove nothing. The state archive can nevertheless contain sessions and Lobster continuation material and the database dump contains business data: protect the entire backup as restricted operational data.
 
 The package's recovery algorithms and tamper tests are release evidence. A live
 isolated-host restore remains environment-specific commissioning evidence and

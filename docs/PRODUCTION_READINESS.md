@@ -3,7 +3,7 @@
 Decision date: 2026-07-23 (final-audit session: every gate re-executed after the security/correctness remediation; supersedes the 2026-07-22 decision)
 Live-model boundary restated: 2026-08-04, after five audit passes drove the agent layer against a real model (see "Exercised against a live model" below). The decision itself is unchanged; what changed is that the boundary is now drawn at model *judgement* rather than at model *contact*.
 Package: `vc-lead-research`
-Version: `3.0.0`
+Version: `3.0.1`
 Decision: **Deterministic package and deployment path VERIFIED. The live-model path is exercised against a real model — resolution, provider reach, tool-call payloads, and the timeout/context/watchdog bounds. Behavioral certification remains BLOCKED: never run against a production-grade model. Not certified for autonomous decision quality until commissioned.**
 
 ## What changed since the 2026-07-21 decision
@@ -61,7 +61,7 @@ and each of those describes the tree it was taken on rather than this one.
 
 | Proof | Result |
 | --- | --- |
-| Complete aggregate offline suites | 355 tests passed; 0 failed; 0 skipped; 30/30 offline checks pass (count re-verified 2026-08-20; the baseline was 231, and the runtime-provider/context regression tests that accompanied the context-window and Ollama-timeout floors added three more, moving it to 234; the heartbeat-disabled render assertion added on 2026-08-08 added one more, moving it to 235; the audit-invariant tests — evidence-document consistency and the erasure-gap enumeration — added on 2026-08-10 added eight more, moving it to 243; the fourteenth pass's mechanized-binding tests — documentation/tree consistency, runtime-grant enumeration, the customization count and coverage pins, the evidence-document growth-bridge and provenance guards, the workflow step-env allowlist, the dash-safe shell-escape guard, and the recovery state-bound and schema-ahead contracts — added nineteen more, moving it to 262; the fifteenth pass, across eight bindings — the skill-count pin and its RUNBOOK-recipe half, the ruff-inventory pin, the host-utility enumeration, the four quarantine-lane contracts, the run-history date binding, the step-reference command guard, and the documented-invocation checks — added twelve more, moving it to 274, while the SECURITY DEFINER REVOKE half tightened an existing test rather than adding one; the seventeenth pass added forty-one more, moving it to 315; and the eighteenth added forty more — the inbox-guard class-set equality and rotation-lock mirror pins, the two integrity checkers driven against each other over every (root, directory mode) pair, the governed-read envelope guarantee and its static companion, the wrapper-scope literal, the display-value straddle, the executed inbox-guard and package-path shell matrices, the interpreter-independent JSON-recursion pin, and the band-edge customisation-surface enumeration — moving it to 355) |
+| Complete aggregate offline suites | 363 tests passed; 0 failed; 0 skipped; 30/30 offline checks pass (count re-verified 2026-08-20; the baseline was 231, and the runtime-provider/context regression tests that accompanied the context-window and Ollama-timeout floors added three more, moving it to 234; the heartbeat-disabled render assertion added on 2026-08-08 added one more, moving it to 235; the audit-invariant tests — evidence-document consistency and the erasure-gap enumeration — added on 2026-08-10 added eight more, moving it to 243; the fourteenth pass's mechanized-binding tests — documentation/tree consistency, runtime-grant enumeration, the customization count and coverage pins, the evidence-document growth-bridge and provenance guards, the workflow step-env allowlist, the dash-safe shell-escape guard, and the recovery state-bound and schema-ahead contracts — added nineteen more, moving it to 262; the fifteenth pass, across eight bindings — the skill-count pin and its RUNBOOK-recipe half, the ruff-inventory pin, the host-utility enumeration, the four quarantine-lane contracts, the run-history date binding, the step-reference command guard, and the documented-invocation checks — added twelve more, moving it to 274, while the SECURITY DEFINER REVOKE half tightened an existing test rather than adding one; the seventeenth pass added forty-one more, moving it to 315; and the eighteenth added forty more — the inbox-guard class-set equality and rotation-lock mirror pins, the two integrity checkers driven against each other over every (root, directory mode) pair, the governed-read envelope guarantee and its static companion, the wrapper-scope literal, the display-value straddle, the executed inbox-guard and package-path shell matrices, the interpreter-independent JSON-recursion pin, and the band-edge customisation-surface enumeration — moving it to 355; and the 2026.8.1 upstream upgrade added eight more — the upstream posture pins: the retired- and renamed-key sweep against the pinned upstream schema, the posture-pin value assertions, the five-hook trusted-context registration pin, the three-host egress enumeration, and the Dockerfile-bound package-version binding — moving it to 363) |
 | Disposable PostgreSQL G4 | 98/98 across seven suites (semantics 8, document security 19, database contract 11, helper CLI 23, workflow execution 10, research intelligence 19, source surveillance 8); migrations 001–018 applied and registered twice |
 | Real deployment gate (G8) | PASS — `./scripts/bootstrap.sh` completes on the pinned images; the negative credential proof is rejected over TCP with no host trust rules remaining; fixed workflows run through real `vcrun`/Lobster inside the deployed gateway; an unchanged retry of a succeeded workflow returns an idempotent replay without re-executing, and the same key with changed arguments fails closed as `idempotency_payload_mismatch` leaving no new rows; an autonomous run leaves a non-empty knowledge base; teardown removes all state |
 | Exact-image gate (G6) | PASS — 8/8 against the image rebuilt from this tree |
@@ -96,9 +96,12 @@ local Ollama model, and it is why the boundary above is drawn at model
   `HTTP 401`.
 - The bounds that govern a live call are measured, not assumed: the
   context-window floor, the Ollama per-call timeout floor, the harness
-  stuck-session watchdog (which aborts a *healthy* call if left below the
-  per-call timeout), and Ollama's silent input truncation at roughly half the
-  served context.
+  stuck-session watchdog, and Ollama's silent input truncation at roughly half
+  the served context. The watchdog measurement is now a **limitation** rather
+  than a tuning input: `2026.8.1` retired the two keys that moved it, so its
+  fixed 120 s warn / 360 s abort sits below the per-call timeout this package
+  requires in Ollama mode and aborts a *healthy* call that prefills for longer.
+  There is nothing left to set; see `README.md` and `docs/RUNBOOK.md` §10.
 - Search results are fenced as untrusted at the provider boundary before the
   model sees them — the marking is applied in code, not by prompt convention.
 - A channel provider starts and binds under a real configuration.
@@ -156,7 +159,7 @@ python3 -B scripts/verify_offline.py \
   --with-schema-reference \
   --with-deployment \
   --with-retrieval-scale \
-  --with-g6-image vc-lead-research:3.0.0
+  --with-g6-image vc-lead-research:3.0.1
 ```
 
 The runbook's live checklists and the BLOCKED gates above determine whether one

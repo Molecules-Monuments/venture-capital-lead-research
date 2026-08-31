@@ -19,7 +19,7 @@
     "config/runtime/secrets/vcops_approval_pepper",
     "deployment-lock.json"
   ],
-  "file_count": 342,
+  "file_count": 343,
   "files": [
     {
       "executable": false,
@@ -30,8 +30,8 @@
     {
       "executable": false,
       "path": ".env.example",
-      "sha256": "daebfb818e43e3c34be0f352bcf51235c66ee66875d6c5ca6077f9c299fd933b",
-      "size": 7824
+      "sha256": "fd2b4abe14bfd7d1607005153342d5eb4d8201397ba52d01e98a2fa534bbd63a",
+      "size": 8020
     },
     {
       "executable": false,
@@ -42,7 +42,7 @@
     {
       "executable": false,
       "path": ".github/ISSUE_TEMPLATE/bug_report.yml",
-      "sha256": "3806040efca6d1b7b9b20227b69643e3fdf7abc3e708d0d1adad2cf559618914",
+      "sha256": "05074253bdd13cc46a8ce29fb70b58a7a02a910ddebcdb25bbd8a17e11872694",
       "size": 4771
     },
     {
@@ -96,8 +96,8 @@
     {
       "executable": false,
       "path": "02_BASELINE_ASSESSMENT_AND_CHANGE_GATE.md",
-      "sha256": "882bd11e384d7968aee1c3c3f236fe3c42a6110e8b9db75c4bbf2658de53e4eb",
-      "size": 13604
+      "sha256": "4b77d4dfa0b777557a7f66a88b767df4d6c7477ae4c03a4d355cd1ee85319d7f",
+      "size": 13608
     },
     {
       "executable": false,
@@ -108,8 +108,8 @@
     {
       "executable": false,
       "path": "CHANGELOG.md",
-      "sha256": "77a6b0ddbeeaffab9e35553e3101b90495d1ddbd5402e117ef8a4132359ba6a7",
-      "size": 12120
+      "sha256": "3568bf3e33d4ce8c2422532924c8836051cce6bc416f85b39a36b778fbd8ddd2",
+      "size": 17812
     },
     {
       "executable": false,
@@ -120,14 +120,14 @@
     {
       "executable": false,
       "path": "CONTRIBUTING.md",
-      "sha256": "0b775253279f19593645afdf4512101a7ede7914aa747b3368415d184af4f90f",
-      "size": 20431
+      "sha256": "3e1dcf647dc8894e24dba56935ca9005c3612869b4cced5244ff573d4551d564",
+      "size": 20753
     },
     {
       "executable": false,
       "path": "CUSTOMIZATION.md",
-      "sha256": "8414d340533e94b5b4de395e334ac00e1f6af2462f9bca3e88f9108949661044",
-      "size": 35527
+      "sha256": "7ab4d48a9f30fa34d924112ed4b2b395952770be845c22d7b92917a971ea3658",
+      "size": 37041
     },
     {
       "executable": false,
@@ -138,8 +138,8 @@
     {
       "executable": false,
       "path": "Dockerfile.openclaw",
-      "sha256": "3d5a27b159ebcf7ed110150c232ca499812d4eac305e1307d5921f326a7d3662",
-      "size": 14128
+      "sha256": "6a44a615244ad55700f07ed717dd1b47a7ded6b186d766db0cac3afd91647072",
+      "size": 20178
     },
     {
       "executable": false,
@@ -156,56 +156,56 @@
     {
       "executable": false,
       "path": "README.md",
-      "sha256": "72466b2574ec94c5577b3c3a7a49e4be9c6c5f87b7c29fb34ec48c007738e9fe",
-      "size": 99794
+      "sha256": "95bf89e398b9e87646e8fc899d38db95dfb4369338440076287d783e58d4fe5f",
+      "size": 104054
     },
     {
       "executable": false,
       "path": "SECURITY.md",
-      "sha256": "60e741fa78687bfdff5539395a250b803213bb677bf30d59240e45ff02cb51a9",
-      "size": 7542
+      "sha256": "a6ce7c8afe642870b4e99141a4f4088ff4a83b4f4335eba5f56bf5678765233e",
+      "size": 7904
     },
     {
       "executable": false,
       "path": "THIRD_PARTY_NOTICES.md",
-      "sha256": "a7f09148a1b185e809bd8c3c4b63e9b2487fc9115bcec7af21182509d73d1b34",
-      "size": 13704
+      "sha256": "2deba24825837872b4718b629d633a52696ae7eb3e9130cd0a36c6ecb764b52c",
+      "size": 14444
     },
     {
       "executable": false,
       "path": "VERSION",
-      "sha256": "2985be8b28d3ade858e8d8fb4bc22f565b1bf6020dff982dce141f7721b9999c",
+      "sha256": "06e3fe4a7a1884d20d81cc7065ca8cfd4c394ec602c4d180ddc39bbd4f7da521",
       "size": 6
     },
     {
       "executable": false,
       "path": "config/channel-discord.json5",
-      "sha256": "05ddfac2c2e69b216153b6b42bc25a8d817f29669340fab4e990bdb7cda5e80a",
-      "size": 2196
+      "sha256": "87d68f26e52daab4f5d53e1033f6aa457892650b964e87695cd29e6be8535709",
+      "size": 2145
     },
     {
       "executable": false,
       "path": "config/channel-msteams.json5",
-      "sha256": "ed07641885d98333f897e9a1051fcfc4925b1f02c7e7d68a84a9cc21db40cfce",
-      "size": 1225
+      "sha256": "0dafacb12ca7e53a5a72ed51c6a5efe286404d79b57d023e3cee25b56d787ae3",
+      "size": 1263
     },
     {
       "executable": false,
       "path": "config/channel-plugins.lock.json",
-      "sha256": "8c419becbcff40ae42348960b598e7edf5fd852d1ade800ac75bd0b3953e0f81",
-      "size": 879
+      "sha256": "2273a2fb263c926a9f465624b5df7a00b79a334be59db12f5dc80841c8e61f45",
+      "size": 1069
     },
     {
       "executable": false,
       "path": "config/channel-slack.socket.json5",
-      "sha256": "d6370e7363231d8fbe87a82eddda717f255eeb159c87f62c717626ef3c87d4f7",
-      "size": 1564
+      "sha256": "8808ef0cd919904aaa03cf468c0596b7086100c77eeb764c832e0baf9d5a71fd",
+      "size": 1610
     },
     {
       "executable": false,
       "path": "config/channel-telegram.json5",
-      "sha256": "747c99484f1ee5bd9ea4e7fb6b050a1f5ef5ed4c1db04cc9327a3e62836b89ae",
-      "size": 1773
+      "sha256": "bf8f31df621e58b66f383ddbe35c67423d999be998f6747c163651fe8f1963e0",
+      "size": 1611
     },
     {
       "executable": false,
@@ -228,8 +228,8 @@
     {
       "executable": false,
       "path": "config/openclaw.json",
-      "sha256": "c094dc2613c8c82bbbf59ee80b5fcdee0f6478bfd99fe0fe10e7bde97943a6c3",
-      "size": 16161
+      "sha256": "0ba38e66bdaef0923e34417dad79cbd87b40ee432ce28112e7efa3ab74731074",
+      "size": 16759
     },
     {
       "executable": false,
@@ -240,26 +240,26 @@
     {
       "executable": false,
       "path": "docker-compose.yml",
-      "sha256": "bd1fc5d3e4b5c048a6bd416f4c1c9c6d430bbdb6f58ff95e57d96b9ff3e7927d",
-      "size": 13587
+      "sha256": "a456fa5e60739f42e7fffb09fc7b1b68cc414d7b1983ec29004a2a3e778742e3",
+      "size": 18382
     },
     {
       "executable": false,
       "path": "docs/CHANNELS.md",
-      "sha256": "75ae567f89b2bca2b87320a622ff80df98cf8761b80cb2f9b343f740ffa8efa2",
+      "sha256": "777f62fc47a0692cd5c56b5d274804abc1c02da38ae0680c9e12ae94b57229c4",
       "size": 27869
     },
     {
       "executable": false,
       "path": "docs/DATA_MODEL.md",
-      "sha256": "0eb7291207639a4122b7fbbefca04484c804b1db8fe28e95e883f56351ec4060",
+      "sha256": "64103c0769fbddad28b4cc0c40d698ded901ae4cd8b0790c2308fe43bba89413",
       "size": 37654
     },
     {
       "executable": false,
       "path": "docs/MAINTAINING.md",
-      "sha256": "44cb5d2bd25c7e8032c8bebb2a80fcdf3b1cfb0954bc3e0d31ffa23622c407a0",
-      "size": 16430
+      "sha256": "23ee94768853c59e7735280d55abfd9cdc7e723b46681bf5ee76f97163186a10",
+      "size": 16642
     },
     {
       "executable": false,
@@ -270,20 +270,20 @@
     {
       "executable": false,
       "path": "docs/OPERATIONS.md",
-      "sha256": "c0669463cfb8eb96f18d6113ec4d069703b641aefd54276e57b30e321027f255",
-      "size": 36491
+      "sha256": "387c618a1b66ef3d98bc872d9eb225315662a97b7e88a22a7d18cb8413a2fdda",
+      "size": 36916
     },
     {
       "executable": false,
       "path": "docs/PRODUCTION_READINESS.md",
-      "sha256": "e98d6bdd29b5d63fb071955f66d08f7a06305eeb0b9936be777106c683f12fd3",
-      "size": 15483
+      "sha256": "420e72182a53502dcac52e11ef6a4a3663a27e27447e677a1df62ed1aef026a4",
+      "size": 16122
     },
     {
       "executable": false,
       "path": "docs/RUNBOOK.md",
-      "sha256": "fc056064ed63152b50b27d304ef68a825a90126d62eb934835b8866ca4e5386e",
-      "size": 102671
+      "sha256": "bd93e6c57b4b31df71db237cdc913252ecacee9e93d14583e44f1aacc0d17542",
+      "size": 110790
     },
     {
       "executable": false,
@@ -294,26 +294,26 @@
     {
       "executable": false,
       "path": "docs/TASKFLOW_LOBSTER_COMPATIBILITY.md",
-      "sha256": "3dcc4a5050d59811ab8acfcc56ab39faae0babb7eef3d874de25cb812e84eb45",
-      "size": 39257
+      "sha256": "912939a79b8d02a0ae91648d4296228410d2494204f25b67c64ff271bad00ce0",
+      "size": 41352
     },
     {
       "executable": false,
       "path": "docs/V3_RELEASE_EVIDENCE.md",
-      "sha256": "b2a71927fbd8c1f02bc8923038b4c1baa0243b27fbf3369d123cfe64711626aa",
-      "size": 13865
+      "sha256": "0054f89f074b811ce2e5161aaea0cad9ba9675af832b00525aeac3f6cfd62996",
+      "size": 13932
     },
     {
       "executable": false,
       "path": "docs/WORKFLOWS.md",
-      "sha256": "fb8023bb31787933490e2eae8fd646100410f76fa81dd4034025b45978e0d766",
+      "sha256": "09cd1816e9bf870a8d54acf9f4b9661e8c084ba38c1cd9f56eb516a50c36e148",
       "size": 34175
     },
     {
       "executable": false,
       "path": "evals/V3_EVAL_RESULTS.md",
-      "sha256": "a5dc51bc16ec4cfbfd0ca8c7e702ba246afdf2ab119b94daa2a8911624df6355",
-      "size": 11032
+      "sha256": "59de0b7a32a7464d306641d1aebe59a12df882b4f188fe4c4f51a05a0487dd75",
+      "size": 11034
     },
     {
       "executable": false,
@@ -564,8 +564,8 @@
     {
       "executable": false,
       "path": "runtime-extensions/vc-trusted-context/index.js",
-      "sha256": "361d03c2983b0e3854961e9558cf3dc815c8d34309e05948e2c31895322580e3",
-      "size": 16630
+      "sha256": "5c2706897289298cdad0f9a05edc487e6170a4251f6ce2cf693e887040af0238",
+      "size": 17504
     },
     {
       "executable": false,
@@ -576,20 +576,20 @@
     {
       "executable": false,
       "path": "runtime-extensions/vc-trusted-context/package.json",
-      "sha256": "970c5fc7eea1686b0e322d1fb78ae49d38b4dfc9017822e7ef7ae856753af941",
+      "sha256": "d50b13caedf08cfa772cae64528a3ba9523dd63945ab3196e1ef1e831bc65567",
       "size": 195
     },
     {
       "executable": false,
       "path": "runtime-packages/package-lock.json",
-      "sha256": "54047bf23195ff88a7709893db1383b601dc10bde8dff9fbdf3deb2054064333",
-      "size": 154695
+      "sha256": "942c196630c8683c7c98206ef1132a21a5dc4bb34149b1eab1aa0796c2c5e42e",
+      "size": 143878
     },
     {
       "executable": false,
       "path": "runtime-packages/package.json",
-      "sha256": "9ab15d75c080ad39fac2bf7b5a2def19f823c0f3a1bebf7eddccb6fe50fdf4cb",
-      "size": 451
+      "sha256": "838e1346c27f9b4a8e5ec3ca5900623b44ca777588718a0658736b601b5c68fe",
+      "size": 498
     },
     {
       "executable": true,
@@ -612,7 +612,7 @@
     {
       "executable": true,
       "path": "scripts/build_release_manifest.py",
-      "sha256": "cf935fa8b94d8e64e98ae0a5700a9214f77ed36d23660f04bd8bc67f46c5b74a",
+      "sha256": "060c4bcfc4377a481386f78c00b0bf999d469f2ae6f252068f8a76428b8d2505",
       "size": 20731
     },
     {
@@ -624,8 +624,8 @@
     {
       "executable": true,
       "path": "scripts/check_env.py",
-      "sha256": "d1e8857fb9e8b1f97b6aaed6eb7cecbff9b162f52df6610967cf8f8f382f0b01",
-      "size": 42840
+      "sha256": "1db917970f3370ae33bf3ddc24c8d9ff607ed2d8a2eab956f706a01adeb106ac",
+      "size": 43193
     },
     {
       "executable": true,
@@ -660,8 +660,8 @@
     {
       "executable": true,
       "path": "scripts/render_channel_config.py",
-      "sha256": "9613d0fd2fb97191f30a5421bb0d4f36deed80afaa8631436066335b85ce49fb",
-      "size": 28716
+      "sha256": "4fedd7334c5e3af0e789edb8cf89e60967d7a859b1f72e128e10af8f8ede0618",
+      "size": 30089
     },
     {
       "executable": true,
@@ -684,8 +684,8 @@
     {
       "executable": true,
       "path": "scripts/run_g6_image.py",
-      "sha256": "1f8046bc4dca577b7da572243cd7c3c949e443a04c71bda66466c0ef254fe2c8",
-      "size": 16802
+      "sha256": "8a39ea0d6dffb05ba3ddf761d676efad2d0094744789a73c3ae2145ecb66cac2",
+      "size": 22925
     },
     {
       "executable": true,
@@ -702,8 +702,8 @@
     {
       "executable": true,
       "path": "scripts/schedule_jobs.sh",
-      "sha256": "b113262812e6b196f402e393d80ba801da31ccbd09705d0ca58819826f5a1705",
-      "size": 7818
+      "sha256": "abfbc02356960921b8bf9127fac4895822b8985d946bacf7645df33919843747",
+      "size": 8157
     },
     {
       "executable": false,
@@ -726,8 +726,8 @@
     {
       "executable": true,
       "path": "scripts/validate_skill_system.py",
-      "sha256": "019a6ea72a47594bbfa3dfba8293c0340131995bfdf6c01e435f9169db24ec66",
-      "size": 36564
+      "sha256": "0ba1746c9d4d27abb50b3aafe087ec8a98393874a6f5df61b5e92f010ed82d17",
+      "size": 36561
     },
     {
       "executable": true,
@@ -744,7 +744,7 @@
     {
       "executable": true,
       "path": "scripts/verify_release.py",
-      "sha256": "f57513ae3c080f288e3f84dbb04b5c519bbccd2f4fc07383698fa9a2c1aa5366",
+      "sha256": "5f17956c5d5266a583a7c0ad3383fdf8a706aedf27e5005316c121983c0e7c80",
       "size": 12821
     },
     {
@@ -882,8 +882,8 @@
     {
       "executable": false,
       "path": "tests/g6/test_image_gate_contract.py",
-      "sha256": "14f2d3f518b679ec26404939aa0c216d1204dc1e0decb3cb42dd5fff5d732033",
-      "size": 5973
+      "sha256": "333579b5e8f5a6507a2026756b89b656d18165e905421ef5af98fd8d1b978775",
+      "size": 9219
     },
     {
       "executable": false,
@@ -894,13 +894,13 @@
     {
       "executable": false,
       "path": "tests/g7/test_recovery_lifecycle.py",
-      "sha256": "c643d253226698447a71c2a214f3f9e42e10f0cab635a667164b80057523a011",
+      "sha256": "edbf631816fe06b2fc57d4199c45f7e70bd2b095473f4bd40e0e1e787f8e83b0",
       "size": 186426
     },
     {
       "executable": false,
       "path": "tests/infrastructure/test_infrastructure_contract.py",
-      "sha256": "fdfb281ad085178fb0f7ec489e5d7df656bcd748d6de37ec269edf6370e158ca",
+      "sha256": "5fb33ee2a0af1ce7bb3ee9554a865231ad66f2ee75850f1c44f3943de4663789",
       "size": 64286
     },
     {
@@ -948,8 +948,8 @@
     {
       "executable": false,
       "path": "tests/v3/test_orchestration_and_customization.py",
-      "sha256": "b37bbc8f29cd6a807c72c88d67cf5c113f73cf3ecfc18c1b599f11853e029f13",
-      "size": 46577
+      "sha256": "4fbf1573d9307e53dcdcba71e369bab7184a6635aa1ff8ce73b3ac35cc244281",
+      "size": 46612
     },
     {
       "executable": false,
@@ -966,20 +966,20 @@
     {
       "executable": false,
       "path": "tests/v3/test_runtime_provider_and_context.py",
-      "sha256": "add7628496239cbae0142737d0bc39f8c370b1bf5b3c2718b1cdf5c7fc49ea16",
-      "size": 51867
+      "sha256": "8be21273400bb4dac938c972aa2daa248a6f03615cb0582c3cf813861799d674",
+      "size": 57581
     },
     {
       "executable": false,
       "path": "tests/v3/test_search_providers.py",
-      "sha256": "773dac5b76bbe9911d8e50c79f0000609546f054bad5ca472376ad37a27495a3",
-      "size": 7778
+      "sha256": "b9a536e0baadc905ff56f449068ea41c49041808b4f8436431311da72e6e2b6a",
+      "size": 7794
     },
     {
       "executable": false,
       "path": "tests/v3/test_skill_agent_production.py",
-      "sha256": "b7e8d7595af4a0d62c846c0b96e62484c75857ec8d0ed5d147baae7f334b83da",
-      "size": 19605
+      "sha256": "ad74263f0ea89719be0b82a7cce4fafe14f629a8251ed7c478d647b79adafd8b",
+      "size": 19602
     },
     {
       "executable": false,
@@ -992,6 +992,12 @@
       "path": "tests/v3/test_taskflow_citation_paths.py",
       "sha256": "1a404ae0159b5c14b76ed93a250016f714a255a50f4fed4a5194bf63ec879ed8",
       "size": 7769
+    },
+    {
+      "executable": false,
+      "path": "tests/v3/test_upstream_posture_pins.py",
+      "sha256": "019e7eed30e62531542a9bc5d4f08fcebfa91b49e882bee57875789d78555c62",
+      "size": 17580
     },
     {
       "executable": false,
@@ -1020,8 +1026,8 @@
     {
       "executable": false,
       "path": "workspaces/data-steward/TOOLS.md",
-      "sha256": "7d295fb5e76c5028959fe9fe31eae494e5a9153cb58ec2ec7605da109792f7c8",
-      "size": 2367
+      "sha256": "17f09a055a2c53394e4eee80ea3f499bda41162e16c9444b1e24859a6ff51f03",
+      "size": 2728
     },
     {
       "executable": false,
@@ -1626,8 +1632,8 @@
     {
       "executable": false,
       "path": "workspaces/vc-chief/vc/data_retention.md",
-      "sha256": "9cb0dd656fe82cad38f12cefd990821b7eddc65962d47c6370d6f48ea61eeaf8",
-      "size": 10277
+      "sha256": "48f3a3e4c8a66ace30a62d439ac0cd7c7d7df608438dbfbaa56e2812066d6ebe",
+      "size": 15044
     },
     {
       "executable": false,
@@ -1908,8 +1914,8 @@
     {
       "executable": false,
       "path": "workspaces/vc-chief/vc/taskflow.md",
-      "sha256": "cdd3445b8c08568af09e37375100df8d401fadb5b189419124530ae60d179877",
-      "size": 12430
+      "sha256": "46617684018afb9577950e93f8efee2b4ba9eb73584acb678da8b34240607275",
+      "size": 13081
     },
     {
       "executable": false,
@@ -2076,7 +2082,7 @@
   ],
   "manifest_version": 1,
   "package": "vc-lead-research",
-  "package_version": "3.0.0",
+  "package_version": "3.0.1",
   "release_state": {
     "customization_profile": "required and excluded from distribution manifest",
     "default_primary_channel": "none",
@@ -2095,9 +2101,9 @@
       "version": "2026.6.11"
     },
     "openclaw": {
-      "commit": "2d2ddc43d0dcf71f31283d780f9fe9ff4cc04fe4",
-      "image": "ghcr.io/openclaw/openclaw:2026.7.1@sha256:6a31d44b2944e7adcd2b582bf6fb463111264ebca97a0201795b799135bd102c",
-      "version": "2026.7.1"
+      "commit": "ea806575e6450e4d1efdfc72c19f04be982a1b9b",
+      "image": "ghcr.io/openclaw/openclaw:2026.8.1@sha256:e7849cb6c1ef1ead39ab4be7d85edb2df89611f486e283284c7cf35ce39a20d4",
+      "version": "2026.8.1"
     },
     "postgres_image": "postgres:17.10-bookworm@sha256:4f736ae292687621d4dbe0d499ffd024a36bd2ee7d8ca6f2ccd4c800f047b394"
   }

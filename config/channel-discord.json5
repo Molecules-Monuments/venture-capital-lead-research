@@ -29,6 +29,7 @@
       "allowBots": false,
       "dangerouslyAllowNameMatching": false,
       "contextVisibility": "allowlist",
+      "streaming": { "mode": "off" },
       "mediaMaxMb": "__VC_CHANNEL_MEDIA_MAX_MB__",
       "execApprovals": { "enabled": false },
       "agentComponents": { "enabled": false },
@@ -58,8 +59,7 @@
         "moderation": false,
         "channels": false,
         "presence": false
-      },
-      "retry": { "attempts": 3, "minDelayMs": 500, "maxDelayMs": 10000, "jitter": 0.2 }
+      }
     }
   },
   "bindings": [

@@ -164,7 +164,7 @@ class Version3ContractTests(unittest.TestCase):
         self.assertIn("discovers 26 shared skills", resolver)
         self.assertIn("`controlled-evolution`", resolver)
         workshop = self.config["skills"]["workshop"]
-        self.assertEqual({"enabled": False}, workshop["autonomous"])
+        self.assertEqual({"mode": "off"}, workshop["autonomous"])
         self.assertEqual("pending", workshop["approvalPolicy"])
         self.assertFalse(workshop["allowSymlinkTargetWrites"])
         self.assertNotIn("skill_workshop", self.config["tools"]["deny"])
@@ -190,9 +190,9 @@ class Version3ContractTests(unittest.TestCase):
         ):
             with self.subTest(file=relative):
                 self.assertTrue((ROOT / relative).is_file())
-        self.assertEqual((ROOT / "VERSION").read_text(encoding="utf-8").strip(), "3.0.0")
+        self.assertEqual((ROOT / "VERSION").read_text(encoding="utf-8").strip(), "3.0.1")
         manifest = json.loads((ROOT / "manifest.json").read_text(encoding="utf-8"))
-        self.assertEqual(manifest["package_version"], "3.0.0")
+        self.assertEqual(manifest["package_version"], "3.0.1")
 
     def test_only_chief_can_spawn_and_only_steward_can_exec(self) -> None:
         spawners = {
@@ -213,11 +213,11 @@ class Version3ContractTests(unittest.TestCase):
             with self.subTest(agent=agent_id):
                 allowed = set(agent["tools"]["allow"])
                 self.assertTrue({"memory_search", "memory_get"}.isdisjoint(allowed))
-                self.assertFalse(agent.get("memorySearch", {}).get("enabled", False))
+                self.assertFalse(agent.get("memory", {}).get("search", {}).get("enabled", False))
         defaults = self.config["agents"]["defaults"]
-        self.assertFalse(defaults["memorySearch"]["enabled"])
+        self.assertFalse(self.config["memory"]["search"]["enabled"])
         self.assertFalse(defaults["compaction"]["memoryFlush"]["enabled"])
-        self.assertEqual(defaults["memorySearch"]["provider"], "none")
+        self.assertEqual(self.config["memory"]["search"]["provider"], "none")
         self.assertNotIn("memory-core", self.config["plugins"]["allow"])
 
     def test_channel_overlays_preserve_disabled_memory_and_exact_plugin_scope(self) -> None:
@@ -262,8 +262,8 @@ class Version3ContractTests(unittest.TestCase):
         self.assertEqual(defaults["maxChildrenPerAgent"], 3)
         self.assertEqual(defaults["maxSpawnDepth"], 1)
         self.assertGreaterEqual(defaults["runTimeoutSeconds"], 45 * 60)
-        self.assertGreaterEqual(self.config["tools"]["exec"]["timeoutSec"], 420)
-        self.assertGreaterEqual(self.agents["data-steward"]["tools"]["exec"]["timeoutSec"], 420)
+        self.assertGreaterEqual(self.config["tools"]["exec"]["timeoutSeconds"], 420)
+        self.assertGreaterEqual(self.agents["data-steward"]["tools"]["exec"]["timeoutSeconds"], 420)
         depth = (ROOT / "workspaces/vc-chief/vc/research_depth.md").read_text(encoding="utf-8")
         self.assertIn("cap active children at three", depth)
 
@@ -535,7 +535,7 @@ class Version3ContractTests(unittest.TestCase):
         """
         shapes = (
             # (model reference, check_env accepts, check_customization accepts)
-            ("openai/gpt-5.6", True, True),
+            ("openai/gpt-5.6-sol", True, True),
             ("ollama/qwen3:14b", True, True),
             ("hf/meta-llama/Llama-3.3-70B-Instruct-Turbo", True, True),
             ("openrouter/google/gemini-3.1-flash", True, True),

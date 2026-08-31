@@ -121,11 +121,11 @@ The output is an input to a qualified human process, never a substitute for it.
 
 ## Release contract
 
-Package version: `3.0.0`
+Package version: `3.0.1`
 
 | Component | Pinned release |
 | --- | --- |
-| OpenClaw | `2026.7.1`, commit `2d2ddc43d0dcf71f31283d780f9fe9ff4cc04fe4` |
+| OpenClaw | `2026.8.1`, commit `ea806575e6450e4d1efdfc72c19f04be982a1b9b` |
 | Lobster | `2026.6.11`, commit `86b8cc20a867f18c08ae8e3f4fec9ee7d52bf8c9` |
 | PostgreSQL image | `17.10-bookworm`, pinned by multi-architecture digest |
 | Python in the derived image | Debian Python 3.11 plus a hash-locked dependency graph |
@@ -536,39 +536,42 @@ after every gateway restart or model unload failed with `LLM request timed out`.
 Prompt caching then serves the retry in about 5 s, which makes the failure look
 like a one-off rather than a setting. Ollama mode therefore requires at least
 600 s. Raise it further if your host is slower or your prompt is larger; on a
-fast GPU host the ceiling simply never binds.
+fast GPU host the ceiling simply never binds. Read the next paragraph before
+relying on a large value: from this release the harness's own watchdog caps how
+long a *silent* call may run at 360 s, and that cap is no longer configurable.
 
-**`VC_MODEL_TIMEOUT_SECONDS` is not the only bound, and it is not the first one
-to fire.** The harness runs a stuck-session watchdog that aborts an agent run
-after a period with no *streaming* progress. Its own defaults are 120 s to warn
-and **360 s to abort** — with `diagnostics.stuckSessionAbortMs` unset the abort
-threshold is computed as `max(300 s, stuckSessionWarnMs x 3)` rather than read
-from a constant, so 300 s is only its floor — and a prefill emits nothing until
-it finishes, so a long prefill is indistinguishable from a stalled provider.
-Left at those defaults, no value of `VC_MODEL_TIMEOUT_SECONDS` can keep a slow
-local model alive: a call that needs 480 s of prefill is killed at ~390 s (the
-abort threshold plus the sweep interval). The run ends with an `AbortError`
-whose `code` is `OPENCLAW_DIRECT_ABORT`; that code is the token to grep for,
-because the harness sets the error's name, message and code as three separate
-`Error` properties and never composes them into one sentence. The watchdog's
-own line in the gateway log begins `stuck session recovery:` and carries
-`action=abort_embedded_run`. Neither surface names the provider or the prefill,
-so the failure reads like a flake. This package therefore sets the window above
-its own maximum per-call timeout, so `VC_MODEL_TIMEOUT_SECONDS` is the
-constraint that actually binds:
+**`VC_MODEL_TIMEOUT_SECONDS` is not the only bound, it is not the first one to
+fire, and the bound that fires first is no longer yours to set.** The harness
+runs a stuck-session watchdog that aborts an agent run after a period with no
+*streaming* progress. A prefill emits nothing until it finishes, so a long
+prefill is indistinguishable to it from a stalled provider. The run ends with
+an `AbortError` whose `code` is `OPENCLAW_DIRECT_ABORT`; that code is the token
+to grep for, because the harness sets the error's name, message and code as
+three separate `Error` properties and never composes them into one sentence.
+The watchdog's own line in the gateway log begins `stuck session recovery:` and
+carries `action=abort_embedded_run`. Neither surface names the provider or the
+prefill, so the failure reads like a flake.
 
-```json
-"diagnostics": { "stuckSessionWarnMs": 300000, "stuckSessionAbortMs": 960000 }
-```
+Through the `2026.7.1` base this package tuned the watchdog out of the way,
+setting `diagnostics.stuckSessionWarnMs` to 300 000 ms and
+`stuckSessionAbortMs` to 960 000 ms — above the 900 s ceiling
+`scripts/check_env.py` allows for `VC_MODEL_TIMEOUT_SECONDS`, so the per-call
+timeout was the constraint that actually bound. **`2026.8.1` retires both keys
+with no replacement.** The warn threshold is a fixed 120 s and the abort is
+derived as `max(300 s, 120 s x 3)` = **360 s**. There is no configuration key,
+environment variable, or per-agent override, and leaving the retired keys in
+place is not an option: they are unrecognized and the gateway exits 78 instead
+of starting.
 
-Measured on a CPU-only host: the same 481 s cold prefill that was aborted at
-392 s under the defaults runs to completion with these values.
-`scripts/check_env.py` caps `VC_MODEL_TIMEOUT_SECONDS` at 900 s, and the
-shipped `stuckSessionAbortMs` (960 000 ms) already clears that ceiling, so no
-per-host retuning is required on slower hardware. The ordering rule still
-holds: if you raise the per-call timeout within its 30–900 s range, keep
-`stuckSessionAbortMs` above it, or the watchdog — not your timeout — decides
-when a turn dies.
+The consequence is a real capability loss, recorded here rather than left to be
+rediscovered. A call that produces no streaming output for more than ~360 s is
+aborted whatever `VC_MODEL_TIMEOUT_SECONDS` says — measured on a CPU-only host,
+a legitimate 481 s cold prefill was aborted at 392 s (the threshold plus the
+sweep interval). `VC_MODEL_TIMEOUT_SECONDS` still governs the request as a
+whole and its 30–900 s range is unchanged, but above roughly 360 s it can no
+longer rescue a silent one. The remaining mitigations are host-side: keep the
+model resident so the prefill is paid once, shorten the system prompt, choose a
+smaller model, or move to hardware that prefills inside the window.
 
 ### Search configuration
 
@@ -737,10 +740,33 @@ general conversational history.
 
 Conversational Markdown and vector recall are disabled:
 
-- `memorySearch.enabled=false` and provider `none`;
+- `memory.search.enabled=false` and provider `none` (the key was
+  `agents.defaults.memorySearch` before the `2026.8.1` base; the value is
+  carried across unchanged);
+- `memory.search.rememberAcrossConversations=false`, pinned rather than
+  inherited — `2026.8.1` defaults it to `true` unless `session.dmScope` happens
+  to be set, and relying on that coupling meant one edit elsewhere could switch
+  cross-conversation personal recall back on;
 - vector storage is disabled;
 - compaction memory flush is disabled; and
 - every agent denies `memory_search` and `memory_get`.
+
+**`plugins.allow` is not a complete plugin boundary, and never was.** The
+allowlist names `vc-trusted-context` only, but the harness fills its default
+memory slot before it consults the allowlist, so `memory-core` loads regardless
+— executed against both the `2026.7.1` and `2026.8.1` runtimes, it reports
+`enabled=true, cause=selected-memory-slot` with the allowlist bypassed, while
+every other candidate plugin reports `not-in-allowlist`. This is not a
+`2026.8.1` regression and it is not currently treated as one: `memory-core` is
+left loaded and its behaviour pinned instead, with
+`plugins.entries["memory-core"].config.dreaming.enabled` set to `false`
+(`2026.8.1` flips that default to `true`, which would otherwise write a
+"Memory Dreaming Promotion" cron row at every gateway start even with cron
+disabled). Unloading it is a separate reviewed change, because the same plugin
+supplies the `memory_search`/`memory_get`/`intent` tool names that the agent
+tool allowlists reference throughout `config/openclaw.json`. Read
+`plugins.allow` as "which optional plugins may be selected", not as "which
+plugins can run".
 
 Backups capture PostgreSQL, OpenClaw state, Lobster state, operator inbox
 originals, and quarantine in one quiesced recovery point. There is no separate
@@ -847,7 +873,15 @@ and its executable paths are exactly allowlisted.
 | `data-steward` | Resolve state and run typed persistence/workflow helpers | Read plus exact allowlisted exec; no web |
 
 Default limits are three concurrent children, three children per chief, one
-spawn level, and 2,700 seconds per run. Specialists cannot delegate.
+spawn level, and 2,700 seconds per run. Specialists cannot delegate. That
+subagent budget of three is **global**, not per parent. There is a second,
+independent lane the earlier text never mentioned: `agents.defaults.maxConcurrent`
+bounds top-level agent runs rather than children, and `2026.8.1` changes its
+unset default from a hardcoded 4 to `min(16, max(8, availableParallelism()))`,
+a floor of 8 on any host. Against this deployment's `mem_limit: 2g` and
+`cpus: 2.0` that is a jump nobody asked for, so `config/openclaw.json` pins it
+to 3 rather than inheriting it. Both lanes are pinned; check both when
+diagnosing throughput.
 
 Every delegation follows one pattern:
 
@@ -892,7 +926,7 @@ privileges rather than making a false upstream-sandbox claim.
 
 | Layer | Control |
 | --- | --- |
-| Host exposure | Gateway and Teams ports bind to `127.0.0.1`; PostgreSQL is not published. Use trusted private access and a hardened TLS reverse proxy where required. |
+| Host exposure | Gateway and Teams ports are **published** to `127.0.0.1` only, which is what constrains reach; `check_env.py` rejects any other publish address. Inside the container the gateway binds `lan`, because Docker forwards a published port to the container's network interface and a loopback bind there would make it unreachable. PostgreSQL is not published. Use trusted private access and a hardened TLS reverse proxy where required. |
 | Containers | Gateway/CLI run as non-root `node`, with read-only roots, bounded `tmpfs`, no new privileges, all capabilities dropped, and explicit PID/CPU/memory/log limits. |
 | Filesystem | Workspaces and the trusted extension are image-owned and read-only. Runtime config is generated, validated, copied by a networkless initializer, and mounted read-only. |
 | Networks | PostgreSQL sits on an internal backend; initializer has no network; only gateway/CLI receive egress. Host/firewall egress policy is still an operator responsibility. |
@@ -979,13 +1013,15 @@ improve its reusable procedures without granting a model permission to alter
 its running deployment. Improvement is real, but activation remains a normal
 reviewed software release.
 
-OpenClaw `2026.7.1` already includes a
+OpenClaw `2026.8.1` already includes a
 [Skill Workshop](https://docs.openclaw.ai/tools/skill-workshop)
 facility that can review eligible conversations and create pending proposals.
 Autonomous review is not enabled for this sensitive VC deployment because it
 would perform an unrequested additional model pass over conversation/tool
-evidence. `skills.workshop.autonomous.enabled=false`, approval policy is
-`pending`, symlink-target writes are disabled, and the packaged workspaces stay
+evidence. `skills.workshop.autonomous.mode="off"` (the key was
+`autonomous.enabled` before the `2026.8.1` base, and its new default is
+`"auto"`, so this is pinned rather than omitted), approval policy is `pending`,
+symlink-target writes are disabled, and the packaged workspaces stay
 image-owned and read-only.
 
 Instead, only `vc-chief` receives `skill_workshop`, and only for an explicitly
@@ -1001,7 +1037,18 @@ This narrow write surface has two independent controls:
 - agent and subagent tool policy makes `vc-chief` the only Workshop caller;
 - the image-owned trusted-context plugin allows only `create`, `update`,
   `revise`, `list`, and `inspect`, and blocks `apply`, `reject`, `quarantine`,
-  every unknown future action, and every non-chief caller before execution.
+  every other action, and every non-chief caller before execution.
+
+`2026.8.1` grew the tool's action set from eight to fifteen, and the guard is
+fail-closed, so the five it admits are unchanged while ten are refused. Three
+are refused as reviewed policy (`apply`, `reject`, `quarantine`); two more are
+lifecycle actions the same policy covers (`restore_collection`, `complete`);
+and five are authoring or inspection actions this release **deliberately does
+not reach** — `read`, `prepare_patch`, `patch`, `evaluate`, and `history`. The
+practical loss is that the chief cannot read or patch a live skill in place and
+cannot run proposal evaluators; it can still write a complete pending proposal,
+which is the surface this design was built around. Widening the allowlist is a
+behaviour change with its own review, not a configuration tweak.
 
 Therefore a model can create a size-limited, scanned pending candidate, but it
 cannot install, approve, reject, quarantine, route, or activate that candidate.
@@ -1079,7 +1126,7 @@ The embedded manifest proves package self-consistency, not publisher identity.
 It cannot tell you that the copy you downloaded is the copy the publisher
 released. For that, check the commit you have against the release published on
 the project's GitHub releases page, and — if the release carries a signed tag —
-verify it with `git verify-tag v3.0.0` using the signing key named there.
+verify it with `git verify-tag v3.0.1` using the signing key named there.
 Neither check is performed by anything in this repository.
 
 ## Customize, install, and commission
@@ -1297,12 +1344,20 @@ bootstrap; no extra container is needed. Forward the gateway's loopback port to
 your workstation and open it there:
 
 ```sh
-# Use the OPENCLAW_GATEWAY_PORT from .env (18789 is the shipped default).
+# Substitute OPENCLAW_GATEWAY_PORT from .env for BOTH numbers below.
+# 18789 is the shipped default; if you changed it, change both.
 ssh -L 18789:127.0.0.1:18789 <operator>@<host>
 ```
 
-Then browse to `http://127.0.0.1:18789`. Paste the gateway token into the UI
-authentication setting. Do not put it in a URL or expose the UI publicly.
+**Both sides of the forward must equal `OPENCLAW_GATEWAY_PORT`.** The rendered
+runtime config derives the gateway's allowed browser origins from that port, so
+forwarding a non-default remote port onto the default local one leaves the page
+loading and every request refused with `origin not allowed`. That failure names
+the origin, not the tunnel, so it reads like an authentication problem.
+
+Then browse to `http://127.0.0.1:<OPENCLAW_GATEWAY_PORT>`. Paste the gateway
+token into the UI authentication setting. Do not put it in a URL or expose the
+UI publicly.
 
 ### Chat channel
 
@@ -1428,9 +1483,9 @@ or data distribution.
 
 ```sh
 docker build -f Dockerfile.openclaw \
-  -t vc-lead-research:3.0.0 .
+  -t vc-lead-research:3.0.1 .
 python3 -B scripts/verify_offline.py \
-  --with-g6-image vc-lead-research:3.0.0
+  --with-g6-image vc-lead-research:3.0.1
 ```
 
 The network-disabled, read-only probe verifies exact OpenClaw/Lobster/channel,
@@ -1475,7 +1530,7 @@ python3 -B scripts/verify_release.py --pristine
 ├── CONTRIBUTING.md                   # Fork/branch/PR flow, gates to run, DCO sign-off
 ├── DCO                               # Developer Certificate of Origin 1.1, verbatim
 ├── CODE_OF_CONDUCT.md                # Contributor Covenant 2.1, enforcement rewritten
-├── VERSION                           # 3.0.0
+├── VERSION                           # 3.0.1
 ├── CUSTOMIZATION.md                  # Required fund/deployment decisions
 ├── 00_RESEARCH_AND_IMPLEMENTATION_PLAN.md  # Version 3 plan of record
 ├── 01_PRECOMMITTED_EVALS.md          # Precommitted evaluation criteria
@@ -1662,7 +1717,7 @@ Credit does not imply endorsement of this project or its outputs.
 
 - [OpenClaw](https://github.com/openclaw/openclaw) supplies the gateway,
   agents, tools, sessions, channels, Task Flow, provider plugins, and runtime.
-  The reviewed source is [commit `2d2ddc4`](https://github.com/openclaw/openclaw/commit/2d2ddc43d0dcf71f31283d780f9fe9ff4cc04fe4).
+  The reviewed source is [commit `ea80657`](https://github.com/openclaw/openclaw/commit/ea806575e6450e4d1efdfc72c19f04be982a1b9b).
 - [Lobster](https://github.com/openclaw/lobster) supplies the typed local-first
   workflow shell and continuation mechanism. The reviewed source is
   [commit `86b8cc2`](https://github.com/openclaw/lobster/commit/86b8cc20a867f18c08ae8e3f4fec9ee7d52bf8c9).
@@ -1674,10 +1729,12 @@ Credit does not imply endorsement of this project or its outputs.
   provider configuration. Its
   [Skill Workshop guide](https://docs.openclaw.ai/tools/skill-workshop) informed
   the guarded pending-proposal boundary and the decision to leave autonomous
-  transcript review disabled. That page is the one the pinned `2026.7.1` docs
-  set ships; the newer "Self-learning" page on the same site documents an
-  autonomous-capture mode this release does not implement, whose configuration
-  keys the pinned schema rejects.
+  transcript review disabled. The same site's "Self-learning" page documents an
+  autonomous-capture mode this release deliberately does not use. On the
+  `2026.8.1` base its key is no longer rejected by the schema — it is
+  `skills.workshop.autonomous.mode`, and its default is `"auto"` — so the
+  boundary is now held by an explicit `"off"` pin rather than by the schema
+  refusing the key.
 - [Ollama API documentation](https://docs.ollama.com/api/introduction),
   [Firecrawl Search API](https://docs.firecrawl.dev/api-reference/endpoint/search),
   and [Tavily Search API](https://docs.tavily.com/documentation/api-reference/endpoint/search)

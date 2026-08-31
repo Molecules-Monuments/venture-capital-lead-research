@@ -24,6 +24,7 @@
         }
       },
       "contextVisibility": "allowlist",
+      "streaming": { "mode": "off" },
       "mediaMaxMb": "__VC_CHANNEL_MEDIA_MAX_MB__",
       "welcomeCard": false,
       "groupWelcomeCard": false,

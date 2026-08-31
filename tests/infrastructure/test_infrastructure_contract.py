@@ -324,7 +324,7 @@ class RuntimeInfrastructureTests(unittest.TestCase):
         self.assertIn("--omit=dev --omit=peer --ignore-scripts", self.dockerfile)
         self.assertIn("--require-hashes -r /tmp/requirements.lock", self.dockerfile)
         for package in (
-            "ca-certificates=20230311+deb12u1",
+            "ca-certificates=20250419~deb12u1",
             "curl=7.88.1-10+deb12u15",
             "file=1:5.44-3",
             "jq=1.6-2.1+deb12u2",

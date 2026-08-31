@@ -48,7 +48,7 @@ services:
         max-file: ${POSTGRES_LOG_MAX_FILES:-5}
 
   openclaw-state-init:
-    image: vc-lead-research:3.0.0
+    image: vc-lead-research:3.0.1
     restart: "no"
     user: "0:0"
     entrypoint: ["/bin/sh", "-eu", "-c"]
@@ -64,13 +64,27 @@ services:
         test ! -L /runtime-config/openclaw.json
         cmp -s /run/openclaw-source/openclaw.json /runtime-config/openclaw.json
         stat -c '%U:%G:%a' /runtime-config/openclaw.json | grep -qx 'node:node:400'
-        # Symlink check precedes the copy: -e follows links, so a dangling one
-        # planted in the writable state volume would read as "absent" and have
-        # this root-lane cp write the seed through it to an arbitrary path.
+        # 2026.8.1 moved exec approvals out of this file and into
+        # state/openclaw.sqlite#exec_approvals_config, and now refuses every
+        # approvals read *and* write while the legacy JSON — or the
+        # ".doctor-importing" claim file beside it — merely exists
+        # (assertNoPendingLegacyExecApprovals, upstream
+        # dist/exec-approvals-generated-migration-CYtB4mAB.js). The remedy that
+        # error names, `openclaw doctor --fix`, exits 1 and imports nothing, so
+        # this lane clears both paths itself and re-seeds the reviewed policy
+        # into SQLite below. The reviewed seed stays at /opt/openclaw-seed in the
+        # read-only image: nothing this lane leaves in the state volume can
+        # re-arm that gate.
+        # Symlink checks precede the removal, and are repeated after the seeding:
+        # upstream probes with lstat(), so a dangling link reads as "present" to
+        # the runtime while `test -e` reads it as absent. `rm -f` unlinks the
+        # link itself, never its target, and `test ! -L` on an absent path exits
+        # 0, so a first-ever init still passes. The state/ check guards the
+        # `chown -R` below, which would otherwise follow a planted link.
         test ! -L /home/node/.openclaw/exec-approvals.json
-        if [ ! -e /home/node/.openclaw/exec-approvals.json ]; then
-          cp /opt/openclaw-seed/exec-approvals.json /home/node/.openclaw/exec-approvals.json
-        fi
+        test ! -L /home/node/.openclaw/exec-approvals.json.doctor-importing
+        test ! -L /home/node/.openclaw/state
+        rm -f /home/node/.openclaw/exec-approvals.json /home/node/.openclaw/exec-approvals.json.doctor-importing
         # Both checks precede the install, as in the exec-approvals lane above:
         # install -d is satisfied by a symlink to an existing directory and
         # follows it to chown and chmod the target. While these two lines sat
@@ -84,18 +98,46 @@ services:
         test ! -L /home/node/.openclaw/media
         test ! -L /home/node/.openclaw/media/inbound
         install -d -m 0700 -o node -g node /home/node/.openclaw/media /home/node/.openclaw/media/inbound
-        test -f /home/node/.openclaw/exec-approvals.json
+        # Bounded retry: three attempts, two 2-second pauses. An intermittent
+        # "SQLite read-only worker exited unsuccessfully" was seen twice under
+        # concurrent host load and could not be reproduced in 60 controlled runs,
+        # so the cause is not pinned. depends_on: service_completed_successfully
+        # turns one such flake into a failed stack start, and `approvals set`
+        # replaces the row outright, so re-running it is idempotent (verified,
+        # 5/5 consecutive runs). After the third attempt the lane still fails
+        # closed rather than letting the gateway start unseeded.
+        openclaw approvals set --file /opt/openclaw-seed/exec-approvals.json ||
+          { sleep 2; openclaw approvals set --file /opt/openclaw-seed/exec-approvals.json; } ||
+          { sleep 2; openclaw approvals set --file /opt/openclaw-seed/exec-approvals.json; }
+        test ! -e /home/node/.openclaw/exec-approvals.json
         test ! -L /home/node/.openclaw/exec-approvals.json
-        chown node:node /home/node/.openclaw/exec-approvals.json
-        chmod 0600 /home/node/.openclaw/exec-approvals.json
-        # No byte-compare against the seed here: the file is deliberately left
-        # writable because OpenClaw may maintain its own socket token in it
-        # (docs/RUNBOOK.md, docs/OPERATIONS.md), and restore.sh preserves it
-        # across state wipes for the same reason. The jq assertion below pins
-        # every reviewed key (version, defaults, agents, exact allowlist), so
-        # a tampered policy still fails this init while a runtime-added token
-        # key does not.
-        jq -e '.version == 1 and .defaults.security == "deny" and .defaults.ask == "off" and .defaults.askFallback == "deny" and .defaults.autoAllowSkills == false and (.agents | keys == ["data-steward"]) and .agents["data-steward"].security == "allowlist" and .agents["data-steward"].ask == "off" and .agents["data-steward"].askFallback == "deny" and .agents["data-steward"].autoAllowSkills == false and (.agents["data-steward"].allowlist | length == 2) and ([.agents["data-steward"].allowlist[] | {id,pattern,source}] | sort_by(.id) == ([{"id":"2DC7C1B8-73D4-42D3-9B6F-CA3FAE54E070","pattern":"/workspaces/vc-chief/vc/bin/agent/vcops","source":"version-3-package"},{"id":"C62E453F-6D6C-4E78-85CE-BB139A57978D","pattern":"/workspaces/vc-chief/vc/bin/agent/vcrun","source":"version-3-fixed-workflows"}] | sort_by(.id)))' /home/node/.openclaw/exec-approvals.json >/dev/null
+        test ! -e /home/node/.openclaw/exec-approvals.json.doctor-importing
+        test ! -L /home/node/.openclaw/exec-approvals.json.doctor-importing
+        # The reviewed policy now lives in SQLite, so the assertion reads the
+        # store through the CLI, not a file. `exists` and `path` together prove
+        # the write landed in the state volume rather than in a container-local
+        # HOME, so a wrong-target write can no longer exit 0. The projection
+        # drops `source`: the store normalises provenance away on read, so
+        # pinning it here would make the assertion unsatisfiable. `hash` is not
+        # pinned either — it covers a socket token minted per state directory,
+        # so it differs between deployments.
+        openclaw approvals get --json >/tmp/approvals-get.json
+        jq -e '.exists == true and .path == "/home/node/.openclaw/state/openclaw.sqlite#exec_approvals_config" and .file.version == 1 and .file.defaults.security == "deny" and .file.defaults.ask == "off" and .file.defaults.askFallback == "deny" and .file.defaults.autoAllowSkills == false and (.file.agents | keys == ["data-steward"]) and .file.agents["data-steward"].security == "allowlist" and .file.agents["data-steward"].ask == "off" and .file.agents["data-steward"].askFallback == "deny" and .file.agents["data-steward"].autoAllowSkills == false and (.file.agents["data-steward"].allowlist | length == 2) and ([.file.agents["data-steward"].allowlist[] | {id,pattern}] | sort_by(.id) == ([{"id":"2DC7C1B8-73D4-42D3-9B6F-CA3FAE54E070","pattern":"/workspaces/vc-chief/vc/bin/agent/vcops"},{"id":"C62E453F-6D6C-4E78-85CE-BB139A57978D","pattern":"/workspaces/vc-chief/vc/bin/agent/vcrun"}] | sort_by(.id)))' /tmp/approvals-get.json >/dev/null
+        rm -f /tmp/approvals-get.json
+        # This lane runs as root, so the state directory and the openclaw.sqlite
+        # it creates come out root:root and the node gateway then dies with
+        # EACCES on openclaw.sqlite-wal. setpriv cannot pre-drop to node here:
+        # cap_drop ALL makes its setresuid fail with EPERM. The chown runs last
+        # so that anything the two commands above created is covered.
+        chown -R node:node /home/node/.openclaw/state
+    environment:
+      # Without these two the CLI resolves HOME=/root and no state directory, so
+      # `approvals set` reports "stored" against a path that dies with the
+      # container while the state volume stays unseeded — and the gateway then
+      # comes up fail-open at security=full (measured). They are also what makes
+      # /home/node/.cache below the cache root the runtime actually uses.
+      OPENCLAW_STATE_DIR: /home/node/.openclaw
+      HOME: /home/node
     volumes:
       - openclaw-state:/home/node/.openclaw
       - openclaw-runtime-config:/runtime-config
@@ -103,13 +145,25 @@ services:
       - source: openclaw_runtime_config
         target: /run/openclaw-source/openclaw.json
     read_only: true
-    tmpfs: ["/tmp:rw,noexec,nosuid,size=16m"]
+    # 8.1 stages private SQLite snapshots under $HOME/.cache and aborts when it
+    # cannot create that directory, which read_only makes impossible without a
+    # writable mount (measured: run 1 succeeds, runs 2 and 3 die with "Unable to
+    # create fallback OpenClaw temp dir: /home/node/.cache/openclaw-0"; 3/3 clean
+    # with this mount). The cap is sized to hold a copy of state/openclaw.sqlite,
+    # which upstream stages here with sqlite.backup(); the mount is normally
+    # empty and its pages are charged to mem_limit, so raise both together if the
+    # state database ever approaches it.
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m
+      - /home/node/.cache:rw,noexec,nosuid,size=64m
     network_mode: none
     security_opt: ["no-new-privileges:true"]
     cap_drop: ["ALL"]
     cap_add: ["CHOWN", "DAC_OVERRIDE", "FOWNER"]
     pids_limit: 32
-    mem_limit: ${OPENCLAW_INIT_MEMORY_LIMIT:-64m}
+    # 64m OOM-kills the approvals CLI with a completely empty log, and 96m
+    # still OOM-kills it; 128m is the measured floor. 256m is twice the floor.
+    mem_limit: ${OPENCLAW_INIT_MEMORY_LIMIT:-256m}
     cpus: ${OPENCLAW_INIT_CPU_LIMIT:-0.25}
     logging:
       driver: json-file
@@ -122,8 +176,8 @@ services:
       context: .
       dockerfile: Dockerfile.openclaw
       args:
-        OPENCLAW_IMAGE: ${OPENCLAW_IMAGE:-ghcr.io/openclaw/openclaw:2026.7.1@sha256:6a31d44b2944e7adcd2b582bf6fb463111264ebca97a0201795b799135bd102c}
-    image: vc-lead-research:3.0.0
+        OPENCLAW_IMAGE: ${OPENCLAW_IMAGE:-ghcr.io/openclaw/openclaw:2026.8.1@sha256:e7849cb6c1ef1ead39ab4be7d85edb2df89611f486e283284c7cf35ce39a20d4}
+    image: vc-lead-research:3.0.1
     user: node
     restart: unless-stopped
     init: true
@@ -150,8 +204,8 @@ services:
       CRUNCHBASE_API_KEY: ${CRUNCHBASE_API_KEY:-}
       PITCHBOOK_API_KEY: ${PITCHBOOK_API_KEY:-}
       DEALROOM_API_KEY: ${DEALROOM_API_KEY:-}
-      VC_PRIMARY_MODEL: ${VC_PRIMARY_MODEL:-openai/gpt-5.6}
-      VC_FAST_MODEL: ${VC_FAST_MODEL:-openai/gpt-5.6}
+      VC_PRIMARY_MODEL: ${VC_PRIMARY_MODEL:-openai/gpt-5.6-sol}
+      VC_FAST_MODEL: ${VC_FAST_MODEL:-openai/gpt-5.6-sol}
       VCOPS_INBOX_ROOT: /inbox
       VCOPS_MEDIA_ROOT: /home/node/.openclaw/media/inbound
       VCOPS_QUARANTINE_ROOT: /quarantine
@@ -180,6 +234,13 @@ services:
     read_only: true
     tmpfs:
       - /tmp:rw,noexec,nosuid,size=256m
+      # 8.1 stages private SQLite snapshots under $HOME/.cache. Without this
+      # mount the gateway never starts under read_only: it exits 1 with "Unable
+      # to create fallback OpenClaw temp dir: /home/node/.cache/openclaw-1000"
+      # before it has read any config, where 7.1 in the same posture gets past
+      # that point (both measured). Sized to hold a copy of state/openclaw.sqlite
+      # and charged to mem_limit; the mount is normally empty.
+      - /home/node/.cache:rw,noexec,nosuid,size=256m
     networks: [backend, egress]
     extra_hosts: ["host.docker.internal:host-gateway"]
     healthcheck:
@@ -201,7 +262,7 @@ services:
 
   openclaw-cli:
     profiles: ["tools"]
-    image: vc-lead-research:3.0.0
+    image: vc-lead-research:3.0.1
     user: node
     depends_on:
       openclaw-gateway:
@@ -224,8 +285,8 @@ services:
       CRUNCHBASE_API_KEY: ${CRUNCHBASE_API_KEY:-}
       PITCHBOOK_API_KEY: ${PITCHBOOK_API_KEY:-}
       DEALROOM_API_KEY: ${DEALROOM_API_KEY:-}
-      VC_PRIMARY_MODEL: ${VC_PRIMARY_MODEL:-openai/gpt-5.6}
-      VC_FAST_MODEL: ${VC_FAST_MODEL:-openai/gpt-5.6}
+      VC_PRIMARY_MODEL: ${VC_PRIMARY_MODEL:-openai/gpt-5.6-sol}
+      VC_FAST_MODEL: ${VC_FAST_MODEL:-openai/gpt-5.6-sol}
       VCOPS_INBOX_ROOT: /inbox
       VCOPS_MEDIA_ROOT: /home/node/.openclaw/media/inbound
       VCOPS_QUARANTINE_ROOT: /quarantine
@@ -248,7 +309,12 @@ services:
       - ./inbox:/inbox:ro
       - vc-quarantine:/quarantine
     read_only: true
-    tmpfs: ["/tmp:rw,noexec,nosuid,size=64m"]
+    # Same 8.1 SQLite snapshot staging root as the other two services; without a
+    # writable /home/node/.cache every CLI invocation under read_only can abort
+    # with "Unable to create fallback OpenClaw temp dir".
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+      - /home/node/.cache:rw,noexec,nosuid,size=64m
     networks: [backend, egress]
     extra_hosts: ["host.docker.internal:host-gateway"]
     security_opt: ["no-new-privileges:true"]

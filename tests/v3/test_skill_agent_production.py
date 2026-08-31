@@ -138,7 +138,7 @@ console.log(JSON.stringify(output));
 
     def test_autonomous_transcript_review_remains_disabled(self) -> None:
         workshop = self.config["skills"]["workshop"]
-        self.assertEqual({"enabled": False}, workshop["autonomous"])
+        self.assertEqual({"mode": "off"}, workshop["autonomous"])
         self.assertEqual("pending", workshop["approvalPolicy"])
         self.assertFalse(workshop["allowSymlinkTargetWrites"])
 

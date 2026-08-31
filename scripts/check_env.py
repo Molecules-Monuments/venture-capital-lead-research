@@ -183,8 +183,8 @@ MSTEAMS_GUID_RE = re.compile(
 NIL_GUID = "00000000-0000-0000-0000-000000000000"
 
 OPENCLAW_IMAGE = (
-    "ghcr.io/openclaw/openclaw:2026.7.1@"
-    "sha256:6a31d44b2944e7adcd2b582bf6fb463111264ebca97a0201795b799135bd102c"
+    "ghcr.io/openclaw/openclaw:2026.8.1@"
+    "sha256:e7849cb6c1ef1ead39ab4be7d85edb2df89611f486e283284c7cf35ce39a20d4"
 )
 POSTGRES_IMAGE = (
     "postgres:17.10-bookworm@"
@@ -621,12 +621,17 @@ def validate_runtime_selection(values: dict[str, str]) -> list[str]:
         if values.get("OPENAI_API_KEY") or values.get("VC_OLLAMA_BASE_URL"):
             errors.append("Custom model mode requires OpenAI/Ollama fields to remain empty")
 
-    # Native OpenClaw web-search providers. duckduckgo (keyless), firecrawl, and
-    # tavily ship in the image; brave/perplexity/exa/searxng/parallel-free are
-    # native too but their plugin package must be present in the image (a
-    # documented commissioning step for a non-bundled provider — see
-    # CUSTOMIZATION.md). parallel-free is the keyless variant of the parallel
-    # plugin; the paid "parallel" provider (PARALLEL_API_KEY) is not offered.
+    # Native OpenClaw web-search providers. As of the 2026.8.1 base image *no*
+    # search provider is bundled: duckduckgo left /app/extensions for the
+    # @openclaw/duckduckgo-plugin npm package (measured — neither
+    # /app/dist/extensions nor /app/extensions carries it), joining firecrawl
+    # and tavily, which were always npm pins. Every id below therefore needs its
+    # plugin package present in the image, which for the three we pin in
+    # runtime-packages/package.json is already true and for
+    # brave/perplexity/exa/searxng/parallel-free is a documented commissioning
+    # step (see CUSTOMIZATION.md). "Keyless" below means no credential, not
+    # bundled. parallel-free is the keyless variant of the parallel plugin; the
+    # paid "parallel" provider (PARALLEL_API_KEY) is not offered.
     search_credential = {
         "brave": "BRAVE_API_KEY",
         "perplexity": "PERPLEXITY_API_KEY",

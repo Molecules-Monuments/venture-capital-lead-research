@@ -1143,7 +1143,7 @@ class RecoveryLifecycleContractTests(unittest.TestCase):
                 json.dumps(
                     {
                         "manifest_version": 1,
-                        "package_version": "3.0.0",
+                        "package_version": "3.0.1",
                         "excluded_review_directories": EXCLUDED_REVIEW_DIRECTORIES,
                         "file_count": len(files),
                         "files": files,
@@ -1228,7 +1228,7 @@ class RecoveryLifecycleContractTests(unittest.TestCase):
                 json.dumps(
                     {
                         "manifest_version": 1,
-                        "package_version": "3.0.0",
+                        "package_version": "3.0.1",
                         "excluded_review_directories": EXCLUDED_REVIEW_DIRECTORIES,
                         "file_count": len(files),
                         "files": files,
@@ -1296,7 +1296,7 @@ class RecoveryLifecycleContractTests(unittest.TestCase):
             json.dumps(
                 {
                     "manifest_version": 1,
-                    "package_version": "3.0.0",
+                    "package_version": "3.0.1",
                     "excluded_review_directories": EXCLUDED_REVIEW_DIRECTORIES,
                     "file_count": len(files),
                     "files": files,

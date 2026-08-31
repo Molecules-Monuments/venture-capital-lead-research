@@ -6,13 +6,24 @@ import path from "node:path";
 const VERSION = 1;
 const TOKEN_TTL_SECONDS = 30 * 60;
 // A capture waits for the agent turn that claims it, and on this deployment a
-// turn can be queued behind a long one: config/openclaw.json sets
-// stuckSessionAbortMs to 960000 (16 min). A window shorter than that budget
-// silently drops the capture — no trusted-context token, and no
-// unsupported-attachment refusal. A queued capture has to survive the whole
-// preceding turn plus the dispatch that follows it, so this is the abort budget
-// with margin, not equal to it: at exactly 960000 the boundary case is decided
-// by the `<=` in prune(), which is too fine a thread to hang the refusal on.
+// turn can be queued behind a long one. A window shorter than the harness's
+// stuck-session abort budget silently drops the capture — no trusted-context
+// token, and no unsupported-attachment refusal. A queued capture has to survive
+// the whole preceding turn plus the dispatch that follows it, so this is the
+// abort budget with margin, not equal to it: at exactly the budget the boundary
+// case is decided by the `<=` in prune(), which is too fine a thread to hang the
+// refusal on.
+//
+// Through 2026.7.1 that budget was ours: config/openclaw.json set
+// stuckSessionAbortMs to 960000 (16 min), and this 20 min window was chosen
+// against it. 2026.8.1 retired both stuck-session keys with no replacement, so
+// the budget is now upstream's constant 360000 (6 min) — measured, not assumed:
+// max(MIN_STALLED_EMBEDDED_RUN_ABORT_MS = 300000,
+//     DEFAULT_STUCK_SESSION_WARN_MS = 120000 x 3). This window therefore clears
+// it by a wide margin now. Left at 20 min deliberately: the margin is what
+// stands in for a queue depth we no longer control, and shortening it buys
+// nothing but risk. tests/v3/test_runtime_provider_and_context.py drives the
+// same constant.
 const PENDING_TTL_MS = 20 * 60 * 1000;
 const MAX_CACHE_ENTRIES = 2048;
 const MAX_MEDIA_PATHS = 10;
@@ -23,9 +34,13 @@ const SECRET_FILE = process.env.VC_TRUSTED_CONTEXT_KEY_FILE || "/run/secrets/vc_
 const UNSUPPORTED_ATTACHMENT_MESSAGE =
   "This deployment accepts only PDF, PPTX, XLSX, or CSV document attachments. " +
   "The file was not sent to the model. Convert it to a supported, non-macro format and try again.";
-// message_received cannot be correlated by run id: OpenClaw 2026.7.1 creates a
+// message_received cannot be correlated by run id: OpenClaw 2026.8.1 creates a
 // run id only when the agent turn starts, which is strictly after that hook
-// fires. The session key is available on both sides, so captures are queued per
+// fires. (Re-verified against the 2026.8.1 dist: toPluginMessageContext is
+// byte-identical to 2026.7.1's and still sets runId only when the canonical
+// message already carries one, which an inbound message does not.)
+//
+// The session key is available on both sides, so captures are queued per
 // session and claimed by the first agent hook of a run.
 //
 // The queue matters. A second message can arrive while the first turn is still

@@ -66,7 +66,7 @@ SECRET_FILES = {
     "vc_trusted_context_key": "VC_TRUSTED_CONTEXT_KEY",
 }
 SEARCH_PACKAGES = {
-    "duckduckgo": ("duckduckgo", "/app/extensions/duckduckgo"),
+    "duckduckgo": ("duckduckgo", "/opt/openclaw-runtime/node_modules/@openclaw/duckduckgo-plugin"),
     "firecrawl": ("firecrawl", "/opt/openclaw-runtime/node_modules/@openclaw/firecrawl-plugin"),
     "tavily": ("tavily", "/opt/openclaw-runtime/node_modules/@openclaw/tavily-plugin"),
     # Additional native providers. The plugin package must be present in the
@@ -82,12 +82,18 @@ SEARCH_PACKAGES = {
     # (needs PARALLEL_API_KEY) is intentionally not offered as a keyless option.
     "parallel-free": ("parallel", "/opt/openclaw-runtime/node_modules/@openclaw/parallel-plugin"),
 }
-# Search-provider plugins that are actually present in the built image: the base
-# image's /app/extensions and whatever runtime-packages/package.json pins via
-# `npm ci`. A provider outside this set renders a plugins.load path that does not
+# Search-provider plugins the base image carries on its own, without a pin in
+# runtime-packages/package.json. As of 2026.8.1 that set is empty: duckduckgo
+# was the only one, and it left /app/extensions for the @openclaw/duckduckgo-
+# plugin npm package (measured against the pinned base — neither
+# /app/dist/extensions nor /app/extensions contains it). The constant stays
+# rather than being deleted because it is the declared seam: a future base that
+# bundles a search provider again is named here, and nowhere else.
+#
+# A provider outside the resulting set renders a plugins.load path that does not
 # exist, so the gateway fails to load it at startup — caught here at render time
 # with an actionable message instead of an opaque late failure.
-BASE_IMAGE_SEARCH_PLUGINS = {"duckduckgo"}
+BASE_IMAGE_SEARCH_PLUGINS: set[str] = set()
 
 
 def _bundled_search_providers() -> set[str]:
@@ -97,10 +103,15 @@ def _bundled_search_providers() -> set[str]:
         deps = set()
     available = set(BASE_IMAGE_SEARCH_PLUGINS)
     for provider, (_plugin_id, plugin_path) in SEARCH_PACKAGES.items():
-        if "/node_modules/" in plugin_path:
-            if plugin_path.split("/node_modules/", 1)[1] in deps:
-                available.add(provider)
-        else:
+        # Every SEARCH_PACKAGES path is now an npm package under
+        # /opt/openclaw-runtime, so availability is purely pin-derived. partition
+        # rather than split: a path that is not under node_modules yields "" and
+        # is simply not pin-derivable, which is the conservative answer and the
+        # case BASE_IMAGE_SEARCH_PLUGINS above exists to cover. The former
+        # `else: available.add(provider)` branch became unreachable when
+        # duckduckgo moved, and an unreachable fail-open is worse than none.
+        package_name = plugin_path.partition("/node_modules/")[2]
+        if package_name and package_name in deps:
             available.add(provider)
     return available
 
@@ -197,12 +208,20 @@ def apply_runtime_selection(config: dict[str, Any], selected_channel: str, env: 
     allow = ["vc-trusted-context", "web-readability"]
     paths = ["/opt/openclaw-extensions/vc-trusted-context"]
     entries: dict[str, Any] = {
-        # before_model_resolve and before_agent_run are "conversation" hooks,
-        # and OpenClaw drops those registrations outright for any plugin it did
-        # not bundle itself unless the deployment opts in by name. This
-        # extension is loaded from a path, so without this flag the
-        # unsupported-attachment block never runs and the failure is silent —
-        # the plugin still loads and its other hooks still work.
+        # before_model_resolve, before_prompt_build and before_agent_run are
+        # "conversation" hooks, and OpenClaw drops those registrations outright
+        # for any plugin it did not bundle itself unless the deployment opts in
+        # by name. This extension is loaded from a path, so without this flag
+        # neither the trusted-context token nor the unsupported-attachment block
+        # is produced, and the failure is silent — the plugin still loads and its
+        # other hooks still work.
+        #
+        # 2026.8.1 widened that set: `conversationHookNameSet` gained
+        # `agent_turn_prepare` and `before_prompt_build`, so this one flag now
+        # guards three of this extension's five hooks rather than two, including
+        # the hook that mints the token. tests/v3/test_runtime_provider_and_context.py
+        # enumerates the five against that world so the coverage cannot drift
+        # unnoticed.
         "vc-trusted-context": {"enabled": True, "hooks": {"allowConversationAccess": True}},
         "web-readability": {"enabled": True},
     }
@@ -322,7 +341,7 @@ def apply_runtime_selection(config: dict[str, Any], selected_channel: str, env: 
         allow.append(selected_channel)
         entries[selected_channel] = {"enabled": True}
     plugins["allow"] = list(dict.fromkeys(allow))
-    # Bundled plugins (duckduckgo, ollama, telegram) need no load path, and
+    # Bundled plugins (ollama, telegram) need no load path, and
     # giving them one is actively wrong. Verified against the pinned image:
     # the harness's stock scan root is /app/dist/extensions and `plugins list`
     # resolves each of them as `stock:<id>/index.js` with no load path

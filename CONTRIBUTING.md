@@ -15,10 +15,14 @@ customizable fixed-denominator rubric, and writes internal memos from a frozen
 snapshot of what was actually supported. It runs on the operator's own host,
 against the operator's own PostgreSQL database, under a set of authority
 boundaries that keep a model lane from approving its own work. There is no
-hosted service. The one unsolicited outbound call is the gateway's own update
-check at startup, which is a version comparison that downloads and installs
-nothing; `docs/RUNBOOK.md` §2 documents it, says not to act on it, and notes that
-denying it in an egress policy is a supported configuration.
+hosted service. The harness does make three unsolicited outbound calls of its
+own — a version check to `telemetry.openclaw.ai`, a model-catalogue refresh
+from `catalog.openclaw.ai`, and a plugin-feed prewarm from `clawhub.ai`. None
+downloads or installs anything and nothing in the deployment depends on any of
+them. The first two are pinned off in `config/openclaw.json`; the third has no
+configuration switch at all and is deniable only by host egress policy.
+`docs/RUNBOOK.md` §2 enumerates all three with their trigger, cadence, payload
+and off-switch, and denying every one of them is a supported configuration.
 
 Two documents matter before you change anything:
 
@@ -196,7 +200,7 @@ Five further gates need infrastructure:
   `verify_offline.py --with-g4-database`), creates a disposable local
   PostgreSQL 17 cluster and proves the SQL-level boundaries against it.
 - **G6**, the image gate (`verify_offline.py --with-g6-image
-  vc-lead-research:3.0.0`), probes a built Docker image with the network
+  vc-lead-research:3.0.1`), probes a built Docker image with the network
   disabled and verifies exact pinned versions.
 - **G8**, the deployment gate (`scripts/run_g8_deployment.py`, reached with
   `verify_offline.py --with-deployment`), builds a throwaway deployment end to

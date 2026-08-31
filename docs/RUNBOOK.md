@@ -3,8 +3,8 @@
 ## 1. Release contract
 
 Install the complete directory as one immutable revision. The supported pins
-are OpenClaw `2026.7.1`, Lobster `2026.6.11`, Postgres
-`17.10-bookworm`, and package version `3.0.0`. The shipped image references
+are OpenClaw `2026.8.1`, Lobster `2026.6.11`, Postgres
+`17.10-bookworm`, and package version `3.0.1`. The shipped image references
 also pin the reviewed multi-architecture manifest digests. Do not substitute
 `latest`, `main`, a tag without its recorded digest, floating package ranges,
 or a partially copied workspace.
@@ -111,7 +111,8 @@ Use a dedicated Linux host inside one organizational trust boundary. Require:
   backups, and expected retention;
 - working DNS, UTC-synchronized time, outbound TLS to the selected model
   provider, optional search/fetch providers, image/package registries, approved
-  research endpoints, the OpenClaw update channel (see below), and only the
+  research endpoints, the three OpenClaw-owned hosts enumerated below
+  (`telemetry.openclaw.ai`, `catalog.openclaw.ai`, `clawhub.ai`), and only the
   selected channel provider;
 - loopback or private access to the gateway; a hardened TLS reverse proxy that
   exposes only `/api/messages` if Teams is selected; and
@@ -141,19 +142,44 @@ Use a dedicated Linux host inside one organizational trust boundary. Require:
 - a non-root deployment operator with exclusive control of the package and
   `.env`.
 
-**The OpenClaw update channel.** The gateway contacts its own update channel at
-startup and logs, for example, `[gateway] update available (latest):
-v2026.7.1-2 (current v2026.7.1). Run: openclaw update`. It is a version check
-only — nothing is downloaded or installed, and the log line is informational.
-It is listed here because an operator sizing a firewall allowlist would
-otherwise not expect it. Two consequences:
+**The three unsolicited outbound calls the harness makes on its own.** The
+gateway contacts three OpenClaw-owned hosts without being asked. None of them
+downloads or installs anything, and nothing in this deployment depends on any
+of them. They are listed here because an operator sizing a firewall allowlist
+would otherwise not expect them, and because two of the three are new in
+`2026.8.1` — on the previous `2026.7.1` base the single call went to
+`registry.npmjs.org`, which is no longer on the default path.
 
-- **Do not run `openclaw update`.** The image is pinned by digest in `.env` and
-  `deployment-lock.json`; upgrading in place would break the pinned-digest
-  contract and every provenance gate that depends on it. Upgrades go through
-  `scripts/update.sh` with a reviewed release, per §8.
-- If your egress policy denies it, the check fails and logs a warning. That is
-  a supported configuration: nothing else in the deployment depends on it.
+The world is enumerable rather than remembered. These three are the endpoint
+constants the pinned image fetches from its own startup path, and inside that
+image they live at `/app/dist/telemetry-DcLnYR14.js`,
+`/app/dist/model-catalog-YrXw0PBH.js` and
+`/app/dist/official-external-plugin-catalog-CBlJFCmU.js` — content-hashed
+names, so they move with every upstream release. Re-derive the list against the
+candidate image before any base bump; do not carry this table forward on
+trust.
+
+| Host and path | Trigger and cadence | Payload | Switched off by |
+| --- | --- | --- | --- |
+| `GET https://telemetry.openclaw.ai/api/latest-version` | Gateway start, then at most once per 24 h | No request body. A `User-Agent` header carrying `openclaw/<version> (<platform>; node/<node>; <arch>; <surface>)`. A JSON body of channel/provider/plugin counts is sent — as a POST — only when `telemetry.enabled` is `true`, which this release pins `false` | `update.checkOnStart: false` in `config/openclaw.json` |
+| `GET https://catalog.openclaw.ai/models/v1/catalog.json` | Gateway start, then every 6 h | No request body; conditional-request headers only | `models.catalogRefresh.enabled: false` in `config/openclaw.json`. The update switches do not reach it: the refresh is scheduled before `update.checkOnStart` is consulted |
+| `GET https://clawhub.ai/v1/feeds/plugins` | Once per gateway start, from the post-ready plugin data prewarm | No request body | **Nothing in configuration.** There is no key, no environment variable and no plugin-config path for it; `plugins.allow`, `plugins.enabled: false`, `update.checkOnStart: false`, `DO_NOT_TRACK` and `CI` all leave it running. Deny it in host egress policy, or accept it |
+
+Three consequences:
+
+- **Do not run `openclaw update`,** and do not act on an update banner or on
+  the one-click update control the Control UI now offers beside it. The image
+  is pinned by digest in `.env` and `deployment-lock.json`; upgrading in place
+  would break the pinned-digest contract and every provenance gate that depends
+  on it. Upgrades go through `scripts/update.sh` with a reviewed release, per
+  §8.
+- **Denying all three in an egress policy is a supported configuration.** Each
+  failure is logged and degrades nothing; §5.1 names the exact lines to expect
+  under a deny.
+- **`DO_NOT_TRACK` is not the control here.** It only downgrades the version
+  check from POST to GET. It does not stop that request and it does not reach
+  the other two hosts. The two configuration keys above are the control, and
+  the third host has none.
 
 Do not mount the Docker socket, enable privileged mode, publish Postgres, expose
 the Control UI publicly, or share this gateway across hostile trust domains.
@@ -307,13 +333,25 @@ The derived image installs the `runtime-packages/package-lock.json` graph with
 `npm ci`, installs Python requirements with hash verification, and bakes the
 reviewed `/workspaces` tree read-only. Before the gateway starts, the one-shot
 `openclaw-state-init` service copies and validates the rendered config as
-described above. It also copies the reviewed exec-approval seed into the
-writable state volume only when absent, forces mode `0600`, and verifies the
-two exact data-steward executable paths. The initializer runs as root with all
+described above. It also loads the reviewed exec-approval seed — which stays at
+the image-baked, read-only `/opt/openclaw-seed/exec-approvals.json`, outside
+the state directory — into the `exec_approvals_config` row of the state
+database, verifies the two exact data-steward executable paths by reading that
+row back, and asserts that no legacy `exec-approvals.json` remains in the state
+directory. The initializer runs as root with all
 capabilities dropped except `CHOWN`, `DAC_OVERRIDE`, and `FOWNER`; it has no
 network and exits before the gateway starts. Gateway and CLI remain non-root,
-drop all capabilities, and gain no added capability. OpenClaw may maintain its
-own socket token in the writable approval file.
+drop all capabilities, and gain no added capability.
+
+Two things changed with the `2026.8.1` base and neither is cosmetic. The store
+is the state database, not a JSON file: `loadExecApprovals()` reads
+`exec_approvals_config`, and a leftover `$OPENCLAW_STATE_DIR/exec-approvals.json`
+makes **every** approvals read and write throw rather than fall back — which is
+why the initializer asserts its absence instead of tolerating it. And the
+harness's own socket token now lives inside that row, so the old rationale for
+leaving a writable JSON copy in the state volume no longer applies: there is no
+file for the harness to maintain, and a check that compares against one is
+checking something the runtime does not read.
 
 ## 5. Deployment commissioning checklist
 
@@ -336,7 +374,7 @@ it only stops you re-deriving what the package already demonstrates.
 
 | Rows | Already proven by | What is still yours |
 | --- | --- | --- |
-| 5.1 Lobster, channel, search, Ollama and trusted-context extension versions; the ten pinned Debian package names, `python3` and `python3-venv` among them (their `3.11.2` is the python3-defaults revision, not the interpreter's — see the pin-scope comment in `scripts/run_g6_image.py` and §11); per-profile config validation; skill-workshop hook | `verify_offline.py --with-g6-image <image>` | The OpenClaw harness version: the probe reads the extensions and Debian packages listed here, never `openclaw --version`, so §5.1's first bullet stays yours (`check_env.py` refuses an `.env` whose `OPENCLAW_IMAGE` is not the pinned `2026.7.1@sha256:…` base, which is what constrains it between builds). Also record *your* live image IDs: `python3 -B scripts/record_images.py --validate-live deployment-lock.json` |
+| 5.1 Lobster, channel, search, Ollama and trusted-context extension versions; the ten pinned Debian package names, `python3` and `python3-venv` among them (their `3.11.2` is the python3-defaults revision, not the interpreter's — see the pin-scope comment in `scripts/run_g6_image.py` and §11); per-profile config validation; skill-workshop hook | `verify_offline.py --with-g6-image <image>` | The OpenClaw harness version: the probe reads the extensions and Debian packages listed here, never `openclaw --version`, so §5.1's first bullet stays yours (`check_env.py` refuses an `.env` whose `OPENCLAW_IMAGE` is not the pinned `2026.8.1@sha256:…` base, which is what constrains it between builds). Also record *your* live image IDs: `python3 -B scripts/record_images.py --validate-live deployment-lock.json` |
 | 5.1 agent authority boundary (no direct Lobster, exec, config, cron, gateway or DB authority) | `validate_skill_system.py` and the `tests/infrastructure` exec-allowlist contract, both inside `verify_offline.py` | — |
 | 5.1 rendered-config mode, ownership, digest and read-only mounting | `tests/infrastructure` plus the in-container initializer assertions exercised by `run_g8_deployment.py` | — |
 | 5.1 `/healthz` and `/readyz` behaviour; private-path reachability | — | Yours: depends on your host and proxy |
@@ -392,14 +430,18 @@ channel matrix. A row a gate closes outright carries a `—` in that column.
 
 ### 5.1 Image and configuration
 
-- Prove the runtime OpenClaw version is exactly `2026.7.1` and record the image
+- Prove the runtime OpenClaw version is exactly `2026.8.1` and record the image
   digest/ID.
 - Prove Lobster resolves from `/opt/openclaw-runtime` at exact `2026.6.11`; that
   Slack, Teams, and Discord — installed from the locked npm graph and then moved
   into `/app/dist/extensions/<id>` by `Dockerfile.openclaw` (see §10, "Channel
   plugins must stay under the harness's own extension scan root") — resolve
-  there at exact `2026.7.1`; and that bundled Telegram at
-  `/app/extensions/telegram` is exact `2026.7.1`.
+  there at exact `2026.8.1`; and that bundled Telegram at
+  `/app/extensions/telegram` is exact `2026.8.1`. DuckDuckGo is **no longer**
+  under `/app/dist/extensions`: `2026.8.1` stopped bundling it, so prove
+  `@openclaw/duckduckgo-plugin` at exact `2026.8.1` under
+  `/opt/openclaw-runtime/node_modules` instead, the way Firecrawl and Tavily are
+  already proved.
 - Run the pinned OpenClaw configuration validation, `doctor`, secret audit, and
   deep security audit inside the exact image. Each runs through the gateway
   container, in the same form as §5.2 and §5.3:
@@ -523,6 +565,25 @@ channel matrix. A row a gate closes outright carries a `—` in that column.
   exemption). If this finding appears, that block has been removed from
   `config/openclaw.json` or the rendered runtime config is stale.
 
+  **This row is evidence that the limiter is configured, not that it works.**
+  No gate in this package exercises it. G8's `negative-auth-proof` is a
+  PostgreSQL credential probe — an invalid `PGPASSFILE` against the `postgres`
+  service — and never reaches the gateway at all
+  (`scripts/run_g8_deployment.py`, `negative_auth_proof`). Do not cite a green
+  G8 as proof of gateway brute-force behaviour; if the deployment needs that
+  proof, it is a commissioning test to write, not a row to copy.
+
+  Separate from `gateway.auth.rateLimit`, and independent of it, the
+  `2026.8.1` harness applies its own **non-configurable** write budget to the
+  control plane: 30 calls per 60 s per (method, caller) pair for any method the
+  method registry classes as a control-plane write. Exceeding it returns
+  `UNAVAILABLE … rate limit exceeded for <method>; retry after Ns` and logs
+  `control-plane write rate-limited method=… retryAfterMs=…`. There is no key
+  to raise, lower, or disable it. It is well above anything the documented
+  operator lanes generate, but a script that loops a control-plane write will
+  hit it; treat the error as backpressure and retry after the interval it
+  names, not as a fault.
+
   From `openclaw secrets audit`:
 
   - `gateway.auth.token` reported as plaintext: expected, and not a literal
@@ -582,10 +643,13 @@ channel matrix. A row a gate closes outright carries a `—` in that column.
     chat exec approvals); this deployment exposes no chat command surface at
     all. Verified on all five rendered profiles, the effective `commands` block
     is `native`, `nativeSkills`, `text`, `bash`, `config`, `mcp`, `plugins`,
-    `debug` and `restart` — every one of them `false` — plus
-    `useAccessGroups: true`, which selects access-group scoping for command
-    authorization rather than enabling any command surface, so there is no
-    owner-scoped command for an owner ID to protect. Operator actions run
+    `debug` and `restart` — every one of them `false` — so there is no
+    owner-scoped command for an owner ID to protect. `commands.useAccessGroups`
+    no longer appears in that block: `2026.8.1` retired the key and made
+    access-group scoping unconditional, so the posture it selected is now the
+    only behaviour rather than a setting. Expect one fewer entry than the
+    `2026.7.1` commissioning record shows, and do not read its absence as the
+    scoping having been turned off. Operator actions run
     through the administrative control plane
     (`vcops-operator`, `vcrun-control`) under `VCOPS_OPERATOR_ID`, never through
     a channel. Setting `commands.ownerAllowFrom` would also grant a channel
@@ -660,9 +724,22 @@ channel matrix. A row a gate closes outright carries a `—` in that column.
     mounted read-only by design (§5.1 below proves that mount), so the harness
     cannot write its last-known-good copy beside it. Nothing is degraded: the
     config the gateway loaded is the one the initializer validated.
-  - `update available (latest): v… (current v2026.7.1). Run: openclaw update` —
-    the harness checks its own update channel at startup. See §2's egress list;
-    do not run `openclaw update`, which would break the pinned-digest contract.
+  - `remote model catalog refresh failed` — logged at **info** level, not warn.
+    With `models.catalogRefresh.enabled` pinned `false` it should not appear at
+    all: a disabled refresh returns without making a request and logs nothing.
+    Seeing it therefore tells you two things at once — the pin is missing from
+    the rendered runtime config, *and* the host is denying
+    `catalog.openclaw.ai`. Re-render and re-bootstrap. Nothing is degraded
+    either way; the gateway uses the catalogue bundled in the image.
+  - `post-ready gateway data prewarm failed for plugins: …` — expected on any
+    host whose egress policy denies `clawhub.ai`. This is the one call in §2's
+    table that no configuration key disables, so on a deny-all host it appears
+    at every start. The fetch is fire-and-forget and its only consumer is the
+    Control UI's plugin catalogue, which this deployment does not use.
+  - `update available (latest): … Run: openclaw update` — **should not appear.**
+    `update.checkOnStart` is pinned `false`, so the check never runs. If you see
+    it, the pin is missing from the rendered runtime config: re-render and
+    re-bootstrap rather than ignoring the line. See §2's egress table.
 
   **Never run `openclaw doctor --fix` here.** The runtime config is mounted
   read-only by design, so it fails with `EROFS`, and its suggested edits are
@@ -679,7 +756,17 @@ channel matrix. A row a gate closes outright carries a `—` in that column.
   message, gateway, or database-secret authority beyond the reviewed boundary.
 - Prove only `vc-chief` receives `skill_workshop`; create/update/revise/list/
   inspect remain available, while apply/reject/quarantine, an unknown action,
-  and a non-chief caller are blocked by the image-owned hook.
+  and a non-chief caller are blocked by the image-owned hook. `2026.8.1` widens
+  the tool's own action set from eight to fifteen, so record the whole world
+  rather than the five that pass: the guard admits `create`, `update`,
+  `revise`, `list`, `inspect`; it refuses `apply`, `reject`, `quarantine` as
+  reviewed policy; and its fail-closed default now also refuses
+  `restore_collection` and `complete` (lifecycle, same rationale) and `read`,
+  `prepare_patch`, `patch`, `evaluate`, `history` (authoring and inspection).
+  Those last five are a **deliberate loss for this release**, not a defect:
+  extending the allowlist to reach them is a behaviour change that needs its
+  own review, and until it happens the chief cannot patch a live skill in place
+  or run proposal evaluators. Expect the refusal, and record it.
 
 ### 5.2 Database and helper
 
@@ -1089,7 +1176,7 @@ For an accepted pending proposal:
 
    ```sh
    docker run --rm -v "$PWD/workspaces/shared-skills:/skills:ro" \
-     --entrypoint python3 vc-lead-research:3.0.0 \
+     --entrypoint python3 vc-lead-research:3.0.1 \
      /app/skills/skill-creator/scripts/quick_validate.py /skills/<skill-name>
    ```
 
@@ -1370,29 +1457,38 @@ record. Autonomous transcript review remains disabled.
 ## 10. Known release limitations
 
 - **The stuck-session watchdog, not `VC_MODEL_TIMEOUT_SECONDS`, decides when a
-  slow model call dies — unless you keep the two in the right order.** The
+  slow model call dies — and from this release you cannot change that.** The
   harness aborts an agent run after a period with no *streaming* progress, and a
   prefill emits nothing until it completes, so it cannot distinguish a slow
-  local model from a stalled provider. With `diagnostics.stuckSessionAbortMs`
-  unset the abort threshold is not a constant: the harness computes
-  `max(300 s, stuckSessionWarnMs x 3)`, so the upstream defaults are 120 s to
-  warn and **360 s to abort**, both below the 600 s minimum this package
-  requires for `VC_MODEL_TIMEOUT_SECONDS` in Ollama mode — so at the defaults
-  the package mandated a per-call budget the runtime would never grant.
-  Measured on a
-  CPU-only host: a legitimate 481 s cold prefill was aborted at 392 s. Do not
+  local model from a stalled provider. Through the `2026.7.1` base this package
+  tuned it: `diagnostics.stuckSessionWarnMs` and `stuckSessionAbortMs` were set
+  to `300000` and `960000`, above the 900 s maximum the validator allows for
+  the per-call timeout, so `VC_MODEL_TIMEOUT_SECONDS` was the bound that
+  actually fired. **`2026.8.1` retires both keys with no replacement.** The warn
+  threshold is a fixed 120 s and the abort is derived from it as
+  `max(300 s, 120 s x 3)` = **360 s**; there is no key, no environment
+  variable, and no per-agent override. Leaving the keys in the config is not an
+  option either — they are unrecognized, and the gateway exits 78 rather than
+  starting.
+
+  What that costs, stated plainly. A single model call that produces no
+  streaming output for more than ~360 s is aborted regardless of
+  `VC_MODEL_TIMEOUT_SECONDS`, so the 600 s Ollama floor this package documents
+  can no longer be granted in full: it still governs the request as a whole,
+  but it cannot rescue a cold prefill longer than the watchdog window. Measured
+  on a CPU-only host under those same fixed thresholds: a legitimate 481 s cold
+  prefill was aborted at 392 s (the threshold plus the sweep interval). The
+  mitigations left are all host-side — keep the model resident so the prefill
+  is paid once, use a smaller model or a shorter system prompt, or move to
+  hardware that prefills inside the window. Do not
   grep for a sentence: the harness sets the error's name, message and code as
   three separate `Error` properties and never composes them into one line, so
   the token to search the gateway log for is the code `OPENCLAW_DIRECT_ABORT`.
   The watchdog's own line begins `stuck session recovery: ` and carries
   `action=abort_embedded_run`. Neither surface names the provider or the
-  prefill, so the abort reads like a flake. `config/openclaw.json` therefore
-  sets `diagnostics.stuckSessionWarnMs: 300000` and
-  `diagnostics.stuckSessionAbortMs: 960000`, above the 900 s maximum the
-  validator allows for the per-call timeout. **The shipped abort therefore
-  already clears the whole legal range, so slower hardware needs no retuning;
-  if you raise `VC_MODEL_TIMEOUT_SECONDS` within its 30–900 s range, keep
-  `stuckSessionAbortMs` above it.** `VC_MODEL_TIMEOUT_SECONDS` lives in `.env`,
+  prefill, so the abort reads like a flake — which is exactly why it is
+  recorded here rather than left to be rediscovered.
+  `VC_MODEL_TIMEOUT_SECONDS` lives in `.env`,
   which the gate treats as runtime state: edit it and re-bootstrap.
   `config/openclaw.json` is both a hash-pinned reviewed artifact *and* a
   `manifest.json`-declared file, so an edit there takes three steps — re-pin the
@@ -1449,15 +1545,29 @@ record. Autonomous transcript review remains disabled.
   operator-triggered checklist that mechanism would otherwise have run
   unattended. Autonomous source surveillance is available as a
   deliberate four-step opt-in. (1) Set `config/openclaw.json`
-  `cron.enabled: true`. In the same edit set the two cron retention keys to
-  the firm's period — `cron.runLog.keepLines` (cron run history, written to
-  the `cron_run_logs` table of the SQLite state database, whose `summary`
-  column holds each run's reply text; harness default 2000 rows per job, and
-  `openclaw sessions cleanup` does not prune it) and `cron.sessionRetention`
-  (the completed session each cron run leaves behind; harness default `24h`,
-  which fires sooner than the `session.maintenance.pruneAfter` of `30d`
-  configured here) — since this edit already re-pins the profile hash. Both
-  keys are unset in `config/openclaw.json` today; see
+  `cron.enabled: true`. In the same edit set `cron.sessionRetention` to the
+  firm's period (the completed session each cron run leaves behind; harness
+  default `24h`, which fires sooner than the `session.maintenance.pruneAfter`
+  of `30d` configured here), and add a `cron.failureAlert` block so a failing
+  job is not silent — since this edit already re-pins the profile hash. The
+  `2026.8.1` schema accepts exactly these keys under `cron`: `enabled`,
+  `triggers.enabled`, `webhookToken`, `webhookSsrfPolicy`, `sessionRetention`,
+  and `failureAlert` with `enabled`, `after` (consecutive failures, integer
+  ≥ 1), `cooldownMs` (integer ≥ 0), `includeSkipped`, `mode` (`announce` or
+  `webhook`), `accountId`, `channel`, and `to`. `cron` is a strict object, so
+  anything else is a startup-fatal unrecognized key.
+
+  Two keys earlier revisions of this section told you to set are **retired** in
+  `2026.8.1` and must not be carried over. `cron.maxConcurrentRuns` is on the
+  retired-tuning list. `cron.runLog.keepLines` is gone with the whole
+  `cron.runLog` object: run history no longer lives in a `cron_run_logs` table
+  at all — opening the state database migrates those rows into `task_runs` and
+  drops the table — and retention is now a fixed upstream constant with no key
+  (upstream's own migration note records it as 2000 runs per job). If a config
+  carrying either key reaches `2026.8.1` the gateway refuses to start and the
+  diagnostic tells you to run `openclaw doctor --fix`. **Do not.** That command
+  is forbidden here (see §5.1) and, measured on this configuration, it exits 1
+  without migrating anything. Delete the keys by hand instead. See
   `workspaces/vc-chief/vc/data_retention.md`. (2) Because that file is a
   hash-pinned reviewed
   artifact, record the edit in `config/customization-profile.json` — update its
@@ -1611,7 +1721,7 @@ those pins; the other 38 — among them `libtiff6`, `libfreetype6`,
 poppler pulls in — carry no version pin, and nothing in the gates would notice
 if the pool moved them. The `python3` and `python3-venv` pins are
 python3-defaults metapackages, so the `3.11.2` they fix is that source's
-revision and not the interpreter's: in `vc-lead-research:3.0.0`
+revision and not the interpreter's: in `vc-lead-research:3.0.1`
 `/usr/bin/python3` is a symlink to `python3.11` owned by `python3-minimal`,
 while the interpreter binary `/usr/bin/python3.11` belongs to
 `python3.11-minimal=3.11.2-6+deb12u8`, inherited from the digest-pinned base

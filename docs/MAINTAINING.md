@@ -258,16 +258,18 @@ pre-publication check of this package.
 
 ### Closing an audit or fix cycle: move the tag, keep the version
 
-**Every audit or fix cycle ends by moving the annotated tag `v3.0.0` to the new
-`HEAD`, with `VERSION` left at `3.0.0`.** This is not optional and not a
-judgement call.
+**Every audit or fix cycle ends by moving the current release's annotated tag —
+`v` plus the contents of `VERSION`, today `v3.0.1` — to the new `HEAD`, with
+`VERSION` itself unchanged.** This is not optional and not a judgement call.
+Tags of superseded releases are never moved: `v3.0.0` still points at the
+2026.7.1-based release and stays there.
 
 ```sh
 python3 -B scripts/build_release_manifest.py      # read the delta first
 python3 -B scripts/verify_release.py --pristine   # must PASS
 git commit ...                                    # then, and only then:
-git tag -f -a v3.0.0 <new-HEAD> -F <annotation-file>
-git for-each-ref refs/tags/v3.0.0 \
+git tag -f -a "v$(cat VERSION)" <new-HEAD> -F <annotation-file>
+git for-each-ref "refs/tags/v$(cat VERSION)" \
   --format='%(objecttype) %(objectname:short) -> %(*objectname:short)'
 ```
 
@@ -295,5 +297,5 @@ Retagging in place is cheap only while the tag has never left the machine it
 was made on. Once the repository has a remote that other people fetch from,
 moving the tag is a deliberate force-push plus a note to anyone who may already
 have fetched it — a clone that fetched the old object keeps it, so the two
-sides disagree about what `v3.0.0` means until they are told. Plan the
+sides disagree about what the release tag means until they are told. Plan the
 announcement as part of the cycle rather than discovering it afterwards.

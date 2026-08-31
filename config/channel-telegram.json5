@@ -22,8 +22,6 @@
       "richMessages": false,
       "streaming": { "mode": "off" },
       "mediaMaxMb": "__VC_CHANNEL_MEDIA_MAX_MB__",
-      "mediaGroupFlushMs": 500,
-      "pollingStallThresholdMs": 120000,
       "reactionNotifications": "off",
       "reactionLevel": "off",
       "linkPreview": false,
@@ -45,8 +43,7 @@
         "sticker": false,
         "createForumTopic": false,
         "editForumTopic": false
-      },
-      "retry": { "attempts": 3, "minDelayMs": 500, "maxDelayMs": 10000, "jitter": 0.2 }
+      }
     }
   },
   "bindings": [
