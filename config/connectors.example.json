@@ -32,8 +32,8 @@
         "url": "https://mcp.example-crunchbase.invalid/mcp",
         "transport": "streamable-http",
         "headers": { "Authorization": "Bearer ${CRUNCHBASE_API_KEY}" },
-        "timeout": 30,
-        "connectTimeout": 5,
+        "requestTimeoutMs": 30000,
+        "connectionTimeoutMs": 5000,
         "toolFilter": { "include": ["search_*", "get_*"], "exclude": ["admin_*"] }
       }
     },
@@ -44,8 +44,8 @@
         "url": "https://mcp.example-pitchbook.invalid/mcp",
         "transport": "streamable-http",
         "headers": { "Authorization": "Bearer ${PITCHBOOK_API_KEY}" },
-        "timeout": 30,
-        "connectTimeout": 5,
+        "requestTimeoutMs": 30000,
+        "connectionTimeoutMs": 5000,
         "toolFilter": { "include": ["search_companies", "get_company"] }
       }
     },
@@ -56,8 +56,8 @@
         "url": "https://mcp.example-dealroom.invalid/mcp",
         "transport": "streamable-http",
         "headers": { "Authorization": "Bearer ${DEALROOM_API_KEY}" },
-        "timeout": 30,
-        "connectTimeout": 5,
+        "requestTimeoutMs": 30000,
+        "connectionTimeoutMs": 5000,
         "toolFilter": { "include": ["search_*", "get_*"], "exclude": ["admin_*"] }
       }
     }

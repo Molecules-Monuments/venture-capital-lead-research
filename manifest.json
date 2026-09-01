@@ -210,8 +210,8 @@
     {
       "executable": false,
       "path": "config/connectors.example.json",
-      "sha256": "d03408828301dde55981546244e34b95a5a0bd5c407e078cd467d15b76a5c72f",
-      "size": 3257
+      "sha256": "0e4e5788779c1602c5737e9451511c76152ef29939a990ae68590295344ecec1",
+      "size": 3317
     },
     {
       "executable": false,
@@ -996,8 +996,8 @@
     {
       "executable": false,
       "path": "tests/v3/test_upstream_posture_pins.py",
-      "sha256": "b4b6b577b672326447650444835cb95229c42d8d8411db0d39e36737c1c15d73",
-      "size": 20296
+      "sha256": "e49994fba5a0b77f0aeb3661f9cff3b88160085e66bda61bbddde2dc415c9967",
+      "size": 21493
     },
     {
       "executable": false,

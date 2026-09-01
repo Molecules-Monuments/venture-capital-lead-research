@@ -176,11 +176,13 @@ POSTURE_PINS: tuple[tuple[str, Any, str], ...] = (
 # responses were bad: revert the opt-in and silently disable production
 # automation, or stop trusting the gate.
 #
-# So it is asserted as COHERENCE instead of as a value, below: off is fine, and
-# on is fine only when the two companion keys RUNBOOK section 10 requires in the
-# same edit are present. That still catches the case the pin was written for --
-# a bare `cron.enabled: true` with nothing else -- while accepting the documented
-# procedure.
+# So it is asserted in two branches, below. On the PRISTINE package (no
+# config/customization-profile.json) the shipped value must be false -- that is
+# content the package controls, and it keeps its pin. On a CUSTOMISED deployment
+# the operator owns the file, so off is fine and on is fine only when the two
+# companion keys RUNBOOK section 10 requires in the same edit are present. That
+# still catches the case the pin was written for -- a bare `cron.enabled: true`
+# with nothing else -- while accepting the documented procedure.
 CRON_OPT_IN_COMPANIONS = ("cron.sessionRetention", "cron.failureAlert")
 
 # Keys 2026.8.1 retired or renamed. Splitting them by whether the name is unique
@@ -256,6 +258,24 @@ class PosturePinTests(unittest.TestCase):
             "decides. Pin it false, or opt in per docs/RUNBOOK.md section 10",
         )
         self.assertIs(type(enabled), bool)
+
+        # Two-branch enumerable world, not a widened assertion. The first
+        # coherence draft accepted `true` unconditionally-with-companions and so
+        # left the SHIPPED default ungated: a package-controlled value lost its
+        # only pin. The discriminator is whether this tree is still the pristine
+        # package or a customised deployment -- `config/customization-profile.json`
+        # is created by init_customization.py and is absent from the release.
+        customised = (ROOT / "config" / "customization-profile.json").exists()
+        if not customised:
+            self.assertIs(
+                False,
+                enabled,
+                "the shipped package must have cron.enabled false. Autonomous "
+                "scheduling is a deliberate operator opt-in (docs/RUNBOOK.md "
+                "section 10), not a default, and on a pristine tree there is no "
+                "customisation profile that could justify it",
+            )
+            return
         if enabled is False:
             return
         missing = [
