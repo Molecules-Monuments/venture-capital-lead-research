@@ -44,12 +44,14 @@ MIGRATION_RE = re.compile(r"^[0-9]{3}_.+\.sql$")
 # host-generated-state exclusions; tests/infrastructure pins the two together
 # so the build context and this contract cannot drift apart.
 #
-# config/exec-approvals.json is digested because it is image content, but note
-# that a rebuild alone does not apply a change to it: the initializer seeds it
-# into the state volume only when absent (it stays writable for OpenClaw's own
-# socket token). It is not customizable — tests/infrastructure pins its exact
-# allowlist, so an edit fails the offline gate rather than reaching a
-# deployment. STALE_DEPLOYMENT_MESSAGE states the exception.
+# config/exec-approvals.json is digested because it is image content, and on
+# the 2026.8.1 base the rebuild-and-recreate above applies a change to it
+# exactly as it does to the trees. Its runtime store is the
+# exec_approvals_config row of the state database rather than a file, and the
+# one-shot Compose initializer — which ./scripts/bootstrap.sh runs — replaces
+# that row outright from the read-only image-baked seed on every run. It is
+# still not customizable: tests/infrastructure pins its exact allowlist, so an
+# edit fails the offline gate rather than reaching a deployment.
 BAKED_SOURCE_FILES = (
     "Dockerfile.openclaw",
     "config/exec-approvals.json",
@@ -374,10 +376,9 @@ STALE_DEPLOYMENT_MESSAGE = (
     "into the derived image read-only — workspaces/, runtime-extensions/vc-trusted-context/, "
     "config/exec-approvals.json, runtime-packages/ and requirements.lock — and nothing "
     "bind-mounts those, so the running gateway was built before your change to one of them. "
-    "Re-run ./scripts/bootstrap.sh: it rebuilds the image, recreates the gateway, and re-records "
-    "this lock. One exception a rebuild does not resolve: config/exec-approvals.json is seeded "
-    "into the state volume only when absent and is not customizable — see CUSTOMIZATION.md, "
-    "DO_NOT_CUSTOMIZE_DIRECTLY"
+    "Re-run ./scripts/bootstrap.sh: it rebuilds the image, re-runs the state initializer, "
+    "recreates the gateway, and re-records this lock. config/exec-approvals.json is additionally "
+    "not customizable — see CUSTOMIZATION.md, DO_NOT_CUSTOMIZE_DIRECTLY"
 )
 
 

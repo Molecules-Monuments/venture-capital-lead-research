@@ -2,7 +2,7 @@
 
 Status: Version 3 package gates passed; exact live deployment gate not yet passed  
 Audit date: 2026-07-17  
-OpenClaw target when this audit ran: `v2026.7.1`, commit `2d2ddc43d0dcf71f31283d780f9fe9ff4cc04fe4`. The package now pins `v2026.8.1`; the audit was not re-run against it because nothing it depends on moved — the execution path is the standalone `@clawdbot/lobster` CLI rather than the OpenClaw plugin this document analyses (see "Exposure and isolation"), `@clawdbot/lobster@2026.6.11` is unchanged, its `engines.node` is byte-identical between the two upstream releases, and upstream pins no Lobster version. Re-run it if any of those three stop holding.  
+OpenClaw target when this audit ran: `v2026.7.1`, commit `2d2ddc43d0dcf71f31283d780f9fe9ff4cc04fe4`. The package now pins `v2026.8.1`; the audit was not re-run against it because nothing it depends on moved — the execution path is the standalone `@clawdbot/lobster` CLI rather than the OpenClaw plugin this document analyses (see "Exposure and isolation"), `@clawdbot/lobster@2026.6.11` is unchanged, its `engines.node` is byte-identical between the two upstream releases, and upstream pins no Lobster version. Re-run it if any of those four stop holding.  
 Embedded Lobster runtime: `@clawdbot/lobster@2026.6.11`, source tag `v2026.6.11`, commit `86b8cc20a867f18c08ae8e3f4fec9ee7d52bf8c9`
 
 Source citations below use the prefixes `upstream_openclaw/` and

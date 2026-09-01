@@ -9,11 +9,20 @@
 
 This is a self-hosted package. There is no hosted service, and nothing updates
 this package automatically: patches are published as a new release that the
-operator applies with `scripts/update.sh`. The bundled harness can check its
-own upstream release channel at startup, and the Control UI offers a one-click
-update beside the resulting banner — neither is a supported path here, both are
-pinned off, so that check does not run, and `docs/RUNBOOK.md` §2 enumerates it
-along with the two other unsolicited outbound calls the harness makes.
+operator applies with `scripts/update.sh`. Two harness features would otherwise
+offer another route, and they are closed in two different ways. The startup
+check against the upstream release channel is closed by configuration:
+`update.checkOnStart` is pinned `false` in `config/openclaw.json`, so the check
+does not run and no update banner appears, and `docs/RUNBOOK.md` §2 enumerates
+that call along with the two other unsolicited outbound calls the harness makes.
+The Control UI's one-click update is **not** closed by that pin — it is a live
+control-plane method (`update.run`, permission `operator.admin`) that
+`update.checkOnStart` does not disable — so it is closed by procedure instead:
+`docs/RUNBOOK.md` §2 instructs the operator not to run `openclaw update` or act
+on that control, because upgrading in place would break the pinned-digest
+contract every provenance gate in this package depends on. The background
+auto-apply, `update.auto.enabled`, is `false` by upstream default and is left
+unset here.
 
 ## Reporting a vulnerability
 
@@ -119,11 +128,17 @@ to enforce:
 
 The derived image installs `runtime-packages/package-lock.json` with `npm ci`,
 so every advisory against that graph ships in the image until the pin moves.
-Most can be moved here and are. Some cannot: the `@openclaw/*` channel plugins
-ship their HTTP stack as **bundled dependencies** inside their own published
-tarballs, which an npm `overrides` entry does not reach. For those, the pin
-moves only when upstream publishes a release — and this package deliberately
-tracks the latest *stable* upstream release, not a beta.
+Most can be moved here and are. Some cannot: an `@openclaw/*` plugin that ships
+part of its HTTP stack as **bundled dependencies** inside its own published
+tarball puts those copies out of reach of an npm `overrides` entry. Which
+plugins do that is a property of each upstream release rather than a constant:
+at `2026.8.1` `@openclaw/slack` and `@openclaw/discord` still bundle theirs,
+while `@openclaw/msteams` no longer bundles at all, so its HTTP stack now sits
+in ordinary top-level lock entries an override can move. Read the `inBundle`
+flags in `runtime-packages/package-lock.json` for the current split rather than
+a list here. Where a dependency is bundled, the pin moves only when upstream
+publishes a release — and this package deliberately tracks the latest *stable*
+upstream release, not a beta.
 
 Where that applies, the exposure is scoped to the channels an operator actually
 enables: a plugin that is not activated is not in the request path. Check the

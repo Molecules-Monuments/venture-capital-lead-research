@@ -164,6 +164,16 @@ token there). Editing it fails the offline gate. See the
   rm -rf node_modules   # pass 2 reifies ~27,000 files; --pristine fails without this
   ```
 
+  `--allow-remote=all` belongs to pass 1 only, and is an artefact of
+  `--package-lock-only`. npm 12 defaults `allow-remote` to `none`, and in
+  lock-only mode that default refuses the plugin tarballs even though their
+  URLs are the configured registry's own: measured on this lock, pass 1 exits
+  `EALLOWREMOTE` on
+  `https://registry.npmjs.org/@openclaw/discord/-/discord-2026.8.1.tgz` under
+  both `none` and `root`, so `all` is the narrowest value that works. Pass 2
+  and the image's `npm ci` both complete at the `none` default; do not carry
+  the flag into `.npmrc`.
+
   Then rebuild the image, and re-run the G6 gate; that
   reviewed, pinned, lock-regenerated rebuild *is* the audited dependency
   process the table below refers to. Selecting a
@@ -262,7 +272,7 @@ condition, and update to the customization profile’s change record.
 | `runtime-packages/**`, image/package locks, `deployment-lock.json` | Pin exact versions, then regenerate the lock with the two-pass procedure (`npm install --package-lock-only --omit=dev --allow-remote=all`, then `npm install --omit=dev --omit=peer --ignore-scripts --no-audit --no-fund`, then `rm -rf node_modules` — pass 2 reifies ~27,000 files that fail `--pristine`) — a single pass yields a lock `npm ci` rejects. Rebuild the image and repeat the supply-chain and G6 gates. |
 | Canonical specialist schemas | `workspaces/schemas/` is mirrored byte-for-byte at `workspaces/vc-chief/vc/schemas/`. There is no generator: edit **both** copies. The contracts suite fails on any drift. |
 | `.env`, raw approval tokens, provider credentials | Supply through the reviewed secret/runtime path. Never commit, copy into reports, or encode in the customization profile. |
-| `config/exec-approvals.json` | The reviewed agent exec allowlist. `tests/infrastructure` pins its exact two entries, `validate_skill_system.py` cross-checks every agent-reachable helper against it, and the Compose initializer pins its reviewed keys — so an edit fails the offline gate. Changing the allowlist means changing the agent contract, the launcher inventory under `workspaces/vc-chief/vc/bin/agent/`, that test, and the initializer assertion together, then rebuilding. On the `2026.8.1` base the runtime store is the `exec_approvals_config` row of the state database, not a file: the initializer loads the read-only image-baked seed at `/opt/openclaw-seed/exec-approvals.json` into that row and asserts that no `exec-approvals.json` is left in the state directory, because a leftover file makes every approvals read and write throw. The harness's socket token lives in that row too, so the old reason for leaving a writable JSON copy in the state volume no longer exists. |
+| `config/exec-approvals.json` | The reviewed agent exec allowlist. `tests/infrastructure` pins its exact two entries, `validate_skill_system.py` cross-checks every agent-reachable helper against it, and the Compose initializer pins its reviewed keys — so an edit fails the offline gate. Changing the allowlist means changing the agent contract, the launcher inventory under `workspaces/vc-chief/vc/bin/agent/`, that test, and the initializer assertion together, then rebuilding. On the `2026.8.1` base the runtime store is the `exec_approvals_config` row of the state database, not a file: the initializer loads the read-only image-baked seed at `/opt/openclaw-seed/exec-approvals.json` into that row, deletes any `exec-approvals.json` — and any `.doctor-importing` claim file — left in the state directory, and asserts that neither is there afterwards, because a leftover file makes every approvals read and write throw. The harness's socket token lives in that row too, so the old reason for leaving a writable JSON copy in the state volume no longer exists. |
 | Postgres/OpenClaw/Lobster live state and named-volume contents | Use typed operations, backup/restore, migrations, and lifecycle locks. Never edit state files by hand. |
 | Canonical schemas in isolation | Change the agent contract, skill, schema, fixtures, resolver, config, helper/workflow consumer, and version together. |
 
@@ -300,7 +310,9 @@ These are security and evidence invariants, not fund preferences:
   unreachable; widening the allowlist to admit any of them is a behaviour
   change needing its own review, not a customization; and
 - OpenClaw's autonomous Skill Workshop capture
-  (`skills.workshop.autonomous.enabled`) remains off. With it off, a durable
+  (`skills.workshop.autonomous.mode`, pinned `"off"`; the `2026.7.1` spelling
+  `skills.workshop.autonomous.enabled` is retired and startup-fatal if it is
+  re-added) remains off. With it off, a durable
   instruction the harness detects in a session is only offered back to the user
   on a later turn; turning it on lets a session create a pending Workshop
   proposal on its own, with no user decision in between. That is a separate

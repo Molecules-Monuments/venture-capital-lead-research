@@ -22,7 +22,7 @@ stays BLOCKED until a production-grade model is commissioned.
 
 | Gate | Status | Evidence | Boundary |
 |---|---|---|---|
-| A release completeness | PASS | Complete inventory, manifest/pristine verification (every declared file verified, 0 errors), pinned upstream provenance, Version 3.0.0 check | External distribution signature remains an operator trust input. The recorded image digest is regenerated at build. |
+| A release completeness | PASS | Complete inventory, manifest/pristine verification (every declared file verified, 0 errors), pinned upstream provenance, Version 3.0.1 check | External distribution signature remains an operator trust input. The recorded image digest is regenerated at build. |
 | B delegation contract | PASS (structural) · live routing BLOCKED | Closed delegation/return schemas, chief contract, orchestration and fixture tests | An agent turn was driven against a real (sub-1B, local) model, so the turn mechanism a delegation rides on — model resolution, provider reach, and the tool payload, which carries the `sessions_spawn` definition — is proven; an actual chief->specialist spawn was never driven live, and whether routing selects the right specialist is judgement and was never run against a production-grade model. |
 | C specialist output quality | **BLOCKED** | Twelve closed schemas and 19 contract tests validate output *shape* only | Gate C's core requirement — ≥12 semantic cases per specialist and Cohen's κ ≥ 0.80 — is entirely live-provider and was not executed. Not a pass. |
 | D retrieval/memory | PASS (with a caveat) | 7 retrieval contracts; disposable-DB G4 (98/98); verified per-principal preferences and forget cutoffs; 100k/1m benchmark re-run 2026-08-20 (160/160 cases) | Reference p95 remains below 250 ms. The benchmark seeds confusable clusters (each case a target plus four trigram-close distractors, mean 5 candidates) and scores precision@1 = recall = 1.0 — the resolver ranks each target above its look-alikes, so this now establishes ranking discrimination (former CR-013 item closed). Second caveat: gate D's committed "alias recall on adjudicated fixtures ≥ 95%" threshold is **not computed by any gate** — the scale gate's four numeric thresholds cover overall p95 latency, fuzzy recall, fuzzy precision@1, and mean candidate count, and its 60 exact cases are pass/fail domain-key resolutions (`run_retrieval_scale.py:320-324`), so neither yields an alias-recall rate; G4 proves alias *resolution* on specific adjudicated cases without expressing a rate, so that one number is unmeasured rather than met. Target-host capacity is a commissioning exercise. |
@@ -49,8 +49,11 @@ No missing environmental evidence is presented as a passing result.
 
 Originally executed 2026-07-23; **the complete matrix was last re-executed on
 2026-08-20** against this tree, and against the derived image rebuilt from it
-with `docker build --no-cache --pull` on 2026-08-25, after that day's edits to the image-baked `workspaces/` files, `Dockerfile.openclaw` itself, and the host-side recovery-lifecycle scripts. Every
-count below is that run's measurement, not a carried-forward one.
+with `docker build --no-cache --pull` on 2026-08-25, after that day's edits to the image-baked `workspaces/` files, `Dockerfile.openclaw` itself, and the host-side recovery-lifecycle scripts. Both dates
+are managed by `scripts/set_evidence_execution_date.py` and both still predate
+the `2026.8.1` upgrade, so they name the last full matrix run rather than the
+source of every count below. Those counts are what the current tree produces:
+`tests/v3/test_evidence_doc_consistency.py` derives the offline totals, the growth bridge, the per-suite table, the G4 figures and the three opt-in gate figures from the tree and fails on any that disagree. None is carried forward.
 
 - 364 offline unittest cases pass, 0 fail, 0 skip; 30/30 offline checks pass.
 - Disposable PostgreSQL G4 passes **98/98** across seven suites with migrations

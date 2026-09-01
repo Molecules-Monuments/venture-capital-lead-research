@@ -180,10 +180,25 @@ carries the same obligations as any other baked-tree change: rebuild with
 recorded rebuild date with `scripts/set_evidence_execution_date.py` — including
 the two hand-edits that tool names but deliberately does not make.
 
-Not every advisory is fixable here. The `@openclaw/*` channel plugins ship their
-HTTP stack as **bundled dependencies** inside their own tarballs, so an npm
-`overrides` entry does not move them; only an upstream release does. When that
-is the situation, record it rather than leaving the alert unexplained.
+Not every advisory is fixable here. Where an `@openclaw/*` plugin ships part of
+its HTTP stack as **bundled dependencies** inside its own tarball, an npm
+`overrides` entry does not move those copies; only an upstream release does.
+Which plugins bundle is a property of each upstream release: at `2026.8.1`
+`@openclaw/slack` and `@openclaw/discord` do, and `@openclaw/msteams` no longer
+does. Read the `inBundle` flags in `runtime-packages/package-lock.json` rather
+than assuming. When an advisory does land inside a bundled tree, record it
+rather than leaving the alert unexplained.
+
+`config/channel-plugins.lock.json` is a narrower, reviewed pin and not the
+installer's lock — `runtime-packages/package-lock.json` decides the bytes. It
+covers the four channel plugins, the `@clawdbot/lobster` CLI and, from `3.0.1`,
+`@openclaw/duckduckgo-plugin`, which stopped being a base-image extension at
+`2026.8.1`. `@openclaw/firecrawl-plugin` and `@openclaw/tavily-plugin` are
+pinned in `runtime-packages/` only. The infrastructure contract suite
+(`tests/infrastructure/test_infrastructure_contract.py`) binds each npm-installed
+entry here to the npm lock and to `runtime-packages/package.json`, and
+separately requires the four channels, so an entry may be added but none of the
+four may be dropped.
 
 ## Auditing this package
 

@@ -53,7 +53,10 @@ tests pass (see the banner above):
   **That command provably does not touch archived transcripts** (measured: a
   planted archive survived `sessions cleanup --enforce`), so the weekly list
   needs an archive sweep of its own alongside it. Until one is written into
-  this procedure, archived transcript bytes accumulate indefinitely.
+  this procedure, archived transcript bytes outlive the 30-day figure: no
+  schedule this package seeds prunes them by age, and the lane that does
+  reclaim them — the session disk-budget eviction under `session.maintenance`
+  below — fires on total session storage rather than on age.
 
   `--all-agents` is load-bearing: without it the command maintains only the
   configured default agent's store, and the other agents' transcripts age past
@@ -224,10 +227,15 @@ second gap list with a test behind it:
   — and `cron.enabled` is `false` here. With cron off, retention `1s` and a
   planted eight-month-old archive, nothing was removed by `sessions cleanup
   --enforce`, by a real `sessions delete`, by a further agent turn, by
-  `openclaw doctor`, or by a cold restart. **Archived transcript bytes and their
-  `session_transcript_archives` rows are therefore retained until an operator
-  removes them**, so the 30-day figure in this document is a policy statement
-  with a manual procedure behind it, not something the harness enforces.
+  `openclaw doctor`, or by a cold restart. **Nothing in that sequence removed
+  the archived transcript bytes or their `session_transcript_archives` rows**,
+  so the 30-day figure in this document is a policy statement with no written
+  procedure behind it yet, not something the harness enforces by age. What does
+  reclaim them is the disk-budget eviction lane described below, and it is a
+  size bound rather than a retention period: it engages only once total session
+  storage exceeds the `maxDiskBytes` default of 10 GiB, and then deletes the
+  oldest published `session_transcript_archives` rows and their files, one at a
+  time, until usage falls back to the 8 GiB high-water mark.
   Enabling cron would not make the key mean what its name says: with cron on,
   the reaper removed the `*.deleted.*` archives in one pass and left the
   `*.reset.*` archive untouched, because on the SQLite store every archive plan
@@ -253,6 +261,24 @@ second gap list with a test behind it:
   `memory_entry_origins`. Memory search is disabled in this release, which
   stops chunks being *retrieved*; it is not a promise that nothing was ever
   written.
+- **A second `audit_events`, in the harness state database.**
+  `$OPENCLAW_STATE_DIR/state/openclaw.sqlite` carries its own `audit_events`
+  table, unrelated to the PostgreSQL `audit_events` the erasure transaction
+  writes above — the names collide, the stores do not. It is not new on this
+  base: `2026.7.1` created an `audit_events` table in the same file, with the
+  same 30-day and 100,000-row self-pruning; `2026.8.1` renamed only its
+  configuration, from `audit.*` to `logging.audit.*`, and added a sibling
+  `audit_identity_keys`. The ledger is on unless `logging.audit.enabled` is
+  set to `false`, and its default-on agent-run and tool-action rows carry
+  `session_key`, `agent_id` and `run_id` rather than message text
+  (`logging.audit.messages`, the separate opt-in for message records,
+  defaults to `off`). Because `session.dmScope` is `per-channel-peer`, that
+  session key is what distinguishes one channel user from another, so these
+  rows are channel-principal identifiers. Neither `vcops data-erase-lead` nor
+  `preference-forget` reaches this file: the 30-day prune is what removes a
+  row, and `scripts/backup.sh` captures the file with the rest of the state
+  volume, so a backup taken inside that window keeps the row for as long as
+  the backup is kept.
 
 Two consequences for the policy this document records. A subject-erasure
 commitment that is not qualified will be wrong: state the guarantee as

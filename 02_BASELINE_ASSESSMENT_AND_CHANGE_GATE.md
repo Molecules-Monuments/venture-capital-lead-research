@@ -40,7 +40,7 @@ and operator review while retaining the current side-effect boundary.
 | Resolver fixtures | 0 | Retrieval correctness is untested. |
 | Default child concurrency | 2 | Conflicts with the documented 3-child standard/deep profile. |
 | Steward exec timeout | 120 s | Conflicts with a 360 s workflow boundary; valid runs can be cut off by the outer tool. |
-| Distinct default model tiers | 1 | `VC_FAST_MODEL` and `VC_PRIMARY_MODEL` both default to `openai/gpt-5.6-sol`; tier labels do not create a cost/quality tradeoff. |
+| Distinct default model tiers | 1 | `VC_FAST_MODEL` and `VC_PRIMARY_MODEL` both default to `openai/gpt-5.6`; tier labels do not create a cost/quality tradeoff. |
 | Specialist operational-memory corpora | 0 seeded, writable | Eleven agents expose recall over empty read-only workspaces. |
 | Intake workflows enforcing identity resolution | 0 of 2 | Outbound ignores its lookup result and inbound omits lookup. |
 

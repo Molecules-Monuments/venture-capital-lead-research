@@ -128,13 +128,21 @@ The derived image also inherits the base the pinned OpenClaw image is built on
 — `docker.io/library/node:24-bookworm-slim`, recorded in that image's own
 `org.opencontainers.image.base.name`/`.base.digest` labels — plus the Debian
 packages `Dockerfile.openclaw` installs. That base contributes **Node.js
-24.16.0** with npm 11.13.0, corepack 0.35.0 and yarn 1.22.22, installed from
-upstream tarballs rather than from apt (third bullet). None of them appear in either Python
+24.19.0** with npm 11.17.0, corepack 0.35.0 and yarn 1.22.22, installed from
+upstream tarballs rather than from apt (third bullet). The pinned OpenClaw image
+then replaces npm with **12.0.2** and materialises **pnpm 12.1.0** through
+corepack on top of it, and those are the versions the derived image ships; where
+the two disagree, the sentences below say which of the two images they mean.
+None of them appear in either Python
 lockfile, either npm lockfile, or `dpkg`, and their notices are not gathered
 into one file. Measured against the pinned `OPENCLAW_IMAGE` base
 (`ghcr.io/openclaw/openclaw:2026.8.1`) and confirmed identical in the image
 built from it: the derived build installs into `/opt` and through `apt`, and
-adds nothing under `/usr/local`, so the counts below are the base's. That
+adds only two entries under `/usr/local` — the `openclaw-lobster` symlink into
+`/opt` that `Dockerfile.openclaw` creates, and the empty
+`/usr/local/share/fonts` directory `fontconfig-config`'s postinst leaves behind
+when the poppler pins pull it in — neither of them a licence file, so the
+counts below are the base's. That
 equality was itself measured — on the previous release the base and
 `vc-lead-research:3.0.0` both returned the same three numbers:
 
@@ -151,23 +159,32 @@ equality was itself measured — on the previous release the base and
   `/usr/local/lib/node_modules/corepack/LICENSE.md`. On the previous
   `2026.7.1` base the same command returned 172, split 148/22 — the totals move
   with every base bump, which is why they are re-measured rather than carried
-  forward. npm's and corepack's standalone copies duplicate text the aggregate
+  forward. The same command against `docker.io/library/node:24-bookworm-slim`
+  itself returns **150** — the aggregate, 148 under
+  `/usr/local/lib/node_modules/npm`, and corepack's own copy, with no
+  `/usr/local/share/corepack` directory at all — so 23 of the 173 arrive with
+  the upstream OpenClaw layer: three from its npm 12, twenty from the pnpm tree
+  it materialises. npm's and corepack's standalone copies duplicate text the aggregate
   already carries; the other **170** are npm's bundled dependencies and the
   vendored pnpm tree. Do not assume the aggregate stands
   in for them — `grep -ci yallist` and `grep -ci sigstore` against
   `/usr/local/LICENSE` both return `0`.
 - **yarn 1.22.22** (BSD-2-Clause) is unpacked into `/opt/yarn-v1.22.22`, 5.2 MB
-  outside `/usr/local`, and carries its own `LICENSE` there. This one *is*
-  identical in the pinned base. `/usr/local/LICENSE` does not cover it:
+  outside `/usr/local`, and carries its own `LICENSE` there. Unlike npm and
+  pnpm, this one *is* unchanged from `node:24-bookworm-slim` underneath — the
+  same 5.2 MB and the same eleven files in both, though the pinned OpenClaw
+  image repoints `/usr/local/bin/yarn` at corepack's shim. `/usr/local/LICENSE` does not cover it:
   `grep -ci yarn /usr/local/LICENSE` returns `0`.
-- **pnpm 12.1.0** (MIT) ships **in the pinned base**, materialised through
-  corepack at `/usr/local/share/corepack/v1/pnpm/12.1.0` and reachable as
-  `/usr/local/bin/pnpm`, where `pnpm --version` answers `12.1.0` under
+- **pnpm 12.1.0** (MIT) ships **in the pinned `OPENCLAW_IMAGE`**, materialised
+  through corepack at `/usr/local/share/corepack/v1/pnpm/12.1.0` and reachable
+  as `/usr/local/bin/pnpm`, where `pnpm --version` answers `12.1.0` under
   `docker run --network none` — so the bytes are in the image rather than
-  fetched on first use. Earlier revisions of this document said pnpm was absent
-  from the base and arrived with the build; that was measured against a
-  different image and is wrong for the one this package pins, on `2026.7.1` as
-  well as `2026.8.1`. It makes no difference to the obligation, only to where
+  fetched on first use. It is *not* in `node:24-bookworm-slim`: that base has
+  no `/usr/local/share/corepack` directory and no `pnpm` on its `PATH`, so what
+  materialises it is the upstream OpenClaw build, not this package's. Earlier
+  revisions of this document located it in this package's build; that is wrong
+  for the image this package pins, on `2026.7.1` as well as `2026.8.1`. It
+  makes no difference to the obligation, only to where
   you look. Its own `LICENSE` and the licence files of its bundled dependencies
   under `dist/node_modules/` are the 20 files that tree contributes.
   `grep -ci pnpm /usr/local/LICENSE` returns `0`.

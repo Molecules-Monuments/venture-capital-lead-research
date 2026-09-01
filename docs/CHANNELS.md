@@ -166,10 +166,13 @@ correct.
    compose exec openclaw-gateway openclaw channels status
    ```
 
-   Every one of the four exits `0` on every profile. They still emit findings,
-   and `docs/RUNBOOK.md` §5.1 carries the complete expected set with a
-   disposition for each — read it before step 9, because two of those findings
-   are channel-dependent and look like deviations otherwise:
+   Every one of the four exits `0` on every profile. They still emit findings.
+   `docs/RUNBOOK.md` §5.1 lists the ones this release's own commissioning
+   recorded, each with a disposition — including the three `agents.entries`
+   warnings `config validate` prints and the `Legacy config keys detected`
+   block `doctor` prints, neither of which is new or actionable here. Read it
+   before step 9, because two of those findings are channel-dependent and look
+   like deviations otherwise:
 
    - `openclaw doctor` adds a `Doctor warnings` block about `vc-chief` lacking
      the `message` tool on *any* selected channel;
@@ -212,7 +215,7 @@ and every later lifecycle run fails.
 
 | ID | Test | Required result |
 | --- | --- | --- |
-| CH-01 | Exact plugin/image/config inspection, plus the credential probe `openclaw channels status --probe` (the plain `channels status` in step 7 defaults `--probe` to false) and, on Discord, the channel permission audit `openclaw channels capabilities --channel discord --target channel:<id>` — the pinned CLI restricts `--target` to Discord | Pinned plugin loads; no auth/schema/policy warning |
+| CH-01 | Exact plugin/image/config inspection, plus the credential probe `openclaw channels status --probe` (the plain `channels status` in step 7 defaults `--probe` to false) and, on Discord, the channel permission audit `openclaw channels capabilities --channel discord --target channel:<id>` — the pinned CLI restricts `--target` to Discord | Pinned plugin loads; no auth/schema/policy warning outside the expected set RUNBOOK §5.1 dispositions |
 | CH-02 | First and second allowed-user DM; unknown-user DM | Both allowed principals route once to chief in different sessions; unknown denied |
 | CH-03 | Same preference key for two allowed users | Values remain principal-isolated; neither appears in the other's lookup/output |
 | CH-04 | Explicit preference, three inferred events, duplicate event, forget, group change | Exact activation thresholds; duplicate ignored; forget cutoff works; group change denied |

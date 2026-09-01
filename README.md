@@ -1550,7 +1550,7 @@ python3 -B scripts/verify_release.py --pristine
 ├── config/
 │   ├── openclaw.json                 # Inert base, agents, skills, tools, limits
 │   ├── channel-*.json5               # Strict optional channel overlays
-│   ├── channel-plugins.lock.json     # Pinned channel-plugin versions + integrity
+│   ├── channel-plugins.lock.json     # Reviewed pins: channels + Lobster + DuckDuckGo
 │   ├── exec-approvals.json           # Exact steward launcher allowlist
 │   ├── connectors.example.json       # Optional MCP connector template
 │   ├── customization-profile.example.json

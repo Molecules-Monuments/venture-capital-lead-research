@@ -452,9 +452,13 @@ class RuntimeInfrastructureTests(unittest.TestCase):
         init_command = "\n".join(initializer["command"])
         self.assertIn("install -m 0400 -o node -g node", init_command)
         self.assertIn("cmp -s /run/openclaw-source/openclaw.json /runtime-config/openclaw.json", init_command)
-        # exec-approvals.json is deliberately runtime-writable (OpenClaw may
-        # maintain its socket token in it), so init must never byte-compare it
-        # against the seed — the jq reviewed-key assertion is the guard.
+        # On the 2026.8.1 base the reviewed policy is loaded into the state
+        # database's exec_approvals_config row rather than left as a file, and
+        # that row carries a socket token minted per state directory, so init
+        # must never byte-compare it against the seed — the jq reviewed-key
+        # assertion is the guard. The pre-2026.8.1 rationale (a deliberately
+        # runtime-writable exec-approvals.json the harness maintained) is void:
+        # the lane now removes that file and asserts it stays gone.
         self.assertNotIn("cmp -s /opt/openclaw-seed/exec-approvals.json", init_command)
         self.assertIn("node:node:400", init_command)
         self.assertIn('.defaults.askFallback == "deny"', init_command)

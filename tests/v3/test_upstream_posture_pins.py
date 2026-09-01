@@ -15,7 +15,7 @@ pruneAfter" to "keep until the disk budget evicts", and added a personal-recall
 key defaulting on. Each row below therefore exists to make the file *say* the
 posture, so the next flip fails here instead of shipping.
 
-`RetiredKeyTests` is the other half of the same coin. The seven keys 2026.8.1
+`RetiredKeyTests` is the other half of the same coin. The eight keys 2026.8.1
 retired or renamed are not merely ignored: the root schema is
 `strictObject(...)` and the gateway exits 78 before doing anything while one is
 present. Re-adding `diagnostics.stuckSessionAbortMs` to restore a tuning knob
@@ -181,6 +181,7 @@ RETIRED_UNIQUE_KEYS = (
     "stuckSessionAbortMs",
     "useAccessGroups",
     "maxConcurrentRuns",
+    "runLog",
     "memorySearch",
     "timeoutSec",
 )
@@ -189,7 +190,9 @@ RETIRED_KEY_AT_PATH = ("skills.workshop.autonomous", "enabled")
 # The complete set of hosts a default 2026.8.1 gateway contacts without being
 # asked, measured from the pinned dist rather than from release prose:
 #   telemetry.openclaw.ai  dist/telemetry-DcLnYR14.js:49
-#                          GET /api/latest-version, startup and <=1x/24h
+#                          GET /api/latest-version, startup and <=1x/24h after
+#                          a success; a failed check is re-attempted on a 60 s
+#                          backoff, so a deny sees repeated attempts
 #   catalog.openclaw.ai    dist/model-catalog-YrXw0PBH.js:148
 #                          GET /models/v1/catalog.json, startup and every 6h
 #   clawhub.ai             dist/official-external-plugin-catalog-CBlJFCmU.js:32
@@ -213,16 +216,17 @@ EGRESS_DOCUMENTS = (
 # unrelated sense, and a future sentence saying there is *no* single such call
 # must not read as the claim it is denying — so match only the definite forms
 # that actually assert one.
-# CHANGELOG entry headings, e.g. "## [3.0.1] - 2026-08-31". The entry for the
-# CURRENT VERSION is a live claim and is scanned; every entry below it is closed
-# history describing a base this release no longer pins.
+# CHANGELOG entry headings, e.g. "## [3.0.1] - 2026-08-31". The file is
+# newest-first: the topmost entry is a live claim and is scanned; every entry
+# below it is closed history describing a base this release no longer pins.
 CHANGELOG_ENTRY_HEADING = re.compile(r"^## \[(\d+\.\d+\.\d+)\]", re.MULTILINE)
 
 SINGULAR_EGRESS_CLAIM = re.compile(
     # Catch the possessive form too ("the gateway's only unsolicited outbound
-    # call"), which the definite-article-only pattern missed, and tolerate a
-    # line break anywhere inside the phrase — the claim is routinely wrapped.
-    r"(?:the|[A-Za-z]+['\u2019]s)\s+(?:only|one|sole|single)\s+unsolicited\s+outbound"
+    # call") and the pronoun ("its only unsolicited outbound call"), both of
+    # which the definite-article-only pattern missed, and tolerate a line break
+    # anywhere inside the phrase — the claim is routinely wrapped.
+    r"(?:the|its|[A-Za-z]+['\u2019]s)\s+(?:only|one|sole|single)\s+unsolicited\s+outbound"
     r"|\ba\s+single\s+unsolicited\s+outbound",
     re.IGNORECASE,
 )
@@ -352,20 +356,21 @@ class EgressEnumerationTests(unittest.TestCase):
             # CHANGELOG.md is a ledger of past releases. An entry for a shipped
             # release describing what was true of THAT release's pinned base is
             # a historical record, not a live claim, and rewording it would
-            # falsify the ledger. Scan only the text above the first released
-            # entry heading; everything below it is closed history.
+            # falsify the ledger. The file is newest-first, so scan the preamble
+            # and the topmost entry and stop at the SECOND entry heading;
+            # everything below that is closed history.
+            #
+            # Deliberately not keyed on VERSION. The first draft cut at the
+            # first heading whose version differed from VERSION: the same region
+            # as this rule while the two agree, and the whole ledger — newest
+            # entry included — the moment VERSION leads its CHANGELOG entry,
+            # which is precisely what a release cut does. Verified by simulating
+            # VERSION=3.0.2 against a tree whose topmost entry was still 3.0.1:
+            # the scan collapsed to the preamble above that entry's heading.
             if relative == "CHANGELOG.md":
-                current = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
-                superseded = next(
-                    (
-                        match
-                        for match in CHANGELOG_ENTRY_HEADING.finditer(text)
-                        if match.group(1) != current
-                    ),
-                    None,
-                )
-                if superseded:
-                    text = text[: superseded.start()]
+                headings = list(CHANGELOG_ENTRY_HEADING.finditer(text))
+                if len(headings) > 1:
+                    text = text[: headings[1].start()]
             if SINGULAR_EGRESS_CLAIM.search(text):
                 offenders.append(relative)
         self.assertEqual(

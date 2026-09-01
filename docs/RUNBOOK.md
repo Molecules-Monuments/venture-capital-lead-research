@@ -111,9 +111,12 @@ Use a dedicated Linux host inside one organizational trust boundary. Require:
   backups, and expected retention;
 - working DNS, UTC-synchronized time, outbound TLS to the selected model
   provider, optional search/fetch providers, image/package registries, approved
-  research endpoints, the three OpenClaw-owned hosts enumerated below
-  (`telemetry.openclaw.ai`, `catalog.openclaw.ai`, `clawhub.ai`), and only the
-  selected channel provider;
+  research endpoints, and only the selected channel provider. The three
+  OpenClaw-owned hosts enumerated below (`telemetry.openclaw.ai`,
+  `catalog.openclaw.ai`, `clawhub.ai`) do **not** belong in that allowlist:
+  this release pins the first two off, so traffic to either means a pin is
+  missing from the rendered config — §5.1 reads such a line as a fault, not as
+  a requirement — and denying the third degrades nothing;
 - loopback or private access to the gateway; a hardened TLS reverse proxy that
   exposes only `/api/messages` if Teams is selected; and
 - a POSIX shell plus host `python3` **3.9 or newer** — the lifecycle scripts
@@ -161,7 +164,7 @@ trust.
 
 | Host and path | Trigger and cadence | Payload | Switched off by |
 | --- | --- | --- | --- |
-| `GET https://telemetry.openclaw.ai/api/latest-version` | Gateway start, then at most once per 24 h | No request body. A `User-Agent` header carrying `openclaw/<version> (<platform>; node/<node>; <arch>; <surface>)`. A JSON body of channel/provider/plugin counts is sent — as a POST — only when `telemetry.enabled` is `true`, which this release pins `false` | `update.checkOnStart: false` in `config/openclaw.json` |
+| `GET https://telemetry.openclaw.ai/api/latest-version` | Gateway start, then at most once per 24 h **after a check that succeeds** — the interval is measured from the last recorded ping, so a failed check records nothing and is re-attempted on a 60 s backoff instead; a host that denies this call sees repeated attempts, not one a day | No request body. A `User-Agent` header carrying `openclaw/<version> (<platform>; node/<node>; <arch>; <surface>)`. A JSON body of channel/provider/plugin counts is sent — as a POST — only when `telemetry.enabled` is `true`, which this release pins `false` | `update.checkOnStart: false` in `config/openclaw.json` |
 | `GET https://catalog.openclaw.ai/models/v1/catalog.json` | Gateway start, then every 6 h | No request body; conditional-request headers only | `models.catalogRefresh.enabled: false` in `config/openclaw.json`. The update switches do not reach it: the refresh is scheduled before `update.checkOnStart` is consulted |
 | `GET https://clawhub.ai/v1/feeds/plugins` | Once per gateway start, from the post-ready plugin data prewarm | No request body | **Nothing in configuration.** There is no key, no environment variable and no plugin-config path for it; `plugins.allow`, `plugins.enabled: false`, `update.checkOnStart: false`, `DO_NOT_TRACK` and `CI` all leave it running. Deny it in host egress policy, or accept it |
 
@@ -337,8 +340,11 @@ described above. It also loads the reviewed exec-approval seed — which stays a
 the image-baked, read-only `/opt/openclaw-seed/exec-approvals.json`, outside
 the state directory — into the `exec_approvals_config` row of the state
 database, verifies the two exact data-steward executable paths by reading that
-row back, and asserts that no legacy `exec-approvals.json` remains in the state
-directory. The initializer runs as root with all
+row back, removes any legacy `exec-approvals.json` — and the
+`exec-approvals.json.doctor-importing` claim file beside it — from the state
+directory, and asserts after seeding that neither has come back. It refuses to
+run at all if either path is a symlink, so the removal cannot be aimed at
+something else. The initializer runs as root with all
 capabilities dropped except `CHOWN`, `DAC_OVERRIDE`, and `FOWNER`; it has no
 network and exits before the gateway starts. Gateway and CLI remain non-root,
 drop all capabilities, and gain no added capability.
@@ -462,6 +468,30 @@ channel matrix. A row a gate closes outright carries a `—` in that column.
   by them — it means each one must be dispositioned. The expected set below was
   recorded against a real deployment of this release; if you see a finding that
   is **not** on this list, treat it as a genuine deviation and investigate it.
+
+  From `openclaw config validate`:
+
+  - Three `agents.entries` warnings on every profile, with `Config valid` and
+    exit `0`:
+
+    ```text
+    ! agents.entries: Moved agents.list to keyed agents.entries.
+    ! agents.entries: Materialized legacy per-surface agent ownership.
+    ! agents.entries: Removed retired agents.entries.*.default markers.
+    ```
+
+    Expected. `2026.8.1` keys the agent roster under `agents.entries`; this
+    release still declares it as the `agents.list` array, and the loader
+    normalises the three differences in memory as it reads the config. The same
+    three lines appear on `doctor`'s `stderr` prefixed `[config] warnings:` and
+    in its `Doctor changes preview`, and the agents themselves resolve —
+    `doctor` reports them under `agents.entries.<id>`. The validator classes
+    them as warnings rather than errors and still answers `Config valid`. The
+    remedy they imply is `openclaw doctor --fix`, which this section forbids:
+    the runtime config is mounted read-only. Moving the key in
+    `config/openclaw.json` is a reviewed configuration change carrying a re-pin
+    — it is one of the twenty reviewed artifacts — and is not a commissioning
+    action. Record the three lines with this disposition.
 
   From `openclaw security audit --deep`:
 
@@ -609,6 +639,20 @@ channel matrix. A row a gate closes outright carries a `—` in that column.
 
   From `openclaw doctor`:
 
+  - A `Legacy config keys detected` block naming exactly one key:
+
+    ```text
+    - agents.list: agents.list moved to keyed agents.entries. Run "openclaw doctor --fix".
+    ```
+
+    Expected on every profile, and it does **not** clear: `openclaw doctor
+    --fix` is the one command this section forbids, and the shipped
+    `agents.list` is dispositioned under `openclaw config validate` above. It
+    arrives beside a `Doctor changes preview` listing those three
+    normalisations among its five preview lines, and a closing `Doctor` block whose
+    lines each begin `Run "openclaw doctor --fix"`. Nothing is degraded: the
+    loader applies the normalisation on every start, and only persisting it is
+    refused.
   - twenty-four `Model "${VC_PRIMARY_MODEL}" specified without provider.
     Falling back to "openai/${VC_PRIMARY_MODEL}"` lines — six naming
     `${VC_PRIMARY_MODEL}` and eighteen naming `${VC_FAST_MODEL}`, since most
@@ -727,10 +771,14 @@ channel matrix. A row a gate closes outright carries a `—` in that column.
   - `remote model catalog refresh failed` — logged at **info** level, not warn.
     With `models.catalogRefresh.enabled` pinned `false` it should not appear at
     all: a disabled refresh returns without making a request and logs nothing.
-    Seeing it therefore tells you two things at once — the pin is missing from
-    the rendered runtime config, *and* the host is denying
-    `catalog.openclaw.ai`. Re-render and re-bootstrap. Nothing is degraded
-    either way; the gateway uses the catalogue bundled in the image.
+    Seeing it therefore tells you the pin is missing from the rendered runtime
+    config — a disabled refresh returns before it makes a request — and that
+    the request it did make failed. A host denying `catalog.openclaw.ai` is the
+    usual cause, but the same line covers any DNS, TLS, timeout, non-200 or
+    malformed-bundle failure, so treat the missing pin as the finding and the
+    cause of the failure as still to be established. Re-render and re-bootstrap.
+    Nothing is degraded either way; the gateway uses the catalogue bundled in
+    the image.
   - `post-ready gateway data prewarm failed for plugins: …` — expected on any
     host whose egress policy denies `clawhub.ai`. This is the one call in §2's
     table that no configuration key disables, so on a deny-all host it appears
@@ -1107,6 +1155,20 @@ rollback target is the **first** attempt's recovery point, restored with the
 package revision that matches it. Repeat all G8 checks affected by binary, schema,
 configuration, provider, workflow, or model changes that affect the deployed
 environment.
+
+On the `2026.8.1` base the point of no return arrives earlier than the first
+gateway start. The one-shot `openclaw-state-init` service is a
+`service_completed_successfully` precondition of the gateway, and its approvals
+write and read-back move `state/openclaw.sqlite` from `PRAGMA user_version` 1 to
+15 — measured; a read-only `openclaw approvals get` under `2026.8.1` does it on
+its own. A `2026.7.1` gateway then refuses that volume and exits 1 (`uses newer
+schema version 15; this OpenClaw build supports 1`), so reverting the image and
+the package alone is not a rollback: the advanced state volume stays. Restore
+the pre-update recovery point instead, and do not read a `2026.7.1` CLI's exit
+0 as proof that it worked — the CLI logs the same refusal as a migration
+warning, exits 0, and reports an empty exec allowlist at `security: "full"`,
+which is fail-open. Verify the pre-update recovery point is restorable before
+the update runs, not after.
 
 Rollback uses the prior package revision, its exact image digest, and a
 compatible database/state backup together. Do not point an older binary at a

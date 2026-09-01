@@ -48,11 +48,26 @@ annotated `v3.0.1` tag is cut; `v3.0.0` stays where it is.
 > allowlist from the `exec_approvals_config` row of the OpenClaw state database
 > rather than from `$OPENCLAW_STATE_DIR/exec-approvals.json`, and a leftover
 > copy of that file makes every approvals read *and* write throw. The
-> initializer now loads the image-baked seed into that row and asserts the old
-> file is gone. A deployment that skipped this step would come up with no
+> initializer now loads the image-baked seed into that row, deletes any such
+> file (and the `.doctor-importing` claim file beside it) left in the state
+> directory, and asserts they are gone. A deployment that skipped this step would come up with no
 > allowlist at all — every Lobster workflow silently refused — while every
 > offline gate stayed green, which is why the assertion reads the row back
 > instead of the file.
+>
+> **The upgrade is one-way at the state volume, and the point of no return is
+> the `openclaw-state-init` run — not the first gateway start.** That one-shot
+> is a `service_completed_successfully` precondition of the gateway, and its
+> approvals write and read-back move `state/openclaw.sqlite` from
+> `PRAGMA user_version` 1 to 15; measured, a read-only `openclaw approvals get`
+> under `2026.8.1` is enough on its own. A `2026.7.1` gateway then refuses that
+> volume and exits 1 with `uses newer schema version 15; this OpenClaw build
+> supports 1`. The `2026.7.1` **CLI does not**: it logs the same sentence as a
+> migration warning, exits 0, and reports an empty allowlist with the effective
+> exec policy at `security: "full"`. It fails open, so it is not evidence that a
+> rollback worked. Once state-init has completed, restoring the pre-update
+> recovery point is the only rollback — verify that recovery point is restorable
+> before the update runs.
 
 ### Changed
 
@@ -84,7 +99,11 @@ annotated `v3.0.1` tag is cut; `v3.0.0` stays where it is.
   `agents.defaults.modelSelectionScope: "session"`, an explicit
   `agents.defaults.modelPolicy.allow`, and `telemetry.enabled: false`.
 - **Default model.** `openai/gpt-5.6` was removed from the `2026.8.1` OpenAI
-  catalogue, so the shipped default moves to a model that is still in it.
+  catalogue, so `.env.example` now ships `openai/gpt-5.6-sol` for both
+  `VC_PRIMARY_MODEL` and `VC_FAST_MODEL`. `.env` is operator-owned and is not
+  migrated, and `scripts/check_env.py` validates only the `<provider>/model`
+  shape rather than the catalogue, so a deployment carrying the retired id
+  forward keeps it until someone edits it by hand.
 
 ### Security and privacy
 
@@ -108,6 +127,16 @@ annotated `v3.0.1` tag is cut; `v3.0.0` stays where it is.
   including an always-on full-text index of every message that `2026.8.1` adds
   with no key to disable it, and the archival-not-erasure semantics of session
   deletion.
+- **The bundled-dependency wall came down, and the advisory count went to
+  zero.** `@openclaw/msteams` stopped shipping `bundledDependencies` at
+  `2026.8.1` — 139 bundled lock entries to none — so the entries
+  `runtime-packages/package-lock.json` pins directly, which are the ones an npm
+  `overrides` entry can actually move, went from 27 to 184. Measured with
+  `npm audit --package-lock-only --omit=dev` under npm 12.0.2: the `3.0.0` lock
+  reports **3 vulnerabilities** (1 moderate, 2 high) spanning 15 advisories —
+  `axios` bundled inside `@openclaw/msteams` and `@openclaw/slack`, `undici`
+  inside `@openclaw/discord` — and this one reports **0**. Advisory data is
+  live, so re-run the command rather than trusting this line.
 
 ### Known losses
 
@@ -118,9 +147,12 @@ annotated `v3.0.1` tag is cut; `v3.0.0` stays where it is.
   than worked around.
 - **Five `skill_workshop` actions are deliberately unreachable.** The tool grew
   from eight actions to fifteen; the image-owned guard is fail-closed and its
-  allowlist did not change, so `read`, `prepare_patch`, `patch`, `evaluate` and
-  `history` are refused alongside the lifecycle actions this design always
-  refused. Widening it is a behaviour change with its own review.
+  allowlist did not change, so ten of the fifteen are refused: `apply`,
+  `reject` and `quarantine`, which this design always refused; the two new
+  lifecycle actions `restore_collection` and `complete`, which the same
+  reviewed policy covers; and `read`, `prepare_patch`, `patch`, `evaluate` and
+  `history` — the five this release deliberately leaves unreachable. Widening
+  the allowlist is a behaviour change with its own review.
 
 ## [3.0.0] — 2026-08-25
 
@@ -144,8 +176,8 @@ annotated `v3.0.1` tag is cut; `v3.0.0` stays where it is.
 > this in full, including why the change was taken and what remains exempt.
 
 First public release. The date above is the day the published tree was finalised;
-everything before it is private development history, which is why this file has
-exactly one entry and no earlier version numbers. The dates on which each gate
+everything before it is private development history, which is why no version
+number earlier than this one appears below. The dates on which each gate
 was last measured are recorded in the evidence documents, not here — they move
 independently of this heading and are maintained by
 `scripts/set_evidence_execution_date.py`.
@@ -159,10 +191,10 @@ fixed operational workflows. It runs entirely on the operator's own host and,
 **on the `2026.7.1` base this release pinned**, the gateway's only unsolicited
 outbound call was a startup version check to `registry.npmjs.org` that
 downloaded and installed nothing. That count is specific to this release: see
-3.0.1 below, and `docs/RUNBOOK.md` §2 for the current enumeration. The downloaded package is deliberately unconfigured: it
-holds no credentials, selects no channel, and cannot reach a model until an
-operator supplies a reviewed configuration — a safe distribution default, not a
-runtime limitation.
+3.0.1 above, and `docs/RUNBOOK.md` §2 for the current enumeration. The
+downloaded package is deliberately unconfigured: it holds no credentials,
+selects no channel, and cannot reach a model until an operator supplies a
+reviewed configuration — a safe distribution default, not a runtime limitation.
 
 It is decision support, not an investor and not professional advice. Read
 [README.md](README.md)'s scope and risk sections before deciding whether it

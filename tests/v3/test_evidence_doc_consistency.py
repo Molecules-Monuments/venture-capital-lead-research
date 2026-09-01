@@ -619,7 +619,17 @@ class EvidenceCountConsistencyTests(unittest.TestCase):
         for label, measured, patterns in (
             ("G6 image gate", g6_checks, (r"\*\*(\d+)/\d+\*\*.{0,80}?image rebuilt",
                                           r"run_g6_image\.py` \(\*\*(\d+)/\d+\*\*",
-                                          r"gate \(G6\) passes (\d+)/\d+")),
+                                          r"gate \(G6\) passes (\d+)/\d+",
+                                          # Two more spellings the first three
+                                          # missed, both of which shipped as
+                                          # 8/8 while the gate ran 10 checks.
+                                          # Anchored on their own surrounding
+                                          # words rather than on a bare "G6"
+                                          # so that docs/OFFLINE_RELEASE_EVIDENCE.md
+                                          # — a Version 2 document, correct at
+                                          # its own 9/9 — stays out of scope.
+                                          r"Exact-image\s+gate\s+\(G6\)\s+\|\s+PASS\s+—\s+(\d+)/\d+",
+                                          r"--no-cache\s+--pull`\s+\((\d+)/\d+\)")),
             ("G8 deployment gate", g8_checks, (r"run_g8_deployment\.py` \(\*\*PASS\*\* — (\w+) checks",)),
             ("retrieval-scale gate", scale_cases, (r"run_retrieval_scale\.py` \(\*\*(\d+)/\d+\*\*",
                                                    r"retrieval-scale gate passes (\d+)/\d+")),

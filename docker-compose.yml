@@ -131,11 +131,13 @@ services:
         # so that anything the two commands above created is covered.
         chown -R node:node /home/node/.openclaw/state
     environment:
-      # Without these two the CLI resolves HOME=/root and no state directory, so
-      # `approvals set` reports "stored" against a path that dies with the
-      # container while the state volume stays unseeded — and the gateway then
-      # comes up fail-open at security=full (measured). They are also what makes
-      # /home/node/.cache below the cache root the runtime actually uses.
+      # Without these two the CLI resolves HOME=/root and no state directory,
+      # and under this lane's read_only rootfs `approvals set` then dies with
+      # "ENOENT: no such file or directory, mkdir '/root/.openclaw/state'" and
+      # exit 1, so this service fails and the gateway — which waits on
+      # service_completed_successfully — never starts (measured against
+      # vc-lead-research:3.0.1). They are also what makes /home/node/.cache
+      # below the cache root the runtime actually uses.
       OPENCLAW_STATE_DIR: /home/node/.openclaw
       HOME: /home/node
     volumes:

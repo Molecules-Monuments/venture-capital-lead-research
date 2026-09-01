@@ -220,7 +220,7 @@ class Version3ContractTests(unittest.TestCase):
         self.assertEqual(self.config["memory"]["search"]["provider"], "none")
         self.assertNotIn("memory-core", self.config["plugins"]["allow"])
 
-    def test_channel_overlays_preserve_disabled_memory_and_exact_plugin_scope(self) -> None:
+    def test_channel_overlays_add_only_a_binding_and_keep_the_mention_gate_pinned(self) -> None:
         profiles = {
             "slack": "channel-slack.socket.json5",
             "msteams": "channel-msteams.json5",
@@ -243,6 +243,46 @@ class Version3ContractTests(unittest.TestCase):
                     overlay["bindings"],
                     [{"agentId": "vc-chief", "match": {"channel": profile, "accountId": "default"}}],
                 )
+                # The mention gate lives here and nowhere else:
+                # config/openclaw.json has no channels.<id> subtree, so the
+                # posture-pin suite next door cannot see a default that flips
+                # in it -- and 2026.8.1's split of 2026.7.1's single
+                # requireExplicitMention into three positive implicitMentions
+                # flags is exactly such a flip. The first migration of the
+                # Slack profile set threadParticipation and inherited the
+                # other two, and a plain reply to one of the bot's own
+                # messages then activated a turn in a channel
+                # docs/CHANNELS.md describes as mention-gated. Compared as a
+                # whole object rather than flag by flag, so a fourth flag
+                # added by a later base arrives as a failure here instead of
+                # as whatever upstream chooses.
+                #
+                # Slack-only is a schema fact, not a preference: measured
+                # against the pinned 2026.8.1 image with `openclaw config
+                # validate`, the same block under channels.discord,
+                # channels.telegram or channels.msteams is refused with
+                # `must not have additional properties: "implicitMentions"`.
+                # Mirroring the pin onto the other three overlays is a
+                # startup-fatal edit, which is why the absence is asserted
+                # rather than left to review.
+                channel = overlay["channels"][profile]
+                if profile == "slack":
+                    self.assertEqual(
+                        {"replyToBot": False, "quotedBot": False, "threadParticipation": False},
+                        channel.get("implicitMentions"),
+                        "channels.slack.implicitMentions must pin all three flags "
+                        "false; pinning only threadParticipation leaves replyToBot "
+                        "at its upstream default and reopens the mention gate",
+                    )
+                else:
+                    self.assertNotIn(
+                        "implicitMentions",
+                        channel,
+                        f"the {profile} channel schema is strict at 2026.8.1 and "
+                        'refuses implicitMentions with "must not have additional '
+                        'properties", so mirroring the Slack mention pin here is a '
+                        "startup-fatal edit rather than defence in depth",
+                    )
 
     def test_documented_tool_allowlists_equal_runtime_config(self) -> None:
         for agent_id, agent in self.agents.items():
