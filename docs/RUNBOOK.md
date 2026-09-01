@@ -1124,7 +1124,7 @@ reads the config, so both failures land after the migrations have run and after
 the state database has advanced one-way.
 
 **Rerun every offline gate again here, after the carry-across and after
-`check_customization.py` re-pins the profile.** The run above was against a tree
+`init_customization.py --update-hashes` re-pins the profile.** The run above was against a tree
 that did not yet contain your files; this one is against the tree that will
 actually be deployed, and it is the only pass that can see a carried-forward
 artifact.

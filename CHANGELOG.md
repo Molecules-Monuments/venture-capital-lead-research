@@ -113,8 +113,7 @@ annotated `v3.0.1` tag is cut; `v3.0.0` stays where it is.
   `2026.8.1` stages a private copy of the state database under `$HOME/.cache`
   before any process may write, so `OPENCLAW_INIT_CACHE_TMPFS`,
   `OPENCLAW_GATEWAY_CACHE_TMPFS` and `OPENCLAW_CLI_CACHE_TMPFS` are new and
-  default to `512m`; `.env.example` carries the sizing rule and is the single
-  place it is stated. `OPENCLAW_INIT_MEMORY_LIMIT` moves `256m` -> `768m`,
+  default to `512m`; `.env.example` carries the sizing rule. `OPENCLAW_INIT_MEMORY_LIMIT` moves `64m` -> `768m`,
   because those staging pages are charged to the same memory cgroup and on a
   host without swap the memory limit binds before the cache does.
   `scripts/check_env.py` refuses anything below `128m` for that key, so a

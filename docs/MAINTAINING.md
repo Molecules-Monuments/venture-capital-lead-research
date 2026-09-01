@@ -203,12 +203,13 @@ four may be dropped.
 ## Known limitations carried into `3.0.1`
 
 This was found by the `2026.8.1` upgrade's own review rounds, verified, and
-**deliberately not fixed in that release**. Four others were listed here during
-the cycle and have since been closed; per the rule below they were deleted
-rather than marked done. It is recorded here so the next
-audit does not re-litigate it from scratch, and so nobody mistakes a considered
-deferral for an oversight. It names why it stayed and what the fix would cost;
-it is not a silent omission.
+**deliberately not fixed in that release**. The others listed here during the
+cycle have since been closed: when a deferral is fixed its entry is deleted
+rather than marked done, and any entry carried forward is re-verified first,
+because a deferral is legitimate only while its reasoning is still true. It is
+recorded here so the next audit does not re-litigate it from scratch, and so
+nobody mistakes a considered deferral for an oversight. It names why it stayed
+and what the fix would cost; it is not a silent omission.
 
 - **The OOXML DTD guard is encoding-blind.** `_inspect_pptx_archive` and
   `_inspect_xlsx_archive` test raw part bytes for ASCII markers, so a UTF-16
@@ -221,6 +222,7 @@ it is not a silent omission.
   `workspaces/` is a `BAKED_SOURCE_TREES` member: even a comment-only edit
   desynchronises the image digest from `HEAD`, forces a rebuild, and voids that
   release's G6 and G8 evidence. **Carry it into a cycle that rebuilds anyway.**
+
 ## Auditing this package
 
 Repeated audit passes established which checks keep working and which decay.
