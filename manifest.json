@@ -120,8 +120,8 @@
     {
       "executable": false,
       "path": "CONTRIBUTING.md",
-      "sha256": "3e1dcf647dc8894e24dba56935ca9005c3612869b4cced5244ff573d4551d564",
-      "size": 20753
+      "sha256": "d010f1ea8dc878b506131456202438d49a6f2f245a33ce2c87c0aaf5d6866d67",
+      "size": 21095
     },
     {
       "executable": false,
@@ -258,8 +258,8 @@
     {
       "executable": false,
       "path": "docs/MAINTAINING.md",
-      "sha256": "14c657db7c152d7c3d7b6745db7a6e679115f1169df625177b5579c9045af00d",
-      "size": 21168
+      "sha256": "6a35af6e398d2fc7e9004a77d380898200134fb1b37f8e8b6d59c3e60bf2e68a",
+      "size": 20672
     },
     {
       "executable": false,
@@ -282,8 +282,8 @@
     {
       "executable": false,
       "path": "docs/RUNBOOK.md",
-      "sha256": "3ae6f7e08c95cd5110f0f5baca1cf060288948ade36aa4eff62087d5c609fb53",
-      "size": 115859
+      "sha256": "b9355ea55395046a917b002c71e6f394a643b1ac84712417bd1851da7e62e9e1",
+      "size": 116482
     },
     {
       "executable": false,

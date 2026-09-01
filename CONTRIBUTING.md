@@ -111,7 +111,12 @@ The checks themselves run on your own machine: no database, no Docker, no
 running deployment and no credential. The one-time virtualenv install below is
 the exception — it downloads the hash-pinned packages, so it needs network
 access or an approved package cache. After that, everything here is offline. You
-need Python 3.11 or newer and a POSIX shell.
+need Python 3.11 or newer, a POSIX shell, and **Node.js** — seven `tests/v3`
+cases run assertions against the pinned harness's own JavaScript, and without it
+`verify_offline.py` reports `FAILED (errors=7)` with bare
+`FileNotFoundError: ... 'node'` tracebacks rather than anything naming the cause.
+Any version that runs `node --input-type=module -e` will do; the tests do not pin
+one.
 
 ### Create the developer virtualenv
 

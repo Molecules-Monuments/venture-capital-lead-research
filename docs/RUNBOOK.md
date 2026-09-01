@@ -141,6 +141,14 @@ Use a dedicated Linux host inside one organizational trust boundary. Require:
   explicitly if you build a minimal recovery host for the §5.4 drill, because
   `restore.sh` reaches `find` only *after* it has begun replacing production
   state;
+- **`node`**, if this host is where you run `verify_offline.py` — step 4 of the
+  update checklist in `docs/OPERATIONS.md` orders it here, before `update.sh`.
+  Seven `tests/v3` cases execute assertions against the pinned harness's own
+  JavaScript with `node --input-type=module -e`. Without it the gate reports
+  `FAILED (errors=7)` and bare `FileNotFoundError: ... 'node'` tracebacks, which
+  section 9 of this runbook teaches you to read as a possible integrity failure.
+  It is not needed by any lifecycle script, and the deployment itself never uses
+  the host's copy — the harness runs its own inside the image;
 - `openssl`, used to generate the six deployment secrets; and
 - a non-root deployment operator with exclusive control of the package and
   `.env`.

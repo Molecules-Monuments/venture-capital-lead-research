@@ -245,14 +245,6 @@ would cost; none is a silent omission.
   self-documenting at build time. Whoever reconciles them must not carry
   `--allow-remote=all` past the first pass.
 
-- **Node.js is an undeclared host prerequisite.** Seven `tests/v3` cases shell
-  out to `node`, and `CONTRIBUTING.md` states a closed prerequisite list that
-  omits it while `RUNBOOK` §2 enumerates smaller utilities. A host without Node
-  fails the mandated pre-update gate, and `RUNBOOK` §9 teaches that a gate
-  failure means *stop, possible tampering* — so the diagnosis is worse than the
-  fault. CI is unaffected: `ubuntu-latest` preinstalls Node. Two documentation
-  bullets close it.
-
 Two rules this list exists to serve. A deferral is only legitimate while its
 reasoning is written down and still true — re-verify each of these before
 carrying it forward again. And when one is fixed, delete its entry rather than
