@@ -30,8 +30,8 @@
     {
       "executable": false,
       "path": ".env.example",
-      "sha256": "fd2b4abe14bfd7d1607005153342d5eb4d8201397ba52d01e98a2fa534bbd63a",
-      "size": 8020
+      "sha256": "1533389dd654ececeba559a925590c095f49b4658f621ad934bba32a09e66910",
+      "size": 8870
     },
     {
       "executable": false,
@@ -240,8 +240,8 @@
     {
       "executable": false,
       "path": "docker-compose.yml",
-      "sha256": "f3720e2068fcb16a54685ec8b831da8f848ff507d43626f258abcc87b8649a6d",
-      "size": 18945
+      "sha256": "4ade5b8075d41417891ec01c8a74fc82c5860b7687589afe15307197d6a0d64c",
+      "size": 20828
     },
     {
       "executable": false,
@@ -276,8 +276,8 @@
     {
       "executable": false,
       "path": "docs/PRODUCTION_READINESS.md",
-      "sha256": "45f3190e377c6a4ec82fe753f7d1b03f8e28b2b96a8c68e32fd908b08d7ef528",
-      "size": 16631
+      "sha256": "24bebbd9d05e406ffa2821fb7dc427a77fc582ba9fadfdf4707e6c4abc7bec94",
+      "size": 16667
     },
     {
       "executable": false,
@@ -300,7 +300,7 @@
     {
       "executable": false,
       "path": "docs/V3_RELEASE_EVIDENCE.md",
-      "sha256": "1fab5bcfc6c852cf7ca82aac1a0e262b9909a351d877d8ceb62cfc7ed3b719bb",
+      "sha256": "4e30dd8ac1951a7af0b6802ce4ae4d91f682e385f4332d7698e5effeb39b1325",
       "size": 14421
     },
     {
@@ -312,7 +312,7 @@
     {
       "executable": false,
       "path": "evals/V3_EVAL_RESULTS.md",
-      "sha256": "6f023c4adab6660f39c0220035a37d060ff09ae9046e4eb985857ebea6d5b13c",
+      "sha256": "9fc2f746217f3724e80689a5c6f3b0e9d36177e4e86f432b6bf9d237467581ca",
       "size": 11440
     },
     {
@@ -624,8 +624,8 @@
     {
       "executable": true,
       "path": "scripts/check_env.py",
-      "sha256": "ef2121cde2ff4de3cfebffab529f89fc32306b205e6337740e2f2fab5419db54",
-      "size": 45174
+      "sha256": "dc1a9bce05e4b7b8051fdda04825edd6adcbf16e2933b460804037b96575d00c",
+      "size": 47123
     },
     {
       "executable": true,
@@ -996,8 +996,8 @@
     {
       "executable": false,
       "path": "tests/v3/test_upstream_posture_pins.py",
-      "sha256": "72902a40c42d73c27aae80abc5bd83d9a8265459aab101fc28a437b6e248432b",
-      "size": 18179
+      "sha256": "b4b6b577b672326447650444835cb95229c42d8d8411db0d39e36737c1c15d73",
+      "size": 20296
     },
     {
       "executable": false,

@@ -151,13 +151,34 @@ services:
     # cannot create that directory, which read_only makes impossible without a
     # writable mount (measured: run 1 succeeds, runs 2 and 3 die with "Unable to
     # create fallback OpenClaw temp dir: /home/node/.cache/openclaw-0"; 3/3 clean
-    # with this mount). The cap is sized to hold a copy of state/openclaw.sqlite,
-    # which upstream stages here with sqlite.backup(); the mount is normally
-    # empty and its pages are charged to mem_limit, so raise both together if the
-    # state database ever approaches it.
+    # with this mount).
+    #
+    # SIZE THE CACHE AT >= 2x THE LARGEST state/openclaw.sqlite YOU EXPECT. The
+    # staging routine writes TWO full copies (`first` and `second`), compares
+    # them, renames one and only then removes the other, so the peak is twice the
+    # database -- the usable ceiling is HALF this value, not all of it. Measured
+    # on vc-lead-research:3.0.1: a 33.09 MiB database fails at 64m and at 66m and
+    # passes at 70m, which is the 2x boundary exactly. A cleanly closed WAL
+    # database takes this two-copy path rather than the one-copy backup path.
+    #
+    # This is reachable from shipped defaults: the audit ledger is on by default,
+    # capped by upstream at 100,000 rows, and at that cap the database measures
+    # 66-118 MiB depending on event shape. `PRAGMA auto_vacuum` is incremental,
+    # so the file is a high-water mark and pruning never shrinks it. The 512m
+    # default therefore covers a ~256 MiB database, comfortably past the
+    # worst-shape audit ceiling. `openclaw doctor` does NOT detect this -- it
+    # exits 0 right up to the wall -- and the error's own advice ("set
+    # XDG_CACHE_HOME") has no reachable target inside these containers, so the
+    # only lever is this value.
+    #
+    # All three services get the same default because they run the identical
+    # staging job against the identical volume. tmpfs pages are charged to the
+    # cgroup, so in principle mem_limit bounds this too; that coupling is
+    # theoretical here rather than measured -- raising the cache alone cleared
+    # every case tested.
     tmpfs:
       - /tmp:rw,noexec,nosuid,size=16m
-      - /home/node/.cache:rw,noexec,nosuid,size=64m
+      - /home/node/.cache:rw,noexec,nosuid,size=${OPENCLAW_INIT_CACHE_TMPFS:-512m}
     network_mode: none
     security_opt: ["no-new-privileges:true"]
     cap_drop: ["ALL"]
@@ -240,12 +261,15 @@ services:
       # mount the gateway never starts under read_only: it exits 1 with "Unable
       # to create fallback OpenClaw temp dir: /home/node/.cache/openclaw-1000"
       # before it has read any config, where 7.1 in the same posture gets past
-      # that point (both measured). Sized to hold a copy of state/openclaw.sqlite
-      # and charged to mem_limit; the mount is normally empty.
+      # that point (both measured).
+      # Sized at >= 2x the largest state/openclaw.sqlite you expect: the
+      # staging routine writes two full copies before removing either, so the
+      # usable ceiling is HALF this value. See the state-init service for the
+      # measurements and why `openclaw doctor` will not warn you first.
       # uid/gid/mode are load-bearing: this service runs as `node` (uid 1000) and a
       # tmpfs defaults to root:root 0755, so without them the runtime cannot create
       # /home/node/.cache/openclaw-1000 and the gateway aborts on start.
-      - /home/node/.cache:rw,noexec,nosuid,size=256m,uid=1000,gid=1000,mode=0700
+      - /home/node/.cache:rw,noexec,nosuid,size=${OPENCLAW_GATEWAY_CACHE_TMPFS:-512m},uid=1000,gid=1000,mode=0700
     networks: [backend, egress]
     extra_hosts: ["host.docker.internal:host-gateway"]
     healthcheck:
@@ -317,11 +341,15 @@ services:
     # Same 8.1 SQLite snapshot staging root as the other two services; without a
     # writable /home/node/.cache every CLI invocation under read_only can abort
     # with "Unable to create fallback OpenClaw temp dir".
+    # Sized at >= 2x the largest state/openclaw.sqlite you expect: the
+    # staging routine writes two full copies before removing either, so the
+    # usable ceiling is HALF this value. See the state-init service for the
+    # measurements and why `openclaw doctor` will not warn you first.
     tmpfs:
       - /tmp:rw,noexec,nosuid,size=64m
       # Same ownership requirement as the gateway: this service also runs as
       # `node` (uid 1000), and a tmpfs defaults to root:root 0755.
-      - /home/node/.cache:rw,noexec,nosuid,size=64m,uid=1000,gid=1000,mode=0700
+      - /home/node/.cache:rw,noexec,nosuid,size=${OPENCLAW_CLI_CACHE_TMPFS:-512m},uid=1000,gid=1000,mode=0700
     networks: [backend, egress]
     extra_hosts: ["host.docker.internal:host-gateway"]
     security_opt: ["no-new-privileges:true"]

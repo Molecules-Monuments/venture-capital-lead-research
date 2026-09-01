@@ -81,6 +81,9 @@ DEPLOYMENT_FIELDS = {
     "POSTGRES_LOG_MAX_SIZE",
     "POSTGRES_LOG_MAX_FILES",
     "OPENCLAW_INIT_MEMORY_LIMIT",
+    "OPENCLAW_INIT_CACHE_TMPFS",
+    "OPENCLAW_GATEWAY_CACHE_TMPFS",
+    "OPENCLAW_CLI_CACHE_TMPFS",
     "OPENCLAW_INIT_CPU_LIMIT",
     "OPENCLAW_INIT_LOG_MAX_SIZE",
     "OPENCLAW_INIT_LOG_MAX_FILES",
@@ -866,6 +869,9 @@ def main() -> int:
         "OPENCLAW_INIT_MEMORY_LIMIT",
         "OPENCLAW_GATEWAY_MEMORY_LIMIT",
         "OPENCLAW_CLI_MEMORY_LIMIT",
+        "OPENCLAW_INIT_CACHE_TMPFS",
+        "OPENCLAW_GATEWAY_CACHE_TMPFS",
+        "OPENCLAW_CLI_CACHE_TMPFS",
     )
     for key in memory_fields:
         value = values.get(key, "")
@@ -880,6 +886,38 @@ def main() -> int:
     # operator whose .env carries the 64m that release 3.0.0's .env.example
     # shipped -- and the kill lands AFTER migrate.sh has run, so the deployment
     # is half-updated when it fails. Refuse the value instead.
+    # Private SQLite snapshot staging writes TWO full copies of
+    # state/openclaw.sqlite under $HOME/.cache before removing either, so the
+    # usable database ceiling is HALF the cache tmpfs. Measured on
+    # vc-lead-research:3.0.1: a 33.09 MiB database fails at 64m and at 66m and
+    # passes at 70m -- the 2x boundary is exact. The audit ledger is on by
+    # default and capped by upstream at 100,000 rows, where the database
+    # measures 66-118 MiB by event shape, and incremental auto_vacuum means it
+    # never shrinks. A 256m floor therefore admits only a ~128 MiB database,
+    # which is the worst-shape audit ceiling with no headroom -- it is the
+    # refusal threshold, not a recommendation. The shipped value is 512m.
+    #
+    # This matters because the failure is late and undetected: the staging
+    # ENOSPC strikes after migrate.sh on both the update and the restore path,
+    # `openclaw doctor` exits 0 right up to the wall, and the error's own advice
+    # (set XDG_CACHE_HOME) has no reachable target inside these containers.
+    for key in (
+        "OPENCLAW_INIT_CACHE_TMPFS",
+        "OPENCLAW_GATEWAY_CACHE_TMPFS",
+        "OPENCLAW_CLI_CACHE_TMPFS",
+    ):
+        raw = values.get(key, "")
+        if not raw:
+            continue
+        parsed_cache = _parse_docker_bytes(raw)
+        if parsed_cache is not None and parsed_cache < 256 * 1024 * 1024:
+            errors.append(
+                f"{key} must be at least 256m: OpenClaw stages two full copies of "
+                "state/openclaw.sqlite under $HOME/.cache, so this value admits a "
+                "database of only half its size, and the resulting ENOSPC lands "
+                "after migrate.sh has already run"
+            )
+
     init_memory = values.get("OPENCLAW_INIT_MEMORY_LIMIT", "")
     if init_memory:
         parsed_init = _parse_docker_bytes(init_memory)

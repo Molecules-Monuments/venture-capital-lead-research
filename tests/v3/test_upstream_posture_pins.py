@@ -162,15 +162,26 @@ POSTURE_PINS: tuple[tuple[str, Any, str], ...] = (
         "resolves false only incidentally, via a dmScope pinned for another "
         "reason, so one unrelated edit would enable cross-conversation recall",
     ),
-    (
-        "cron.enabled",
-        False,
-        "not a 2026.8.1 change, but it became load-bearing in this release: the "
-        "cron lane's own concurrency is now a hardcoded 8, and it is the only "
-        "thing preventing the scheduler from running the rows memory-core "
-        "writes regardless of it",
-    ),
 )
+
+# `cron.enabled` is deliberately NOT in POSTURE_PINS. It became load-bearing in
+# this release -- the cron lane's concurrency is now a hardcoded 8, and it is the
+# only thing preventing the scheduler from running the rows memory-core writes
+# regardless of it -- but a flat `is False` pin over it breaks this package's own
+# rule that an offline gate may only assert things about content the package
+# CONTROLS. `config/openclaw.json` is explicitly operator-editable, and
+# `docs/RUNBOOK.md` section 10 documents a supported four-step opt-in whose very
+# first step is `cron.enabled: true`. A flat pin made the gate RED on a
+# configuration this package tells the operator to create, and both plausible
+# responses were bad: revert the opt-in and silently disable production
+# automation, or stop trusting the gate.
+#
+# So it is asserted as COHERENCE instead of as a value, below: off is fine, and
+# on is fine only when the two companion keys RUNBOOK section 10 requires in the
+# same edit are present. That still catches the case the pin was written for --
+# a bare `cron.enabled: true` with nothing else -- while accepting the documented
+# procedure.
+CRON_OPT_IN_COMPANIONS = ("cron.sessionRetention", "cron.failureAlert")
 
 # Keys 2026.8.1 retired or renamed. Splitting them by whether the name is unique
 # in this document is not fussiness: `enabled` appears throughout, so it can only
@@ -233,6 +244,35 @@ SINGULAR_EGRESS_CLAIM = re.compile(
 
 
 class PosturePinTests(unittest.TestCase):
+    def test_cron_is_off_or_opted_in_coherently(self) -> None:
+        # See the CRON_OPT_IN_COMPANIONS note above for why this is a coherence
+        # check rather than a value pin.
+        shipped = _load_shipped()
+        enabled = _resolve(shipped, "cron.enabled")
+        self.assertIsNot(
+            enabled,
+            _MISSING,
+            "cron.enabled is unset, so the scheduler's state is whatever OpenClaw "
+            "decides. Pin it false, or opt in per docs/RUNBOOK.md section 10",
+        )
+        self.assertIs(type(enabled), bool)
+        if enabled is False:
+            return
+        missing = [
+            path
+            for path in CRON_OPT_IN_COMPANIONS
+            if _resolve(shipped, path) is _MISSING
+        ]
+        self.assertEqual(
+            [],
+            missing,
+            f"cron.enabled is true but {missing} are unset. docs/RUNBOOK.md "
+            "section 10 requires them in the same edit: without sessionRetention "
+            "each run leaves a completed session behind on the harness default of "
+            "24h rather than this deployment's period, and without failureAlert a "
+            "silently failing scheduled job is never surfaced",
+        )
+
     def test_every_flipped_default_is_pinned_explicitly(self) -> None:
         shipped = _load_shipped()
         for path, expected, reason in POSTURE_PINS:
