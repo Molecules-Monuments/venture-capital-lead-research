@@ -30,8 +30,8 @@
     {
       "executable": false,
       "path": ".env.example",
-      "sha256": "1533389dd654ececeba559a925590c095f49b4658f621ad934bba32a09e66910",
-      "size": 8870
+      "sha256": "63e5ecb83f2adf662a3d4f51ff343538675bf0da211641526f7f0acaeeca0622",
+      "size": 9209
     },
     {
       "executable": false,
@@ -108,8 +108,8 @@
     {
       "executable": false,
       "path": "CHANGELOG.md",
-      "sha256": "985f02385885824671d9e69d4632fa44235adece734cef019fc23d149e2acab4",
-      "size": 20106
+      "sha256": "d16c6032b844e3a53370fcf698f3ebaa89b719ce9880564df9cebe748d363739",
+      "size": 20895
     },
     {
       "executable": false,
@@ -240,8 +240,8 @@
     {
       "executable": false,
       "path": "docker-compose.yml",
-      "sha256": "4ade5b8075d41417891ec01c8a74fc82c5860b7687589afe15307197d6a0d64c",
-      "size": 20828
+      "sha256": "2a94b7f60638cf0894cc233ad0392d65ba5dbcfb4035f8d4095801189ef62aab",
+      "size": 21459
     },
     {
       "executable": false,
@@ -270,8 +270,8 @@
     {
       "executable": false,
       "path": "docs/OPERATIONS.md",
-      "sha256": "d58a4857a1a4aa0e79f5c02255a538471569f694a0d36bdf4e380455f45de9bb",
-      "size": 37636
+      "sha256": "770633a9c2832fcd5bf3bde7882addb6710b01fd7d35e9033feddb197f3e7490",
+      "size": 37999
     },
     {
       "executable": false,
@@ -282,8 +282,8 @@
     {
       "executable": false,
       "path": "docs/RUNBOOK.md",
-      "sha256": "9b05dbd2ea7418c691c18ee6fa20e22cb050eb50ab42231c071ad80911b947fa",
-      "size": 114722
+      "sha256": "3ae6f7e08c95cd5110f0f5baca1cf060288948ade36aa4eff62087d5c609fb53",
+      "size": 115859
     },
     {
       "executable": false,
@@ -624,8 +624,8 @@
     {
       "executable": true,
       "path": "scripts/check_env.py",
-      "sha256": "dc1a9bce05e4b7b8051fdda04825edd6adcbf16e2933b460804037b96575d00c",
-      "size": 47123
+      "sha256": "7e0e74d2d8d75a02b81c65d9c39e8d40b313af26608c91386be2f2338490fdf0",
+      "size": 48190
     },
     {
       "executable": true,

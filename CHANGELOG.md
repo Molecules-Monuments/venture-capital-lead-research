@@ -89,6 +89,17 @@ annotated `v3.0.1` tag is cut; `v3.0.0` stays where it is.
   `.mode`. Every one of them was startup-fatal or a silent default flip, so the
   migration is by hand: `openclaw doctor --fix` remains forbidden here, and on
   this configuration it was measured to exit 1 without migrating anything.
+- **MCP connector timeouts were renamed, and the unit changed with them.** If
+  you copied `config/connectors.example.json` to `config/connectors.json` under
+  `3.0.0`, that file has `"timeout": 30` and `"connectTimeout": 5` on each
+  server. `2026.8.1` rejects both names, and the renderer injects your file
+  verbatim, so the gateway exits `78` and crash-loops — after the update has
+  already migrated the database. Convert the values as well as the keys, because
+  the new names carry the unit: `"timeout": 30` becomes
+  `"requestTimeoutMs": 30000` and `"connectTimeout": 5` becomes
+  `"connectionTimeoutMs": 5000`. A straight rename would ask for a 30-millisecond
+  request timeout, which the schema accepts. The rejected keys are named in
+  `docker compose logs openclaw-gateway`.
 - **Defaults pinned rather than inherited**, where `2026.8.1` moved them:
   `gateway.terminal.enabled: false` (upstream flipped it opt-in → opt-out,
   which would have exposed a browser-reachable shell inside the gateway

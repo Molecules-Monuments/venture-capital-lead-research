@@ -881,8 +881,11 @@ def main() -> int:
     # The 2026.8.1 state-init lane loads the reviewed exec-approvals policy into
     # SQLite through Node, which needs materially more memory than the JSON copy
     # it replaced. Measured on the 2026.8.1 image: 64m and 96m are OOM-killed
-    # with ZERO bytes of output, 128m and 256m succeed. The compose default is
-    # already 256m, but `${OPENCLAW_INIT_MEMORY_LIMIT:-256m}` cannot apply to an
+    # with ZERO bytes of output, 128m and 256m succeed on a swap-backed host.
+    # On a SWAPLESS host the staging tmpfs is charged to the same cgroup and
+    # 256m is OOM-killed at a 45.8 MiB database, so the compose default is now
+    # 768m; this floor stays at the 128m below which the lane cannot work at
+    # all. `${OPENCLAW_INIT_MEMORY_LIMIT:-768m}` cannot apply to an
     # operator whose .env carries the 64m that release 3.0.0's .env.example
     # shipped -- and the kill lands AFTER migrate.sh has run, so the deployment
     # is half-updated when it fails. Refuse the value instead.
@@ -909,6 +912,19 @@ def main() -> int:
         raw = values.get(key, "")
         if not raw:
             continue
+        # These reach the kernel's tmpfs `size=` parser, not Docker's byte-size
+        # parser, and it does not accept the `b`-suffixed forms the general
+        # validator above allows: `512mb` passes that check and then runc
+        # refuses the container with `data=size=512mb: invalid argument` --
+        # after migrate.sh has already run. Bare bytes and k/m/g/t are accepted.
+        if not re.fullmatch(r"[1-9][0-9]*[kKmMgGtT]?", raw):
+            errors.append(
+                f"{key} must be a bare byte count or use a k/m/g/t suffix "
+                f"without a trailing 'b' ({raw!r} is rejected by the kernel's "
+                "tmpfs size parser, and the container fails to start after the "
+                "migrations have run)"
+            )
+            continue
         parsed_cache = _parse_docker_bytes(raw)
         if parsed_cache is not None and parsed_cache < 256 * 1024 * 1024:
             errors.append(
@@ -929,7 +945,7 @@ def main() -> int:
                 "half-updated when it fails. Measured on the 2026.8.1 image: 64m "
                 "and 96m are killed, 128m and 256m succeed. Release 3.0.0 shipped "
                 "64m in .env.example, so an upgraded deployment carries it unless "
-                "the value is raised; 256m is the shipped default."
+                "the value is raised; 768m is the shipped default, sized so the staging tmpfs still fits on a host without swap."
             )
     for key in (
         "POSTGRES_CPU_LIMIT",

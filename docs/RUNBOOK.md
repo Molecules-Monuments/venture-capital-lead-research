@@ -1081,6 +1081,24 @@ artifact. A freshly built package contains none of them, and `update.sh` runs
 `check_env.sh` and `check_customization.py` — which re-hashes the twenty
 reviewed artifacts against the new tree — before it takes the lifecycle lock.
 
+Two of those files are release-owned and must be **merged into the new tree's
+copy rather than copied across**, because `3.0.1` rewrote both and the old
+shapes are startup-fatal on `2026.8.1`. `config/openclaw.json`: bring your edits
+into the new file; the `3.0.0` one produces seven `Unrecognized key` errors and
+the gateway exits `78`. `config/connectors.json`: rename `timeout` to
+`requestTimeoutMs` and `connectTimeout` to `connectionTimeoutMs`, converting
+seconds to milliseconds (`30` becomes `30000`, `5` becomes `5000`) — see the
+`3.0.1` entry in `CHANGELOG.md`. Neither is caught by the pre-update gates: the
+renderer does not schema-check what it injects, and the state-init lane never
+reads the config, so both failures land after the migrations have run and after
+the state database has advanced one-way.
+
+**Rerun every offline gate again here, after the carry-across and after
+`check_customization.py` re-pins the profile.** The run above was against a tree
+that did not yet contain your files; this one is against the tree that will
+actually be deployed, and it is the only pass that can see a carried-forward
+artifact.
+
 `inbox/` is bind-mounted from the package directory (`docker-compose.yml`,
 `./inbox:/inbox:ro`), not held in a named volume, so a new package directory
 starts with the shipped placeholder alone. Copy the deployed revision's

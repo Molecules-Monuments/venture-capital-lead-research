@@ -172,10 +172,20 @@ services:
     # only lever is this value.
     #
     # All three services get the same default because they run the identical
-    # staging job against the identical volume. tmpfs pages are charged to the
-    # cgroup, so in principle mem_limit bounds this too; that coupling is
-    # theoretical here rather than measured -- raising the cache alone cleared
-    # every case tested.
+    # staging job against the identical volume.
+    #
+    # THE CACHE IS NOT THE ONLY LEVER. tmpfs pages are shmem charged to the
+    # cgroup, so `mem_limit` bounds the staging copy too, and on a host WITHOUT
+    # SWAP it binds first. Measured swapless at the shipped sizes: a 27.6 MiB
+    # database passes, a 45.8 MiB database is OOM-killed with exit 137 and an
+    # empty log, cgroup peak 275.3 MiB of which 91.5 MiB is tmpfs shmem. A host
+    # with swap absorbs the same case, which is why an earlier measurement on a
+    # swap-backed development machine wrongly concluded the coupling was
+    # theoretical. Most cloud Debian images have no swap.
+    #
+    # `mem_limit` is therefore raised to 768m below, sized from the measured
+    # relation mem ~= 2x database + 190 MiB, which covers the ~256 MiB database
+    # the 512m cache admits. Raise BOTH together, not either alone.
     tmpfs:
       - /tmp:rw,noexec,nosuid,size=16m
       - /home/node/.cache:rw,noexec,nosuid,size=${OPENCLAW_INIT_CACHE_TMPFS:-512m}
@@ -186,7 +196,7 @@ services:
     pids_limit: 32
     # 64m OOM-kills the approvals CLI with a completely empty log, and 96m
     # still OOM-kills it; 128m is the measured floor. 256m is twice the floor.
-    mem_limit: ${OPENCLAW_INIT_MEMORY_LIMIT:-256m}
+    mem_limit: ${OPENCLAW_INIT_MEMORY_LIMIT:-768m}
     cpus: ${OPENCLAW_INIT_CPU_LIMIT:-0.25}
     logging:
       driver: json-file
