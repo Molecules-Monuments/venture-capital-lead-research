@@ -34,7 +34,7 @@ the exact commands. The repository now has a remote, so each move of the tag is
 a deliberate force-push plus a note to anyone who may already have fetched it —
 plan that as part of the cycle rather than discovering it afterwards.
 
-## [3.0.1] — 2026-08-31
+## [3.0.1] — 2026-09-01
 
 Upstream base moved from OpenClaw `2026.7.1` to `2026.8.1`. This is a reviewed
 release-engineering cycle, not an in-place update: the harness changed where it
@@ -109,6 +109,24 @@ annotated `v3.0.1` tag is cut; `v3.0.0` stays where it is.
   `agents.defaults.maxConcurrent: 3`, `agents.defaults.utilityModel: ""`,
   `agents.defaults.modelSelectionScope: "session"`, an explicit
   `agents.defaults.modelPolicy.allow`, and `telemetry.enabled: false`.
+- **New `.env` keys, and a raised floor on one that already existed.**
+  `2026.8.1` stages a private copy of the state database under `$HOME/.cache`
+  before any process may write, so `OPENCLAW_INIT_CACHE_TMPFS`,
+  `OPENCLAW_GATEWAY_CACHE_TMPFS` and `OPENCLAW_CLI_CACHE_TMPFS` are new and
+  default to `512m`; `.env.example` carries the sizing rule and is the single
+  place it is stated. `OPENCLAW_INIT_MEMORY_LIMIT` moves `256m` -> `768m`,
+  because those staging pages are charged to the same memory cgroup and on a
+  host without swap the memory limit binds before the cache does.
+  `scripts/check_env.py` refuses anything below `128m` for that key, so a
+  deployment carrying release `3.0.0`'s `64m` is told at pre-flight rather than
+  OOM-killed after the migrations have run. A carried-forward `.env` that omits
+  the three new keys is correct: compose supplies the same defaults.
+- **Discord and Telegram outbound retry timing moved.** `2026.8.1` made both
+  channel plugin schemas strict with no `retry` key, so the profiles' `retry`
+  blocks had to go; re-adding them is startup-fatal. The attempt count is
+  unchanged at three. The backoff cap moves `10s` -> `30s` and the jitter is
+  halved, so a reply during a provider incident can arrive later than it did on
+  `3.0.0`. Nothing is dropped.
 - **Default model.** `openai/gpt-5.6` was removed from the `2026.8.1` OpenAI
   catalogue, so `.env.example` now ships `openai/gpt-5.6-sol` for both
   `VC_PRIMARY_MODEL` and `VC_FAST_MODEL`. `.env` is operator-owned and is not

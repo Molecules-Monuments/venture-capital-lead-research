@@ -1,7 +1,7 @@
 # Version 3.0 release evidence
 
 Date: 2026-07-23 (final-audit session; supersedes the earlier 2026-07-23 and 2026-07-22 evidence)
-Last full re-execution: **2026-09-01** — see "Count re-verification" below. That date and the image-rebuild date below are managed by `scripts/set_evidence_execution_date.py`, and both still predate the `2026.8.1` upgrade: they name the last full matrix run rather than the source of every count here. The counts themselves are what the current tree produces: `tests/v3/test_evidence_doc_consistency.py` derives the offline totals, the growth bridge, the per-suite table, the G4 figures and the three opt-in gate figures from the tree and fails on any that disagree. None is carried forward from the 2026-07-23 session. Two figures name their own source instead: the `c72d8b9` baseline under "Count re-verification", and the latency figure under "Image digests — regenerate at deployment", which is a property of the measuring host rather than of this tree.
+Last full re-execution: **2026-09-01** — see "Count re-verification" below. That date and the image-rebuild date below are managed by `scripts/set_evidence_execution_date.py`, and both name the run that produced the counts here: the matrix was re-executed against this tree after the `2026.8.1` upgrade landed. The counts themselves are what the current tree produces: `tests/v3/test_evidence_doc_consistency.py` derives the offline totals, the growth bridge, the per-suite table, the G4 figures and the three opt-in gate figures from the tree and fails on any that disagree. None is carried forward from the 2026-07-23 session. Two figures name their own source instead: the `c72d8b9` baseline under "Count re-verification", and the latency figure under "Image digests — regenerate at deployment", which is a property of the measuring host rather than of this tree.
 Package version: `3.0.1`
 Status: **Deterministic package + deployment path VERIFIED; live-model behavioral gates BLOCKED (not run). See `PRODUCTION_READINESS.md` for the exact boundary.**
 
@@ -11,9 +11,8 @@ produces rather than figures carried forward, except where a sentence names the
 commit or host a figure came from. **The full matrix was last re-executed on
 2026-09-01**, against this tree and against the derived
 image rebuilt from it with `docker build --no-cache --pull` on **2026-09-01**,
-after that day's edits to the image-baked `workspaces/` files, `Dockerfile.openclaw` itself, and the host-side recovery-lifecycle scripts. Earlier in the same
-session `bootstrap.sh` also built the image during the live channel exercise,
-and the G8 deployment gate's own bootstrap built and tore down another. The gates: `verify_offline.py`
+after that day's edits to the image-baked `workspaces/` files and `Dockerfile.openclaw` itself. The G8 deployment gate's own
+`bootstrap.sh` built and tore down another image in the same session. The gates: `verify_offline.py`
 (**365 tests, 30/30** base checks), and each opt-in gate individually —
 `run_g4.py` (**98/98** across seven suites, migrations 001–018 applied
 twice on PostgreSQL 17.10), `run_g6_image.py` (**10/10**, against an image rebuilt from this tree with

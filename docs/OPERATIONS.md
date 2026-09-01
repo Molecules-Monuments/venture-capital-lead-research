@@ -40,9 +40,11 @@ Only `openclaw-state-init` receives that file-backed Compose config. The
 one-shot service has no network, a read-only root filesystem, and only the
 temporary `CHOWN`, `DAC_OVERRIDE`, and `FOWNER` capabilities; it validates the
 document and atomically copies it to the dedicated runtime-config volume as a
-node-owned mode-`0400` file. It also copies the approval seed only when state
-has no approval file, checks its exact allowlist, and leaves the resulting
-mode-`0600` file writable for upstream socket-token maintenance. Gateway and
+node-owned mode-`0400` file. It also loads the reviewed approval seed
+into the state database unconditionally — `approvals set` replaces the row
+outright, so re-running it is idempotent — removes any legacy
+`exec-approvals.json` and asserts its absence, and checks its exact allowlist
+by reading the stored row back. Gateway and
 CLI run non-root with all capabilities dropped, mount the runtime-config volume
 read-only, and select `/home/node/.openclaw-config/openclaw.json` with
 `OPENCLAW_CONFIG_PATH`. Do not add host workspace or state-path config bind

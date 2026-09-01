@@ -49,10 +49,10 @@ No missing environmental evidence is presented as a passing result.
 
 Originally executed 2026-07-23; **the complete matrix was last re-executed on
 2026-09-01** against this tree, and against the derived image rebuilt from it
-with `docker build --no-cache --pull` on 2026-09-01, after that day's edits to the image-baked `workspaces/` files, `Dockerfile.openclaw` itself, and the host-side recovery-lifecycle scripts. Both dates
-are managed by `scripts/set_evidence_execution_date.py` and both still predate
-the `2026.8.1` upgrade, so they name the last full matrix run rather than the
-source of every count below. Those counts are what the current tree produces:
+with `docker build --no-cache --pull` on 2026-09-01, after that day's edits to the image-baked `workspaces/` files and `Dockerfile.openclaw` itself. Both dates
+are managed by `scripts/set_evidence_execution_date.py` and both name the run
+that produced the counts below: the matrix was re-executed against this tree
+after the `2026.8.1` upgrade landed. Those counts are what the current tree produces:
 `tests/v3/test_evidence_doc_consistency.py` derives the offline totals, the growth bridge, the per-suite table, the G4 figures and the three opt-in gate figures from the tree and fails on any that disagree. None is carried forward.
 
 - 365 offline unittest cases pass, 0 fail, 0 skip; 30/30 offline checks pass.

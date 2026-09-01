@@ -50,9 +50,9 @@ Both dates below are managed by
 `scripts/set_evidence_execution_date.py`. They name the measurement of a **2026-09-01**
 re-execution against this tree — except where the cell quoting it names an
 earlier run — and against the derived image rebuilt from it
-with `docker build --no-cache --pull` on 2026-09-01, after that day's edits to the image-baked `workspaces/` files, `Dockerfile.openclaw` itself, and the host-side recovery-lifecycle scripts. Both
-still predate the `2026.8.1` upgrade, so they are not the source of every
-figure in the table below. Those figures are what the current tree produces:
+with `docker build --no-cache --pull` on 2026-09-01, after that day's edits to the image-baked `workspaces/` files and `Dockerfile.openclaw` itself. Both
+name the run that produced the figures in the table below: the matrix was
+re-executed against this tree after the `2026.8.1` upgrade landed. Those figures are what the current tree produces:
 `tests/v3/test_evidence_doc_consistency.py` derives the offline totals, the growth bridge, the per-suite table, the G4 figures and the three opt-in gate figures from the tree and fails on any that disagree. None is a
 figure carried forward from the 2026-07-23 session. That re-execution was necessary rather than ceremonial: the
 migrations, `vcops.py`, the eighteen `.lobster` workflows and

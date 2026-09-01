@@ -200,6 +200,64 @@ entry here to the npm lock and to `runtime-packages/package.json`, and
 separately requires the four channels, so an entry may be added but none of the
 four may be dropped.
 
+## Known limitations carried into `3.0.1`
+
+Each of these was found by the `2026.8.1` upgrade's own review rounds, verified,
+and **deliberately not fixed in that release**. They are recorded here so the
+next audit does not re-litigate them from scratch, and so nobody mistakes a
+considered deferral for an oversight. Each names why it stayed and what the fix
+would cost; none is a silent omission.
+
+- **The OOXML DTD guard is encoding-blind.** `_inspect_pptx_archive` and
+  `_inspect_xlsx_archive` test raw part bytes for ASCII markers, so a UTF-16
+  encoded slide or worksheet part carries a `<!DOCTYPE>` past them. Measured on
+  the shipped image, this is **not exploitable**: `file:///etc/hostname`
+  resolves to `undefined entity`, a billion-laughs body raises `ParseError`, and
+  a quadratic-blowup body is refused by expat 2.5.0's amplification limit in
+  63 ms. There is no `lxml` and no `defusedxml` in the image, and no
+  operator-facing document claims DTDs are rejected. It stayed because
+  `workspaces/` is a `BAKED_SOURCE_TREES` member: even a comment-only edit
+  desynchronises the image digest from `HEAD`, forces a rebuild, and voids that
+  release's G6 and G8 evidence. **Carry it into a cycle that rebuilds anyway.**
+
+- **`RUNBOOK` §8 has no pre-update image build.** A Debian-pin failure therefore
+  surfaces with production already quiesced. This is pre-existing and unchanged
+  by `3.0.1`; the failure lands at `update.sh:427`, *before* the mutation, so
+  the recovery point stays valid and both rollback images are still resident.
+  If it is ever added, add **only** `compose build --pull openclaw-gateway` and
+  `verify_offline.py --with-g6-image` — never the full proof, which drags
+  PostgreSQL server binaries and a 100,000-company retrieval run onto a
+  production host inside a maintenance window.
+
+- **The Teams Entra client secret is minted with no expiry or renewal step.**
+  Pre-existing. If it is fixed, the instruction must say to record the renewal
+  date *in the operations log, not in `.env`* — `check_env.py` refuses unknown
+  keys, so an invented `MSTEAMS_APP_PASSWORD_EXPIRES=` would block the
+  operator's next update. Do not quote a vendor maximum lifetime.
+
+- **The snapshot-recipe currency suite bounds the timestamp only from below.**
+  A rebuild-day typo far in the future passes. Maintainer-facing, and a slack
+  upper bound is itself a nuisance-failure risk; day granularity leaves a
+  residual either way.
+
+- **`Dockerfile.openclaw` states the lock-regeneration rule; `CUSTOMIZATION.md`
+  ships the two-pass instance.** The failure is loud, maintainer-facing and
+  self-documenting at build time. Whoever reconciles them must not carry
+  `--allow-remote=all` past the first pass.
+
+- **Node.js is an undeclared host prerequisite.** Seven `tests/v3` cases shell
+  out to `node`, and `CONTRIBUTING.md` states a closed prerequisite list that
+  omits it while `RUNBOOK` §2 enumerates smaller utilities. A host without Node
+  fails the mandated pre-update gate, and `RUNBOOK` §9 teaches that a gate
+  failure means *stop, possible tampering* — so the diagnosis is worse than the
+  fault. CI is unaffected: `ubuntu-latest` preinstalls Node. Two documentation
+  bullets close it.
+
+Two rules this list exists to serve. A deferral is only legitimate while its
+reasoning is written down and still true — re-verify each of these before
+carrying it forward again. And when one is fixed, delete its entry rather than
+marking it done: a list of closed items is how this file stops being read.
+
 ## Auditing this package
 
 Repeated audit passes established which checks keep working and which decay.
