@@ -202,11 +202,13 @@ four may be dropped.
 
 ## Known limitations carried into `3.0.1`
 
-Each of these was found by the `2026.8.1` upgrade's own review rounds, verified,
-and **deliberately not fixed in that release**. They are recorded here so the
-next audit does not re-litigate them from scratch, and so nobody mistakes a
-considered deferral for an oversight. Each names why it stayed and what the fix
-would cost; none is a silent omission.
+This was found by the `2026.8.1` upgrade's own review rounds, verified, and
+**deliberately not fixed in that release**. Four others were listed here during
+the cycle and have since been closed; per the rule below they were deleted
+rather than marked done. It is recorded here so the next
+audit does not re-litigate it from scratch, and so nobody mistakes a considered
+deferral for an oversight. It names why it stayed and what the fix would cost;
+it is not a silent omission.
 
 - **The OOXML DTD guard is encoding-blind.** `_inspect_pptx_archive` and
   `_inspect_xlsx_archive` test raw part bytes for ASCII markers, so a UTF-16
@@ -219,37 +221,6 @@ would cost; none is a silent omission.
   `workspaces/` is a `BAKED_SOURCE_TREES` member: even a comment-only edit
   desynchronises the image digest from `HEAD`, forces a rebuild, and voids that
   release's G6 and G8 evidence. **Carry it into a cycle that rebuilds anyway.**
-
-- **`RUNBOOK` §8 has no pre-update image build.** A Debian-pin failure therefore
-  surfaces with production already quiesced. This is pre-existing and unchanged
-  by `3.0.1`; the failure lands at `update.sh:427`, *before* the mutation, so
-  the recovery point stays valid and both rollback images are still resident.
-  If it is ever added, add **only** `compose build --pull openclaw-gateway` and
-  `verify_offline.py --with-g6-image` — never the full proof, which drags
-  PostgreSQL server binaries and a 100,000-company retrieval run onto a
-  production host inside a maintenance window.
-
-- **The Teams Entra client secret is minted with no expiry or renewal step.**
-  Pre-existing. If it is fixed, the instruction must say to record the renewal
-  date *in the operations log, not in `.env`* — `check_env.py` refuses unknown
-  keys, so an invented `MSTEAMS_APP_PASSWORD_EXPIRES=` would block the
-  operator's next update. Do not quote a vendor maximum lifetime.
-
-- **The snapshot-recipe currency suite bounds the timestamp only from below.**
-  A rebuild-day typo far in the future passes. Maintainer-facing, and a slack
-  upper bound is itself a nuisance-failure risk; day granularity leaves a
-  residual either way.
-
-- **`Dockerfile.openclaw` states the lock-regeneration rule; `CUSTOMIZATION.md`
-  ships the two-pass instance.** The failure is loud, maintainer-facing and
-  self-documenting at build time. Whoever reconciles them must not carry
-  `--allow-remote=all` past the first pass.
-
-Two rules this list exists to serve. A deferral is only legitimate while its
-reasoning is written down and still true — re-verify each of these before
-carrying it forward again. And when one is fixed, delete its entry rather than
-marking it done: a list of closed items is how this file stops being read.
-
 ## Auditing this package
 
 Repeated audit passes established which checks keep working and which decay.

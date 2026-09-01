@@ -27,6 +27,7 @@ through the same patterns `scripts/set_evidence_execution_date.py` maintains, so
 moving the date with the mandated tool moves this test's expectation with it.
 """
 
+import datetime
 import re
 import sys
 import unittest
@@ -118,6 +119,35 @@ class SnapshotRecipeCurrencyTests(unittest.TestCase):
                     "documents record. A snapshot taken before the reviewed image "
                     "was built can resolve a package to an older revision than the "
                     "image actually carries.",
+                )
+
+    # The window is deliberately generous and deliberately NOT clock-based. A
+    # bound against "today" would turn this suite red on a future date with no
+    # change to the tree, which is the nuisance-failure mode that kept an upper
+    # bound out of this file until now. Both operands here come from the tree,
+    # so the check is deterministic: it catches the class it exists for -- a
+    # mistyped year or month on rebuild day, which is thousands of days out --
+    # while never firing on a snapshot legitimately chosen a little after the
+    # rebuild.
+    MAX_SNAPSHOT_LAG_DAYS = 90
+
+    def test_snapshot_timestamp_is_not_absurdly_later_than_the_rebuild(self) -> None:
+        self.assertTrue(self.rebuild_dates, "no image-rebuild date to bound against")
+        latest = max(self.rebuild_dates)
+        rebuild = datetime.date.fromisoformat(latest)
+        limit = rebuild + datetime.timedelta(days=self.MAX_SNAPSHOT_LAG_DAYS)
+        for relative, found in self.snapshots.items():
+            for parts in found:
+                stamp = datetime.date(int(parts[1]), int(parts[2]), int(parts[3]))
+                self.assertLessEqual(
+                    stamp,
+                    limit,
+                    f"{relative} points apt at snapshot {stamp.isoformat()}, more "
+                    f"than {self.MAX_SNAPSHOT_LAG_DAYS} days after the {latest} "
+                    "rebuild the evidence documents record. The lower bound alone "
+                    "accepts a mistyped year, and a snapshot that far ahead of the "
+                    "reviewed image resolves packages the image was never built "
+                    "against.",
                 )
 
     def test_both_recipe_sources_displace_the_base_image_source_list(self) -> None:

@@ -55,7 +55,7 @@ that produced the counts below: the matrix was re-executed against this tree
 after the `2026.8.1` upgrade landed. Those counts are what the current tree produces:
 `tests/v3/test_evidence_doc_consistency.py` derives the offline totals, the growth bridge, the per-suite table, the G4 figures and the three opt-in gate figures from the tree and fails on any that disagree. None is carried forward.
 
-- 365 offline unittest cases pass, 0 fail, 0 skip; 30/30 offline checks pass.
+- 366 offline unittest cases pass, 0 fail, 0 skip; 30/30 offline checks pass.
 - Disposable PostgreSQL G4 passes **98/98** across seven suites with migrations
   001–018 applied and registered twice, including step-interpreter execution
   of all eighteen real `.lobster` workflows across the three executing G4 suites

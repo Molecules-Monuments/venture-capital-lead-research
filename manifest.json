@@ -138,8 +138,8 @@
     {
       "executable": false,
       "path": "Dockerfile.openclaw",
-      "sha256": "fd38addce04f7372090ca160d8e9437f5c96af35fc60e1bb87efcbce384fca04",
-      "size": 20197
+      "sha256": "0af8932f97007252edd49bdde72af3a04bb49084cc0a54ffec3ad73779d96cb1",
+      "size": 20766
     },
     {
       "executable": false,
@@ -246,8 +246,8 @@
     {
       "executable": false,
       "path": "docs/CHANNELS.md",
-      "sha256": "aa1699ae6f55b493821a9356c22a06af4226dd0172e42564531c846774cfae46",
-      "size": 28680
+      "sha256": "4fe898b49a5a5128397fcbdcc2109f829cac613361bb2587291b562286ee9849",
+      "size": 29423
     },
     {
       "executable": false,
@@ -258,8 +258,8 @@
     {
       "executable": false,
       "path": "docs/MAINTAINING.md",
-      "sha256": "6a35af6e398d2fc7e9004a77d380898200134fb1b37f8e8b6d59c3e60bf2e68a",
-      "size": 20672
+      "sha256": "504112f0f56df0e27e9031876b485644dd8d7ebd16004c78a31eb9a551eb386c",
+      "size": 18986
     },
     {
       "executable": false,
@@ -276,14 +276,14 @@
     {
       "executable": false,
       "path": "docs/PRODUCTION_READINESS.md",
-      "sha256": "e920de673244abbaf25b5b20857b5a31c72f13cff80cc30ef4ae534c4dc2e222",
-      "size": 16664
+      "sha256": "f7852c9fffff36c857270d00717b92ac86c2cd0dc473e002e8be559fb9762d19",
+      "size": 16700
     },
     {
       "executable": false,
       "path": "docs/RUNBOOK.md",
-      "sha256": "b9355ea55395046a917b002c71e6f394a643b1ac84712417bd1851da7e62e9e1",
-      "size": 116482
+      "sha256": "60ecf397a86b00f71108345a6e0ad38ef71e3d59f0ee965c74f4fe2fc918f5f5",
+      "size": 117821
     },
     {
       "executable": false,
@@ -300,8 +300,8 @@
     {
       "executable": false,
       "path": "docs/V3_RELEASE_EVIDENCE.md",
-      "sha256": "3d999b2688c0a4625ce3487dd6a3da4dba9df29e32e2445b55ea5ca34707f7a3",
-      "size": 14328
+      "sha256": "2383f56e0ccd9617c9712d21008377e36247be99af8a2e22d44415393e294b38",
+      "size": 14327
     },
     {
       "executable": false,
@@ -312,7 +312,7 @@
     {
       "executable": false,
       "path": "evals/V3_EVAL_RESULTS.md",
-      "sha256": "77421c6343f3eb6ded4ed31791a0b33eb1e4e6e600980ff6374dc1e309e89469",
+      "sha256": "7abdc5c65fc9746966e4493d4df033d46a763ee1f0a6bdc7c031b08e756252f2",
       "size": 11403
     },
     {
@@ -984,8 +984,8 @@
     {
       "executable": false,
       "path": "tests/v3/test_snapshot_recipe_currency.py",
-      "sha256": "4cfd6b7a0630ca616200994b853afa49175d5baa00512b2071fc41a9c31e5049",
-      "size": 10156
+      "sha256": "c6c4f19e2ab283e92b09598c9d3d9e67d02e92befea5c516868f3127259e4a28",
+      "size": 11844
     },
     {
       "executable": false,

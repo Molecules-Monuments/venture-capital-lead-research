@@ -21,6 +21,15 @@ USER root
 # unchanged on the third pass — after which `npm ci` accepts it. npm 11.13.0 in
 # the 2026.7.1 base accepted a single-pass lock, so this is a consequence of the
 # base bump, not a standing property of npm.
+#
+# CUSTOMIZATION.md carries the runnable two-pass form of that rule; keep the two
+# in step. Two things it states that this comment must not lose if they are ever
+# reconciled: `--allow-remote=all` belongs on the FIRST pass only, because npm 12
+# refuses the initial metadata fetch without it and carrying it further widens
+# what a later pass may reach; and the second pass runs without it and ends with
+# `rm -rf node_modules`, because the pass reifies about 27,000 files into the
+# package directory and `verify_release.py --pristine` fails on every one of
+# them.
 COPY runtime-packages/package.json runtime-packages/package-lock.json /opt/openclaw-runtime/
 RUN npm ci --prefix /opt/openclaw-runtime \
       --omit=dev --omit=peer --ignore-scripts --no-audit --no-fund \

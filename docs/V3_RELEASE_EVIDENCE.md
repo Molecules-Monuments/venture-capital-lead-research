@@ -13,7 +13,7 @@ commit or host a figure came from. **The full matrix was last re-executed on
 image rebuilt from it with `docker build --no-cache --pull` on **2026-09-01**,
 after that day's edits to the image-baked `workspaces/` files and `Dockerfile.openclaw` itself. The G8 deployment gate's own
 `bootstrap.sh` built and tore down another image in the same session. The gates: `verify_offline.py`
-(**365 tests, 30/30** base checks), and each opt-in gate individually —
+(**366 tests, 30/30** base checks), and each opt-in gate individually —
 `run_g4.py` (**98/98** across seven suites, migrations 001–018 applied
 twice on PostgreSQL 17.10), `run_g6_image.py` (**10/10**, against an image rebuilt from this tree with
 `docker build --no-cache --pull` and again against the one `bootstrap.sh`
@@ -28,7 +28,7 @@ frozen 250 ms p95 threshold — see the note on that figure below),
 still installs from the live Debian pool. For reference, `c72d8b9` — the last
 commit before the channel-setup rewrite — measures 210 offline tests across
 these same suites, so everything from that rewrite through the pre-publication
-audit remediation added one hundred and fifty-five in total; the per-suite figures in the table
+audit remediation added one hundred and fifty-six in total; the per-suite figures in the table
 below are authoritative and sum to the aggregate.
 
 ## 2026-07-23 final-audit evidence
@@ -51,7 +51,7 @@ Every gate below was executed after those changes:
 
 | Surface | Result | Command |
 | --- | ---: | --- |
-| Offline verification (the nine declared suites listed under "Passing evidence" below, ruff, ty, shell syntax, fixed workflows, skill system, manifest currency, pristine) | **PASS — 365 tests, 30/30 checks** | `python3 -B scripts/verify_offline.py` |
+| Offline verification (the nine declared suites listed under "Passing evidence" below, ruff, ty, shell syntax, fixed workflows, skill system, manifest currency, pristine) | **PASS — 366 tests, 30/30 checks** | `python3 -B scripts/verify_offline.py` |
 | Disposable Postgres hard gate | **PASS — 98/98** across seven suites, migrations 001–018 applied twice | `python3 -B scripts/run_g4.py` |
 | Exact-image gate against the image rebuilt from this tree | **PASS — 10/10** (provenance, workshop guard, exec-approvals SQLite row, all five channel schemas, the reviewed artifact as committed, unknown-field fail-closed) | `python3 -B scripts/run_g6_image.py --image vc-lead-research:3.0.1` |
 | Real deployment gate (bootstrap → negative-auth proof → live fixed workflows → replay/tamper semantics → teardown) | **PASS** | `python3 -B scripts/run_g8_deployment.py` |
@@ -89,7 +89,7 @@ invokes a model.
 | Surface | Result | Reproducible command |
 | --- | ---: | --- |
 | Agent schemas/contracts | 42/42 | `python3 -B -m unittest discover -s tests/contracts -p 'test*.py' -v` |
-| Version 3 providers/context/orchestration/customization/skill system | 141/141 | `python3 -B -m unittest discover -s tests/v3 -p 'test*.py' -v` |
+| Version 3 providers/context/orchestration/customization/skill system | 142/142 | `python3 -B -m unittest discover -s tests/v3 -p 'test*.py' -v` |
 | Exact skill/agent/router/workflow inventory | 26 skills, 12 agents, **18 workflows**, 0 findings | `python3 -B scripts/validate_skill_system.py` |
 | Retrieval policy contracts | 7/7 | `python3 -B -m unittest discover -s tests/retrieval -p 'test*.py' -v` |
 | Infrastructure contracts | 38/38 | `python3 -B -m unittest discover -s tests/infrastructure -p 'test*.py' -v` |
@@ -108,7 +108,7 @@ row here. That declaration is what the gate runs: a test directory `SUITES`
 does not name is not executed by `verify_offline.py`, so a new suite has to be
 added to `SUITES` and to this table together.
 
-The aggregate deterministic offline suites pass 365 tests with no failures or
+The aggregate deterministic offline suites pass 366 tests with no failures or
 skips (30/30 offline checks). The per-suite rows above sum to that total. The G4 runner created a disposable PostgreSQL 17
 cluster, applied and registered migrations **001–018** twice, and — in addition
 to the prior trusted-context/preference/idempotency/approval/document coverage —

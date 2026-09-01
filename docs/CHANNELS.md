@@ -333,7 +333,17 @@ Azure-side setup, following the pinned guide: create an **Azure Bot** resource
 with **Type of App = Single Tenant** (multi-tenant registration was deprecated
 after 2025-07-31); take the Microsoft App ID from its Configuration blade as
 `MSTEAMS_APP_ID`; mint a client secret through Configuration → Manage Password →
-Certificates & secrets and copy its **Value** as `MSTEAMS_APP_PASSWORD`; take
+Certificates & secrets and copy its **Value** as `MSTEAMS_APP_PASSWORD` — that
+secret expires, and nothing in this package will warn you before it does. Record
+its expiry in your own operations log at the moment you mint it and diarise the
+renewal — this package has no rotation procedure for it, and no gate can see it.
+Renewing means minting a new secret in Azure, updating `MSTEAMS_APP_PASSWORD` in
+`.env`, and then re-rendering and recreating the gateway the same way a channel
+change does. Do **not** add the date to
+`.env`: `scripts/check_env.py` rejects unknown keys, so an invented
+`MSTEAMS_APP_PASSWORD_EXPIRES=` would fail the pre-flight and block your next
+update. Azure decides the available lifetimes and has changed them before, so
+take the expiry Azure shows you rather than a figure quoted here; take
 Directory (tenant) ID from Overview as `MSTEAMS_TENANT_ID`; set the messaging
 endpoint to your public `/api/messages` URL; and finally enable **Channels →
 Microsoft Teams → Configure → Save**, without which no activity is delivered.

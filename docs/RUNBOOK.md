@@ -1082,6 +1082,28 @@ ambiguous external send.
 Before any update, review current upstream code/release notes, create a passing
 backup, produce a new reviewed package/manifest, and rerun every offline gate.
 
+**Build the image before you start, not during the update.** `update.sh` arms its
+failure handler and quiesces the deployment *before* it reaches its own
+`compose build --pull openclaw-gateway`, so a build failure there stops the
+gateway and the CLI and leaves them stopped — the handler prints "consumers
+remain stopped". The most likely cause is not your change: the Dockerfile pins
+exact Debian package revisions, the bookworm pool keeps only the current
+revision of each, and a point release eventually supersedes them. That failure
+is recoverable (nothing is mutated and the recovery point is valid) but it takes
+production down while you debug apt inside a maintenance window. Two commands
+move it to before the window, on any host with Docker:
+
+```sh
+docker build --pull -f Dockerfile.openclaw -t "vc-lead-research:$(cat VERSION)" .
+python3 -B scripts/verify_offline.py --with-g6-image "vc-lead-research:$(cat VERSION)"
+```
+
+If the build fails on a pinned revision, the recovery recipe in
+`Dockerfile.openclaw` and §11, "Rebuilding after a Debian point release", applies — resolve it there, with the
+deployment still running. Do not substitute the full gate matrix from §1 here:
+G4 needs PostgreSQL server binaries and the retrieval-scale gate seeds a
+100,000-company database, neither of which belongs on a production host.
+
 Then carry the deployed revision's runtime files into the new package directory:
 `deployment-lock.json`, `.env`, `config/customization-profile.json`,
 `config/connectors.json` if you use connectors, and every customized policy
