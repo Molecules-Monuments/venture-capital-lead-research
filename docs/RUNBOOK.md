@@ -1737,7 +1737,7 @@ which is never published into the `bookworm main` suite, so a main-only
 snapshot cannot satisfy it however recent it is.
 
 ```sh
-SNAPSHOT=20260825T000000Z   # the date the reviewed image was built
+SNAPSHOT=20260901T000000Z   # the date the reviewed image was built
 rm -f /etc/apt/sources.list.d/debian.sources
 { printf 'deb [check-valid-until=no] https://snapshot.debian.org/archive/debian/%s/ bookworm main\n' "$SNAPSHOT"
   printf 'deb [check-valid-until=no] https://snapshot.debian.org/archive/debian-security/%s/ bookworm-security main\n' "$SNAPSHOT"
@@ -1746,7 +1746,7 @@ rm -f /etc/apt/sources.list.d/debian.sources
 
 (add it inside the build, or bake it into a local Dockerfile overlay). The
 timestamp must be at or after the date the reviewed image was built —
-`docs/V3_RELEASE_EVIDENCE.md` records **2026-08-25** — not merely at or after
+`docs/V3_RELEASE_EVIDENCE.md` records **2026-09-01** — not merely at or after
 the last pin change, which is an earlier and different date. The gap is a
 security revision: with `debian.sources` removed, `20260805T000000Z` resolves
 `libnss3` to `2:3.87.1-1+deb12u3` while the reviewed image carries
