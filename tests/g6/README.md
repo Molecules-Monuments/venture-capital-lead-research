@@ -4,8 +4,11 @@ The Version 3 offline channel contract covers all four disabled-by-default
 templates, positive and negative profile rendering, plugin provenance and
 deployment wiring, the governed document-media boundary, configurable
 model/search providers, and exact OpenClaw schema
-validation inside the built image. Version 3 intentionally removes
-`memory-core`; this gate tests that deliberate Version 3 contract directly.
+validation inside the built image. Version 3 intentionally denies `memory-core`
+a role — it is absent from `plugins.allow` and memory search is pinned off —
+though the harness still loads it into its own default memory slot, which
+`README.md` documents. This gate tests that deliberate Version 3 contract
+directly.
 
 Run from the Version 3.0 root:
 

@@ -166,13 +166,26 @@ correct.
    compose exec openclaw-gateway openclaw channels status
    ```
 
-   Every one of the four exits `0` on every profile. They still emit findings.
-   `docs/RUNBOOK.md` §5.1 lists the ones this release's own commissioning
-   recorded, each with a disposition — including the three `agents.entries`
-   warnings `config validate` prints and the `Legacy config keys detected`
-   block `doctor` prints, neither of which is new or actionable here. Read it
-   before step 9, because two of those findings are channel-dependent and look
-   like deviations otherwise:
+   All four are expected to exit `0`. They still emit findings. `docs/RUNBOOK.md` §5.1 lists
+   them with a disposition each — including the three `agents.entries` warnings
+   `config validate` prints and the `Legacy config keys detected` block
+   `doctor` prints, neither of which is new or actionable here. That list was
+   re-measured for this release on `PRIMARY_CHANNEL=none`; the two
+   channel-dependent rows below are carried from the `2026.7.1` record, so on a
+   channel profile expect the shape rather than a byte-exact match.
+
+   `doctor` is the one of the four that can stop and ask. With a terminal
+   attached it halts on `Apply recommended config repairs now?` with `Yes`
+   pre-selected and waits — measured still waiting after 75 seconds with
+   nothing on stdin; accepting it is `openclaw doctor
+   --fix`, which `docs/RUNBOOK.md` §5.1 forbids on this deployment. Answer
+   `No`, or add `-T` to that one `compose exec` and it will not ask. The two
+   forms do not print the same thing — with a terminal `doctor` also emits a
+   version banner and `Update` and `Config warnings` blocks that the `-T` form
+   does not — so compare against §5.1's list using the form you actually ran.
+
+   Read §5.1 before step 9, because two of its findings are channel-dependent
+   and look like deviations otherwise:
 
    - `openclaw doctor` adds a `Doctor warnings` block about `vc-chief` lacking
      the `message` tool on *any* selected channel;

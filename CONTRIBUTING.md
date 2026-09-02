@@ -112,11 +112,12 @@ running deployment and no credential. The one-time virtualenv install below is
 the exception — it downloads the hash-pinned packages, so it needs network
 access or an approved package cache. After that, everything here is offline. You
 need Python 3.11 or newer, a POSIX shell, and **Node.js** — seven `tests/v3`
-cases run assertions against the pinned harness's own JavaScript, and without it
+cases run assertions against this package's own gateway plugin
+(`runtime-extensions/vc-trusted-context`), and without it
 `verify_offline.py` reports `FAILED (errors=7)` with bare
 `FileNotFoundError: ... 'node'` tracebacks rather than anything naming the cause.
-Any version that runs `node --input-type=module -e` will do; the tests do not pin
-one.
+Any version that runs `node --input-type=module -e` and the plugin's ESM syntax
+will do; the tests pin no version.
 
 ### Create the developer virtualenv
 

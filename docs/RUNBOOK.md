@@ -143,8 +143,9 @@ Use a dedicated Linux host inside one organizational trust boundary. Require:
   state;
 - **`node`**, if this host is where you run `verify_offline.py` — step 4 of the
   update checklist in `docs/OPERATIONS.md` orders it here, before `update.sh`.
-  Seven `tests/v3` cases execute assertions against the pinned harness's own
-  JavaScript with `node --input-type=module -e`. Without it the gate reports
+  Seven `tests/v3` cases execute assertions against this package's own gateway
+  plugin (`runtime-extensions/vc-trusted-context`) with
+  `node --input-type=module -e`. Without it the gate reports
   `FAILED (errors=7)` and bare `FileNotFoundError: ... 'node'` tracebacks, which
   section 9 of this runbook teaches you to read as a possible integrity failure.
   It is not needed by any lifecycle script, and the deployment itself never uses
@@ -474,8 +475,15 @@ channel matrix. A row a gate closes outright carries a `—` in that column.
   A correctly configured shipped deployment still reports some findings, and
   §5.6's "a warning is not a pass" rule does not mean commissioning is blocked
   by them — it means each one must be dispositioned. The expected set below was
-  recorded against a real deployment of this release; if you see a finding that
-  is **not** on this list, treat it as a genuine deviation and investigate it.
+  recorded on this release against a deployment bootstrapped with
+  `PRIMARY_CHANNEL=none`. The `doctor` row marked **On a channel profile only**
+  describes output a `none` deployment cannot produce, so it is carried from
+  the `2026.7.1` record rather than re-measured; the per-profile `security
+  audit` totals carry their own provenance note with the baseline table
+  below. If you see a finding that is **not** on this list, treat it as
+  a genuine deviation and investigate it — but read the list as the shape of
+  the output rather than a byte-exact transcript: `doctor` prints several of
+  these blocks once per agent, so their counts move with the roster.
 
   From `openclaw config validate`:
 
@@ -625,10 +633,10 @@ channel matrix. A row a gate closes outright carries a `—` in that column.
   From `openclaw secrets audit`:
 
   - `gateway.auth.token` reported as plaintext: expected, and not a literal
-    secret. Measured on this release, every profile reports exactly
+    secret. Measured on this release on the `none` profile, reporting exactly
 
     ```text
-    Secrets audit: findings. plaintext=1, unresolved=0, shadowed=0, legacy=0.
+    Secrets audit: findings. plaintext=1, unresolved=0, shadowed=0, storeResidue=0, legacy=0.
     - [PLAINTEXT_FOUND] …:gateway.auth.token gateway.auth.token is stored as plaintext.
     ```
 
@@ -661,19 +669,22 @@ channel matrix. A row a gate closes outright carries a `—` in that column.
     lines each begin `Run "openclaw doctor --fix"`. Nothing is degraded: the
     loader applies the normalisation on every start, and only persisting it is
     refused.
-  - twenty-four `Model "${VC_PRIMARY_MODEL}" specified without provider.
-    Falling back to "openai/${VC_PRIMARY_MODEL}"` lines — six naming
-    `${VC_PRIMARY_MODEL}` and eighteen naming `${VC_FAST_MODEL}`, since most
-    agents are configured on the fast tier and doctor walks the agent list more
-    than once — and `openclaw models status`
-    showing the harness default `openai/gpt-5.5` — a diagnostic artifact, not a
-    misconfiguration. `doctor` reads the config text without the environment
-    substitution the runtime performs, so it sees the literal `${VC_PRIMARY_MODEL}`.
-    Confirm the real behaviour instead of the diagnostic: a live agent run
-    resolves the configured model (`requested=openai/<your VC_PRIMARY_MODEL>`),
-    which is the evidence for this row. `plugins.allow` and memory-provider
-    migration hints are legacy-key advice that does **not** apply to this
-    configuration and must not be applied.
+  - **No** `Model "…" specified without provider` line, and no model-fallback
+    advice. The `2026.7.1` commissioning record for this package listed
+    twenty-four such lines, because that harness inspected the config text
+    before the environment substitution and so saw the literal
+    `${VC_PRIMARY_MODEL}`. `2026.8.1` substitutes first, and the shipped value
+    carries its provider, so the warning no longer occurs: measured on this
+    release, zero. `openclaw models status` correspondingly reports the
+    *resolved* model rather than a harness fallback: `Default` reads whatever
+    `VC_PRIMARY_MODEL` is set to, and `Allowed models` renders
+    `agents.defaults.modelPolicy.allow`, which pins `${VC_PRIMARY_MODEL}` and
+    `${VC_FAST_MODEL}` — so it reads `(2)` when the two differ and `(1)` when
+    they are the same value. `Utility model` reads `off` because
+    `agents.defaults.utilityModel` is pinned empty. If you do see the warning, do not record it as the old
+    diagnostic artifact: it now means the substitution did not happen. Check
+    that `VC_PRIMARY_MODEL` and `VC_FAST_MODEL` are set in `.env` and that the
+    rendered runtime config carries them.
   - **On a channel profile only** (`PRIMARY_CHANNEL` other than `none`), one
     additional `Doctor warnings` block: `Agent "vc-chief" is routed from
     channel "<provider>", but the message tool is unavailable for that agent;
@@ -691,9 +702,10 @@ channel matrix. A row a gate closes outright carries a `—` in that column.
     profile including `none`, whose `Fix:` line suggests
     `openclaw config set commands.ownerAllowFrom '["telegram:123456789"]'`.
     Expected, and **that edit must not be applied.** A command owner gates
-    owner-only *chat* commands (`/diagnostics`, `/export-trajectory`, `/config`,
-    chat exec approvals); this deployment exposes no chat command surface at
-    all. Verified on all five rendered profiles, the effective `commands` block
+    owner-only *chat* commands (`/diagnostics`, `/export-session`,
+    `/export-trajectory`, `/config`, chat exec approvals); this deployment
+    exposes no chat command surface at all. Verified on all five rendered
+    profiles, the effective `commands` block
     is `native`, `nativeSkills`, `text`, `bash`, `config`, `mcp`, `plugins`,
     `debug` and `restart` — every one of them `false` — so there is no
     owner-scoped command for an owner ID to protect. `commands.useAccessGroups`
@@ -712,10 +724,14 @@ channel matrix. A row a gate closes outright carries a `—` in that column.
   - A `Security` block whose first entries read `… is broader than the host exec
     policy` — **twelve of them**: one global `tools.exec`, then one per agent for
     the eleven agents other than `data-steward` (which appears in the same block
-    under the separate filesystem/exec entry instead). Each ends `Effective host
-    exec stays security="deny" ask="off" because the stricter side wins`. Expected,
-    and its `Fix` ("align both files or enable Web UI, terminal UI, or chat exec
-    approvals") **must not be applied.** The two files are meant to disagree in
+    under the separate filesystem/exec entry instead). Each carries the same
+    body: `Effective host exec stays security="deny" ask="off" because the
+    stricter side wins`, then `Headless runs like isolated cron cannot answer
+    approval prompts; align both files, or keep the Control UI or a
+    macOS/iOS/Android app connected so gateway automation runs can raise
+    approval cards`, closing on `Inspect with: openclaw approvals get
+    --gateway`. Expected, and **that advice must not be applied.** The two
+    files are meant to disagree in
     exactly this direction: `config/openclaw.json` declares
     `tools.exec.mode="allowlist"`, while the image-baked
     `config/exec-approvals.json` seeds `defaults.security="deny"` with the two
@@ -723,38 +739,105 @@ channel matrix. A row a gate closes outright carries a `—` in that column.
     resolves the pair by taking the stricter side, which is the reviewed
     boundary. Enabling any interactive approval surface would create the chat
     exec-approval path the threat model withholds. The same block then carries
-    the `data-steward` filesystem/exec entry and the `Gateway bound to "lan"`
-    warning, both dispositioned above.
+    three further entries, each dispositioned elsewhere in this list: the
+    `data-steward` filesystem/exec entry; a `WARNING: openclaw.json contains
+    plaintext secret-bearing config fields` naming `gateway.auth.token`, which
+    is the `openclaw secrets audit` row above and the same non-finding; and the
+    `WARNING: Gateway bound to "lan" (0.0.0.0)` entry. It closes on a bare
+    `- Run: openclaw security audit --deep`, which this section already
+    prescribes.
   - A `Startup optimization` block suggesting `NODE_COMPILE_CACHE` and
     `OPENCLAW_NO_RESPAWN`. Expected on every profile; it is host-tuning advice
     for low-power machines, not a finding about this configuration. Neither
     variable is part of the reviewed environment contract, and `check_env.py`
     rejects both in `.env` as unknown keys.
-  - A `Plugin registry` block — `Persisted plugin registry is missing or stale.`
-    Expected on every profile, and it does **not** clear: its only remedy is
-    `openclaw doctor --fix`, which this section forbids because the runtime
-    config is mounted read-only. The gateway builds its effective plugin set
-    from that config on every start — `openclaw doctor`'s own `Plugins` block
-    reports `Errors: 0` and the gateway log lists the loaded plugins by name —
-    so the persisted cache in `state/openclaw.sqlite` is an optimization this
-    deployment does without.
-  - A `State integrity` block. On every profile it reports `OAuth dir not
+  - A `State integrity` block carrying exactly one line: `OAuth dir not
     present (~/.openclaw/credentials). Skipping create because no
-    WhatsApp/pairing channel config is active` — expected, no pairing channel is
-    configured. On a deployment where **no agent has run yet** it additionally
-    reports `CRITICAL: Session store dir missing
-    (~/.openclaw/agents/<agent>/sessions)`. That one is a first-run artifact, not
-    a fault: the store is created by the first agent session. Measured on this
-    release — one `openclaw agent --agent vc-chief` run creates
-    `sessions/sessions.json` and the CRITICAL is gone from the next `doctor`.
-    Run one agent turn before recording this row, and treat the CRITICAL as
-    resolved only once you have seen it clear.
-  - Informational `Skills status`, `Plugins`, and `Memory search` blocks. Not
-    findings: they report counts (eligible/missing/incompatible skills, loaded
-    and disabled plugins with `Errors: 0`) and confirm `Memory search is
-    explicitly disabled (enabled: false)`, which is the reviewed design — see
-    "Memory and personalization" in `README.md`. The counts vary with host
-    platform, so record yours rather than matching a number from here.
+    WhatsApp/pairing channel config is active` — expected, no pairing channel
+    is configured. The `2026.7.1` record also listed a `CRITICAL: Session store
+    dir missing (~/.openclaw/agents/<agent>/sessions)` here and called it a
+    first-run artifact. It appeared on neither deployment measured for this
+    release, and on the first of them `~/.openclaw/agents` did not exist at all
+    — precisely the state the old claim described — yet the block still carried
+    the OAuth line only.
+    Treat a `CRITICAL` here as a genuine deviation rather than as a first-run
+    artifact to be cleared by running an agent.
+  - **No** `Plugin registry`, `Skills status`, or `Plugins` block. All three
+    appear in the `2026.7.1` commissioning record — the first as a `Persisted
+    plugin registry is missing or stale` finding, the other two as
+    informational counts — and neither deployment measured for this release
+    printed any of them. Their absence is not a deviation. The gateway still builds its effective plugin set from the
+    config on every start and names what it loaded in its own startup line
+    (`http server listening (3 plugins: memory-core, openai,
+    vc-trusted-context; …)`), which is the evidence to record for this row.
+  - A second `Doctor changes preview` block, distinct from the roster one
+    above, reading `memory-core tool configured, enabled automatically.`
+    Expected, and it does **not** clear without `--fix`. Nothing is persisted:
+    the gateway log states the same thing as `auto-enabled plugins for this
+    runtime without writing config`, and `plugins.entries.memory-core` stays as
+    the reviewed config declares it.
+  - A bare `[warning] core/doctor/node-hosting-preconditions
+    plugins.entries.device-pair.enabled` line, printed outside any block, whose
+    `fix:` suggests setting `plugins.entries.device-pair.enabled: true`.
+    Expected, and **that edit must not be applied.** Device pairing exists to
+    onboard remote nodes with join codes over `openclaw connect`; this
+    deployment exposes no such surface, and enabling it would create one.
+  - A `Backups` block — `No successful backup is recorded.` — suggesting
+    `openclaw backup create` and `openclaw backup enable --repository <dir>`.
+    Expected, and **do not act on it by enabling scheduled harness backups.**
+    This deployment's backup of record is `scripts/backup.sh` (§5.4), which
+    captures the database and the state volume together; `openclaw backup
+    enable` would schedule a second, narrower artifact that §5.4's restore path
+    does not consume and nothing else reads. `openclaw backup create` itself is
+    not forbidden — `docs/TASKFLOW_LOBSTER_COMPATIBILITY.md` uses it
+    deliberately for an upstream-consistent state snapshot — but running it
+    neither clears this block nor substitutes for §5.4.
+  - A `Gateway` block — `service management skipped: non-default state dir or
+    config path`. Expected, and not a finding: the gateway runs
+    as a Compose service with `OPENCLAW_STATE_DIR` set and its config mounted,
+    so the harness correctly declines to install or manage a host service unit.
+  - A `Host desktop` block — `disabled; enable the Desktop lab with
+    desktop.host.enabled=true, then restart the gateway`. Expected, and **that
+    edit must not be applied.** The Desktop lab is a host-GUI automation
+    surface this deployment deliberately does not carry.
+  - A `GitHub projects` block advising `gateway.controlUi.github.token`, or
+    `GH_TOKEN`/`GITHUB_TOKEN` in the gateway environment, and noting that
+    search is otherwise public-only. Expected, and **must not be applied.** It
+    concerns the Control UI's GitHub search, which this deployment does not
+    use; applying it would add both a credential and a fourth outbound
+    destination, beyond the three §2's table accounts for.
+  - A `Browser relay authentication` block reporting that legacy relay
+    authentication is enabled and advising
+    `browser.extensionRelay.allowLegacyAuth=false`. Expected, and not
+    actionable here: no Chrome extension or external CDP client is paired and
+    the browser relay is not part of this deployment's surface, so the setting
+    governs a path nothing reaches.
+  - A `Heartbeat migration preview` — `/workspaces/vc-chief/HEARTBEAT.md will
+    migrate into scratch for Heartbeat (vc-chief)`. Expected, and it does
+    **not** clear without `--fix`. It previews a file move, not a schedule: the
+    autonomous heartbeat is pinned off, which the gateway log confirms at
+    startup with `[heartbeat] disabled`.
+  - Twelve `TOOLS.md migration preview` blocks, one per agent workspace —
+    `/workspaces/<agent>/TOOLS.md will be archived and merged into AGENTS.md
+    when customized`. Expected, and they do **not** clear: persisting the merge
+    needs `--fix`, and the workspaces are image-baked, so a persisted merge
+    would be replaced by the next image build in any case.
+  - Twelve `Memory search` blocks, one per agent — `Agent "<agent>": Memory
+    search is explicitly disabled (enabled: false).` Not a finding: that is the
+    reviewed design (`memory.search.enabled` is pinned `false` — see "Memory
+    and personalization" in `README.md`). The `2026.7.1` record described a
+    single informational block; `2026.8.1` prints one per agent, so expect one
+    per roster entry rather than one in total.
+  - Twenty-four `Workspace` blocks, two per agent. Twelve carry a git-backup
+    tip and are informational. The other twelve open `Agent "<agent>": Memory
+    system not found in workspace.` and then, on their own lines, `Paste this
+    into your agent:`, `Install the memory system by applying:`, and two
+    `github.com/openclaw/openclaw` commit URLs. Expected, and **that
+    instruction must not be followed.** It would install an upstream memory
+    system into a deployment that pins `memory.search.enabled` and
+    `plugins.entries.memory-core.config.dreaming.enabled` false, by pasting
+    fetch-and-apply instructions into an agent whose egress policy does not
+    reach GitHub. Record it with that disposition and change nothing.
 
   In the gateway log at every start:
 
@@ -796,11 +879,53 @@ channel matrix. A row a gate closes outright carries a `—` in that column.
     `update.checkOnStart` is pinned `false`, so the check never runs. If you see
     it, the pin is missing from the rendered runtime config: re-render and
     re-bootstrap rather than ignoring the line. See §2's egress table.
+  - `auto-enabled plugins for this runtime without writing config:` followed by
+    `- memory-core tool configured, enabled automatically.` Expected, and the
+    log-side evidence for the second `Doctor changes preview` block above: the
+    harness enables the tool for the running process only and, as the line
+    says, does not write it back into the mounted config.
+  - `⚠️  Gateway is binding to a non-loopback address. Ensure authentication
+    is configured before exposing to public networks.` — expected, and the
+    log-side twin of the `Gateway bound to "lan"` entry in `doctor`'s
+    `Security` block, where it is dispositioned: the bind is to the Compose
+    network and host exposure is constrained by the loopback publish.
+  - `[heartbeat] disabled` — expected. `[heartbeat] started` in its place means
+    the pin was lost and the render is stale; §10 "Known release limitations"
+    carries that check and what the two states mean.
+  - A `[state-migrations] Auto-migrated legacy state:` line followed by
+    `- Migrated plugins.bundledDiscovery → shared SQLite state`, and a small
+    `Doctor changes` box repeating it. Expected, and it **recurs**: measured on
+    all three starts taken for this release — two fresh deployments, plus a
+    gateway restart over volumes that had already been migrated once. Do not
+    read it as a first-run artifact that should stop appearing. Nothing here
+    needs doing: `plugins.bundledDiscovery` is not a key this package sets, and
+    is absent from `config/openclaw.json`. It is also not the
+    read-only-config failure described above — that one names the config path
+    and fails with `EROFS`, while this one reports a move that succeeded.
 
   **Never run `openclaw doctor --fix` here.** The runtime config is mounted
   read-only by design, so it fails with `EROFS`, and its suggested edits are
   the ones listed above as not applicable. Record the findings and their
   disposition as the evidence for this row.
+
+  `--fix` has a second way in, and it is easy to walk into. When `openclaw
+  doctor` runs with a terminal attached — which is what `docker compose … exec`
+  gives it whenever your own shell has one — it stops on `Apply recommended
+  config repairs now?` with **`Yes` pre-selected** and waits for an answer.
+  Measured on this release, it was still waiting after 75 seconds with nothing
+  on stdin — long enough to treat as blocking rather than as a prompt that will
+  expire on its own. Answering `Yes` is `--fix` under another name, so answer
+  `No`. To remove the question entirely, add
+  `-T` to the `docker compose` invocation: with no TTY it runs to completion
+  and exits `0` without prompting, which is how the expected set above was
+  recorded. The two forms do not do the same work — with a terminal `doctor`
+  additionally runs an update check and prints a version banner and `Update`
+  and `Config warnings` blocks, none of which appear in the list above, so do
+  not record those as deviations. Nothing is lost by refusing and nothing is
+  gained by accepting: the read-only mount refuses the write and `--fix` exits
+  non-zero with the config unchanged. Answer `No` because the prompt is the
+  only point in this procedure where one keystroke attempts a write to a
+  reviewed artifact — not because the attempt would otherwise succeed.
 - Prove the host rendered config is a non-symlink regular file at mode `0600`;
   the initializer's named-volume copy has the same SHA-256, owner `node:node`,
   and mode `0400`; and gateway and CLI mount that volume read-only without a

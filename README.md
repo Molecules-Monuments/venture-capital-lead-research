@@ -1095,6 +1095,13 @@ Prerequisites:
   pip refuses the extra unhashed backports (`tomli`, `exceptiongroup`) that
   older interpreters would pull in; 3.11 also matches the deployed image's
   Python, so one floor covers both;
+- **Node.js** — seven `tests/v3` cases run assertions against this package's own
+  gateway plugin `runtime-extensions/vc-trusted-context`, and without it
+  `verify_offline.py` reports
+  `FAILED (errors=7)` with bare `FileNotFoundError: ... 'node'` tracebacks
+  rather than anything naming the cause. Any version that runs
+  `node --input-type=module -e` and the plugin's ESM syntax will do; the
+  tests pin no version;
 - one-time access to the exact hash-pinned Python packages or an approved
   package cache;
 - optional local `initdb`, `pg_ctl`, `psql`, and `pg_dump` **from PostgreSQL 17** for the

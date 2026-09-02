@@ -34,6 +34,59 @@ the exact commands. The repository now has a remote, so each move of the tag is
 a deliberate force-push plus a note to anyone who may already have fetched it —
 plan that as part of the cycle rather than discovering it afterwards.
 
+## [Unreleased]
+
+Documentation corrections on top of `3.0.1`. No code, configuration, or image
+content changed, so `VERSION` stays `3.0.1` and the `v3.0.1` tag is **not**
+moved: these commits sit above the tagged release rather than restating it.
+
+### Fixed
+
+- **`docs/RUNBOOK.md` §5.1's expected-finding list, re-measured against
+  `2026.8.1`.** Most of the list was inherited from the `2026.7.1`
+  commissioning record, and several rows no longer matched what the shipped
+  image prints. Removed, because the harness no longer emits them: the
+  twenty-four `Model … specified without provider` lines, the `Plugin registry`
+  block, the `Skills status` and `Plugins` blocks, and the `CRITICAL: Session
+  store dir missing` line — the last measured absent on a deployment whose
+  `~/.openclaw/agents` directory did not exist at all, which is the state that
+  claim described. Added, because it now does emit them: a second `Doctor
+  changes preview`, a bare `device-pair` warning, and `Backups`, `Gateway`,
+  `Host desktop`, `GitHub projects`, `Browser relay authentication`,
+  `Heartbeat migration preview`, twelve `TOOLS.md migration preview`, twelve
+  `Memory search` and twenty-four `Workspace` blocks — each with a disposition,
+  and five of them flagged as suggestions that must not be applied, including
+  one that instructs the operator to paste an upstream memory-system install
+  into an agent. `openclaw secrets audit` also gained a `storeResidue=0` field,
+  and the `Command owner` block now names `/export-session`. Measured on a
+  deployment bootstrapped with `PRIMARY_CHANNEL=none`; the two
+  channel-dependent rows are now marked as carried and not re-measured.
+- **`openclaw doctor` blocks on a `Yes`-default prompt whenever it has a
+  terminal.** `Apply recommended config repairs now?` was measured still
+  waiting after 75 seconds with nothing on stdin, which is long enough to treat
+  as blocking rather than as a prompt that expires on its own — and accepting
+  it is `--fix`, which §5.1 forbids on this deployment. `docs/RUNBOOK.md` §5.1
+  and `docs/CHANNELS.md` step 7 now describe the prompt and give `-T` as the
+  way to remove it. The command blocks themselves are unchanged, so the
+  runbook's other `openclaw …` invocations keep their documented form.
+- **`README.md`'s developer prerequisites now list Node.js.** Seven `tests/v3`
+  cases shell out to `node` with no skip guard, so a host without it gets
+  `FAILED (errors=7)` and a bare `FileNotFoundError`. `CONTRIBUTING.md` and
+  `docs/RUNBOOK.md` §2 already declared the prerequisite; the README list was
+  the third site and was missed. All three also described the seven cases as
+  exercising the pinned harness's own JavaScript, which they do not: every one
+  of them loads this package's own gateway plugin,
+  `runtime-extensions/vc-trusted-context/index.js`.
+- **Four further corrections found while re-measuring, in text the change did
+  not set out to touch.** `doctor`'s `Security` block: its quoted `Fix` string
+  does not exist in `2026.8.1`, its twelve exec entries do not end where the
+  runbook said they do, and its tail carried two entries the runbook did not
+  account for. And `tests/g6/README.md` said Version 3 "intentionally removes
+  `memory-core`" — it is absent from `plugins.allow` and its search is pinned
+  off, but the harness still loads it into its own default memory slot, which
+  `README.md` has documented all along and the measured gateway startup line
+  confirms.
+
 ## [3.0.1] — 2026-09-01
 
 Upstream base moved from OpenClaw `2026.7.1` to `2026.8.1`. This is a reviewed

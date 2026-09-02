@@ -108,8 +108,8 @@
     {
       "executable": false,
       "path": "CHANGELOG.md",
-      "sha256": "a787ee8f688765ebc5f820f5534aaf348be6dbfc3289f2fbcf46fd161cc5812c",
-      "size": 22160
+      "sha256": "4c0e0fbad97a123589321c5d4809da687a1927f1f7a3e81a8dd5f71b4becab44",
+      "size": 25658
     },
     {
       "executable": false,
@@ -120,8 +120,8 @@
     {
       "executable": false,
       "path": "CONTRIBUTING.md",
-      "sha256": "d010f1ea8dc878b506131456202438d49a6f2f245a33ce2c87c0aaf5d6866d67",
-      "size": 21095
+      "sha256": "c71091dac098c200893986c4478b959db698020c64ae0f357b57cd3437b5bd84",
+      "size": 21163
     },
     {
       "executable": false,
@@ -156,8 +156,8 @@
     {
       "executable": false,
       "path": "README.md",
-      "sha256": "9b3791feff7224c36f6038bb5f1663e1b65738fe8ff4ae6a860e8cf092cf0d94",
-      "size": 104058
+      "sha256": "03779806c27e474208ecca391ae6111d8072108eb9bfadb8992faf10105b8e0c",
+      "size": 104479
     },
     {
       "executable": false,
@@ -246,8 +246,8 @@
     {
       "executable": false,
       "path": "docs/CHANNELS.md",
-      "sha256": "4fe898b49a5a5128397fcbdcc2109f829cac613361bb2587291b562286ee9849",
-      "size": 29423
+      "sha256": "326803f9ad3bfb0bb0f362f15c40edcc9ad10536d72422b6470001396786be1a",
+      "size": 30260
     },
     {
       "executable": false,
@@ -282,8 +282,8 @@
     {
       "executable": false,
       "path": "docs/RUNBOOK.md",
-      "sha256": "50b76bc2dd554e3615d925a06dff3d1bd60a558140eeded1cb7bb8c106f40d21",
-      "size": 117836
+      "sha256": "01bf2ee3db7b8354a13b8c0937bdcc123ecd7de4d0ae61b44e13e118cb0ffebb",
+      "size": 126822
     },
     {
       "executable": false,
@@ -876,8 +876,8 @@
     {
       "executable": false,
       "path": "tests/g6/README.md",
-      "sha256": "12e93f9f29f8e5f94513f51e7b96d3c00ff29a6fa701919efbea49175189e331",
-      "size": 1252
+      "sha256": "067dfdcb620d360ae42c2de2298d702095be714bbb82847bb85c610fc47763ee",
+      "size": 1428
     },
     {
       "executable": false,
