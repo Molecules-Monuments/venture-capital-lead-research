@@ -235,6 +235,35 @@ corrections, as this file's versioning note describes.
   `README.md` has documented all along and the measured gateway startup line
   confirms.
 
+### The effective plugin allowlist, and a test that bounds it
+
+`README.md` described `plugins.allow` as naming `vc-trusted-context` only.
+That is true of the reviewed `config/openclaw.json` and false of every
+deployment: `scripts/render_channel_config.py` builds the effective allowlist,
+adding `web-readability` and the model-provider plugin on every render, then
+one entry per selected channel and per selected search or fetch provider. The
+smallest configuration runs three names, a channel profile four. Measured on
+the shipped image, in a sandboxed container and again against a live
+deployment, four plugins load: those three plus `memory-core`, which bypasses
+the allowlist through the harness's default memory slot exactly as the document
+already said.
+
+An operator auditing a running deployment against the old sentence would have
+found two names it never mentions and had cause to read it as tampering. The
+paragraph now separates the reviewed file from the rendered one and points at
+`config/runtime/openclaw.json` as the thing to audit.
+
+The reason it drifted is that nothing bound it. Every existing assertion over
+the allowlist tested membership — `assertIn` on one id — which cannot see an
+entry appended beside it;
+`tests/v3/test_runtime_provider_and_context.py` now pins the **exact** rendered
+set for the no-channel profile, for each of the four channel profiles, and for
+a selected search and fetch provider, and bounds every rendered allowlist to an
+enumerated world built from the renderer's own `SEARCH_PACKAGES` and channel
+rosters. Verified by planting a silent extra entry in the renderer: the eleven
+pre-existing plugin and search tests all still passed, and only the new one
+failed.
+
 ## [3.0.0] — 2026-08-25
 
 > [!IMPORTANT]

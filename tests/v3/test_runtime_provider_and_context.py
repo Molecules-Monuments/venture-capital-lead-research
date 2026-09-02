@@ -64,6 +64,7 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[2]
 CHECK_ENV_PATH = ROOT / "scripts/check_env.py"
+RENDERER_PATH = ROOT / "scripts/render_channel_config.py"
 VCOPS_PATH = ROOT / "workspaces/vc-chief/vc/bin/vcops.py"
 PLUGIN_PATH = ROOT / "runtime-extensions/vc-trusted-context/index.js"
 
@@ -128,6 +129,11 @@ def load_module(name: str, path: Path):
 
 
 check_env = load_module("runtime_choice_check_env", CHECK_ENV_PATH)
+# The renderer imports check_env as a first-party module, the same way the
+# lifecycle scripts run it, so scripts/ has to be importable before it loads.
+if str(ROOT / "scripts") not in sys.path:
+    sys.path.insert(0, str(ROOT / "scripts"))
+render_channel_config = load_module("runtime_choice_renderer", RENDERER_PATH)
 vcops = load_module("runtime_choice_vcops", VCOPS_PATH)
 
 
@@ -158,6 +164,41 @@ def replace_line(body: str, key: str, value: str) -> str:
     if not found:
         raise AssertionError(f"missing environment key: {key}")
     return "\n".join(lines) + "\n"
+
+
+# The channel credential families the renderer needs before it will produce a
+# config at all. Shared by the load-path test and the allowlist enumeration so
+# the two cannot drift apart; every value is inert, and the slack and discord
+# literals are scripts/run_g6_image.py's CHANNEL_VALUES verbatim.
+CHANNEL_CREDENTIAL_FAMILIES = {
+    "slack": {
+        "SLACK_BOT_TOKEN": "xoxb-" + "A" * 24,
+        "SLACK_APP_TOKEN": "xapp-" + "B" * 24,
+        "SLACK_ALLOWED_USER_IDS": "U12345678,U87654321",
+        "SLACK_ALLOWED_CHANNEL_ID": "C12345678",
+    },
+    "discord": {
+        "DISCORD_BOT_TOKEN": "D" * 40,
+        "DISCORD_APPLICATION_ID": "123456789012345678",
+        "DISCORD_ALLOWED_USER_IDS": "223456789012345678,223456789012345679",
+        "DISCORD_ALLOWED_GUILD_ID": "323456789012345678",
+        "DISCORD_ALLOWED_CHANNEL_ID": "423456789012345678",
+    },
+    "msteams": {
+        "MSTEAMS_APP_ID": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+        "MSTEAMS_APP_PASSWORD": "inert-render-test-app-password",
+        "MSTEAMS_TENANT_ID": "72f988bf-86f1-41af-91ab-2d7cd011db47",
+        "MSTEAMS_ALLOWED_USER_IDS": "29f1c4de-9a1b-4d0e-8f2a-11bb22cc33dd",
+        "MSTEAMS_ALLOWED_TEAM_ID": "19:rendertestteam00000@thread.tacv2",
+        "MSTEAMS_ALLOWED_CHANNEL_ID": "19:rendertestchan00000@thread.tacv2",
+        "MSTEAMS_PUBLIC_WEBHOOK_URL": "https://teams.render-test.invalid/api/messages",
+    },
+    "telegram": {
+        "TELEGRAM_BOT_TOKEN": "123456789:AAHrendertestinerttokenvalue00000000",
+        "TELEGRAM_ALLOWED_USER_IDS": "123456789",
+        "TELEGRAM_ALLOWED_GROUP_ID": "-1001234567890",
+    },
+}
 
 
 class RuntimeProviderTests(unittest.TestCase):
@@ -341,6 +382,78 @@ class RuntimeProviderTests(unittest.TestCase):
         assert match is not None
         return set(re.findall(r'"([a-z]+)"', match.group(1))) - {"none"}
 
+    def test_rendered_plugin_allowlist_is_an_enumerated_closed_world(self) -> None:
+        # plugins.allow is BUILT by the renderer, not copied from the reviewed
+        # file. config/openclaw.json names one plugin; every rendered config
+        # names at least three, because the renderer adds the Readability
+        # extractor and the model-provider plugin unconditionally, then one
+        # entry per selected channel and per selected search or fetch provider.
+        # README's "plugins.allow is not a complete plugin boundary" paragraph
+        # documents that effective list, so it is bound here: an operator
+        # auditing a running deployment against a source-only description would
+        # find names the document never mentions and read it as tampering.
+        #
+        # Every other assertion in this file tests MEMBERSHIP -- assertIn on one
+        # id at a time -- which cannot see a new entry appended beside it. This
+        # one pins the whole set, so a new allow.append in
+        # render_channel_config.py fails here rather than silently widening a
+        # boundary a reader was told was one name long.
+        reviewed = json.loads((ROOT / "config/openclaw.json").read_text(encoding="utf-8"))
+        self.assertEqual(
+            ["vc-trusted-context"], reviewed["plugins"]["allow"],
+            "the reviewed file's allowlist moved; the rendered expectations "
+            "below describe what the renderer builds ON TOP of it",
+        )
+
+        always = {"vc-trusted-context", "web-readability"}
+        model_plugins = {"openai", "ollama"}
+        search_plugins = set(render_channel_config.SEARCH_PACKAGES)
+        channels = set(CHANNEL_CREDENTIAL_FAMILIES)
+        universe = always | model_plugins | search_plugins | channels
+
+        # The shipped default: OpenAI mode, no channel, automatic search.
+        baseline = self.render(configured_example())
+        self.assertEqual(
+            sorted(always | {"openai"}), sorted(baseline["plugins"]["allow"]),
+            "the no-channel render's allowlist changed; README documents this "
+            "exact list as what an operator sees on a running deployment",
+        )
+
+        # One entry per selected channel, and nothing else.
+        for channel, family in CHANNEL_CREDENTIAL_FAMILIES.items():
+            with self.subTest(channel=channel):
+                body = replace_line(configured_example(), "PRIMARY_CHANNEL", channel)
+                for key, value in family.items():
+                    body = replace_line(body, key, value)
+                allow = self.render(body)["plugins"]["allow"]
+                self.assertEqual(
+                    sorted(always | {"openai", channel}), sorted(allow),
+                    f"the {channel} render's allowlist is no longer the "
+                    "no-channel list plus exactly the selected channel",
+                )
+
+        # A selected search provider adds exactly itself; a firecrawl fetch
+        # provider adds exactly firecrawl.
+        variants = {
+            "tavily": {"VC_WEB_SEARCH_PROVIDER": "tavily", "TAVILY_API_KEY": "inert-render-test-key"},
+            "firecrawl": {"VC_WEB_FETCH_PROVIDER": "firecrawl", "FIRECRAWL_API_KEY": "inert-render-test-key"},
+        }
+        for expected, overrides in variants.items():
+            with self.subTest(provider=expected):
+                body = configured_example()
+                for key, value in overrides.items():
+                    body = replace_line(body, key, value)
+                allow = self.render(body)["plugins"]["allow"]
+                self.assertEqual(
+                    sorted(always | {"openai", expected}), sorted(allow),
+                    f"selecting {expected} no longer adds exactly one entry",
+                )
+                self.assertLessEqual(
+                    set(allow), universe,
+                    "a rendered allowlist named a plugin outside the enumerated "
+                    "world of always-on, model, search and channel plugins",
+                )
+
     def test_a_selected_channel_is_enabled_without_a_load_path(self) -> None:
         # The harness grants its keyed store only to a plugin whose registry
         # record is origin "bundled" (or a recorded trusted official install).
@@ -355,35 +468,7 @@ class RuntimeProviderTests(unittest.TestCase):
         # The roster below is the image gate's own, checked against it; the slack
         # and discord credentials are scripts/run_g6_image.py's CHANNEL_VALUES
         # literals verbatim, and every value here is inert.
-        families = {
-            "slack": {
-                "SLACK_BOT_TOKEN": "xoxb-" + "A" * 24,
-                "SLACK_APP_TOKEN": "xapp-" + "B" * 24,
-                "SLACK_ALLOWED_USER_IDS": "U12345678,U87654321",
-                "SLACK_ALLOWED_CHANNEL_ID": "C12345678",
-            },
-            "discord": {
-                "DISCORD_BOT_TOKEN": "D" * 40,
-                "DISCORD_APPLICATION_ID": "123456789012345678",
-                "DISCORD_ALLOWED_USER_IDS": "223456789012345678,223456789012345679",
-                "DISCORD_ALLOWED_GUILD_ID": "323456789012345678",
-                "DISCORD_ALLOWED_CHANNEL_ID": "423456789012345678",
-            },
-            "msteams": {
-                "MSTEAMS_APP_ID": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
-                "MSTEAMS_APP_PASSWORD": "inert-render-test-app-password",
-                "MSTEAMS_TENANT_ID": "72f988bf-86f1-41af-91ab-2d7cd011db47",
-                "MSTEAMS_ALLOWED_USER_IDS": "29f1c4de-9a1b-4d0e-8f2a-11bb22cc33dd",
-                "MSTEAMS_ALLOWED_TEAM_ID": "19:rendertestteam00000@thread.tacv2",
-                "MSTEAMS_ALLOWED_CHANNEL_ID": "19:rendertestchan00000@thread.tacv2",
-                "MSTEAMS_PUBLIC_WEBHOOK_URL": "https://teams.render-test.invalid/api/messages",
-            },
-            "telegram": {
-                "TELEGRAM_BOT_TOKEN": "123456789:AAHrendertestinerttokenvalue00000000",
-                "TELEGRAM_ALLOWED_USER_IDS": "123456789",
-                "TELEGRAM_ALLOWED_GROUP_ID": "-1001234567890",
-            },
-        }
+        families = CHANNEL_CREDENTIAL_FAMILIES
         self.assertEqual(
             set(families), self._g6_channel_profiles(),
             "the channel roster here has drifted from the one "

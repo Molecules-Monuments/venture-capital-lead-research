@@ -751,14 +751,29 @@ Conversational Markdown and vector recall are disabled:
 - compaction memory flush is disabled; and
 - every agent denies `memory_search` and `memory_get`.
 
-**`plugins.allow` is not a complete plugin boundary, and never was.** The
-allowlist names `vc-trusted-context` only, but the harness fills its default
-memory slot before it consults the allowlist, so `memory-core` loads regardless
-— executed against both the `2026.7.1` and `2026.8.1` runtimes, it reports
-`enabled=true, cause=selected-memory-slot` with the allowlist bypassed, while
-every other candidate plugin reports `not-in-allowlist`. This is not a
-`2026.8.1` regression and it is not currently treated as one: `memory-core` is
-left loaded and its behaviour pinned instead, with
+**`plugins.allow` is not a complete plugin boundary, and never was.** Two
+things are true of it at once, and only the second is visible in this
+repository. In the reviewed `config/openclaw.json` the allowlist names
+`vc-trusted-context` only. That is not what the gateway loads:
+`scripts/render_channel_config.py` *builds* the effective allowlist, adding the
+Readability extractor and the model-provider plugin on every render, then one
+entry per selected channel and per selected search or fetch provider. A
+no-channel OpenAI deployment therefore runs
+`["vc-trusted-context", "web-readability", "openai"]`, and a Slack one adds
+`"slack"`. Read the rendered `config/runtime/openclaw.json` — not the reviewed
+file — when auditing what may load, and expect three names on the smallest
+configuration rather than one.
+`tests/v3/test_runtime_provider_and_context.py` pins that rendered set for
+every profile, so an entry cannot be added without failing the offline gate.
+
+Beyond it, the harness fills its default memory slot before it consults the
+allowlist, so `memory-core` loads regardless — executed against both the
+`2026.7.1` and `2026.8.1` runtimes, it reports `enabled=true,
+cause=selected-memory-slot` with the allowlist bypassed, while every other
+candidate plugin reports `not-in-allowlist`. Measured on the shipped image,
+four plugins load in total: the three allowlisted above plus `memory-core`.
+This is not a `2026.8.1` regression and it is not currently treated as one:
+`memory-core` is left loaded and its behaviour pinned instead, with
 `plugins.entries["memory-core"].config.dreaming.enabled` set to `false`
 (`2026.8.1` flips that default to `true`, which would otherwise write a
 "Memory Dreaming Promotion" cron row at every gateway start even with cron
