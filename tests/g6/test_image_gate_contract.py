@@ -162,9 +162,11 @@ class ImageChannelGateContractTests(unittest.TestCase):
     def test_gate_declares_the_complete_check_inventory(self) -> None:
         # Behavioral contract (not a self-grep): the gate must run exactly image
         # provenance, the workshop guard, the exec-approvals store round trip,
-        # one schema validation per profile, the reviewed artifact's own schema
-        # validation, and the hostile unknown-field rejection — ten checks,
-        # single-sourced.
+        # a schema validation AND a plugin-load probe per profile, the reviewed
+        # artifact's own schema validation, and the hostile unknown-field
+        # rejection — fifteen checks, single-sourced. The per-profile pair is
+        # listed in emission order because the gate compares the produced names
+        # to this tuple positionally.
         self.assertEqual(
             gate.EXPECTED_CHECK_NAMES,
             (
@@ -172,15 +174,20 @@ class ImageChannelGateContractTests(unittest.TestCase):
                 "image-workshop-guard",
                 "image-exec-approvals-row",
                 "openclaw-schema:none",
+                "plugin-load:none",
                 "openclaw-schema:slack",
+                "plugin-load:slack",
                 "openclaw-schema:msteams",
+                "plugin-load:msteams",
                 "openclaw-schema:discord",
+                "plugin-load:discord",
                 "openclaw-schema:telegram",
+                "plugin-load:telegram",
                 "openclaw-schema:reviewed-artifact",
                 "openclaw-schema:unknown-field-rejected",
             ),
         )
-        self.assertEqual(10, len(gate.EXPECTED_CHECK_NAMES))
+        self.assertEqual(15, len(gate.EXPECTED_CHECK_NAMES))
         self.assertTrue(callable(gate.workshop_guard_probe))
         self.assertTrue(callable(gate.exec_approvals_row_probe))
         self.assertTrue(callable(gate.docker_config_command))

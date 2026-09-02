@@ -264,6 +264,39 @@ rosters. Verified by planting a silent extra entry in the renderer: the eleven
 pre-existing plugin and search tests all still passed, and only the new one
 failed.
 
+### Channel profiles, tested as far as credentials allow
+
+Two rows of `docs/RUNBOOK.md` §5.1 were carried from the `2026.7.1`
+commissioning record because they describe output a `PRIMARY_CHANNEL=none`
+deployment cannot produce. They are now measured on this release without
+credentials: each of the four channel profiles is rendered and its `doctor` and
+`security audit` run inside the built image in a sealed container
+(`--network none`, read-only root, dropped capabilities). The `Doctor warnings`
+message-tool block appears on all four channels and on no `none` render, and
+`security.trust_model.multi_user_heuristic` appears on `slack`, `discord` and
+`telegram` but not `msteams` — the split the section's baseline table already
+recorded. `docs/CHANNELS.md` step 7 carries the same correction.
+
+G6 gains five `plugin-load:<profile>` checks, taking it from ten to fifteen.
+Each renders a profile and asserts the exact set the harness loads: the four
+base plugins plus that profile's own channel plugin, and no other channel's.
+This is the first check in the package that observes plugin *selection* rather
+than configuration — only an executed probe can see `memory-core`, which the
+harness loads through its default memory slot without consulting the allowlist.
+Verified non-vacuous by dropping one id from the expected set: all five checks
+failed with the diff. `msteams` loading cleanly is worth its own note, since
+that is the plugin whose provider once exited 40 ms in and crash-looped through
+ten restarts while the gate stayed green.
+
+Sandbox and live deployment were diffed rather than assumed equivalent. They
+agree except for three state-dependent blocks the sandbox adds — `Disk space`,
+`Doctor changes`, and a heartbeat cadence preview — none of which a real
+deployment prints, and none of which is documented as expected.
+
+What remains untested is narrower than the old caveat implied: not whether a
+channel works, but whether a real token authenticates and delivers a message.
+Both documents now say exactly that.
+
 ## [3.0.0] — 2026-08-25
 
 > [!IMPORTANT]

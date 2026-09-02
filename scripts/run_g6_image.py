@@ -35,9 +35,25 @@ EXPECTED_CHECK_NAMES = (
     "image-package-provenance",
     "image-workshop-guard",
     "image-exec-approvals-row",
-    *(f"openclaw-schema:{profile}" for profile in PROFILES),
+    # Emission order, not grouped by kind: the profile loop appends the schema
+    # check and the plugin-load check together for each profile, and the gate
+    # compares this tuple to the produced names positionally.
+    *(
+        name
+        for profile in PROFILES
+        for name in (f"openclaw-schema:{profile}", f"plugin-load:{profile}")
+    ),
     "openclaw-schema:reviewed-artifact",
     "openclaw-schema:unknown-field-rejected",
+)
+
+# What the gateway actually loads, per profile. The reviewed config allowlists
+# one plugin; the renderer builds the effective list, and the harness then adds
+# memory-core through its own default memory slot without consulting the
+# allowlist at all. Only an executed probe can see that, which is why this is a
+# G6 check and not an offline assertion over the rendered JSON.
+BASE_LOADED_PLUGINS = frozenset(
+    {"memory-core", "openai", "vc-trusted-context", "web-readability"}
 )
 RUNTIME_VALUES = {
     "VC_MODEL_PROVIDER": "openai",
@@ -382,6 +398,28 @@ console.log(JSON.stringify(result));
     return output
 
 
+def plugin_load_probe(image: str, config: Path, values: dict[str, str], profile: str) -> set[str]:
+    """Return the plugin ids the harness loads for one rendered profile.
+
+    Runs in the same sealed container the schema check uses -- no network, no
+    writable root -- so it observes plugin selection and nothing else. A channel
+    profile must load its own channel plugin and no other channel's.
+    """
+    command = docker_config_command(image, config, values)
+    # docker_config_command ends with the `config validate` argv; swap in the
+    # plugin listing so the sandbox flags stay single-sourced. Raise rather than
+    # assert: this runs as a release gate, where -O would strip an assert and
+    # leave the probe silently validating the config instead of listing plugins.
+    if command[-2:] != ["config", "validate"]:
+        raise RuntimeError(f"unexpected sandbox argv tail: {command[-4:]}")
+    command = [*command[:-2], "plugins", "list", "--json"]
+    result = run(command, timeout=120)
+    if result.returncode != 0:
+        raise RuntimeError(f"{profile}: plugins list exited {result.returncode}: {result.stderr[-400:]}")
+    payload = json.loads(result.stdout)
+    return {entry["id"] for entry in payload["plugins"] if entry.get("status") == "loaded"}
+
+
 def render_profile(directory: Path, profile: str) -> tuple[Path, dict[str, str]]:
     env_path = directory / f"{profile}.env"
     config_path = directory / f"{profile}.json"
@@ -427,6 +465,27 @@ def main() -> int:
                         "name": f"openclaw-schema:{profile}",
                         "result": "PASS" if passed else "FAIL",
                         "detail": None if passed else (validated.stderr + validated.stdout)[-10_000:],
+                    }
+                )
+                # A channel profile must load exactly its own channel plugin on
+                # top of the base set: no other channel's, and nothing the
+                # renderer did not allowlist except memory-core, which the
+                # harness selects through its default memory slot.
+                expected = set(BASE_LOADED_PLUGINS)
+                if profile != "none":
+                    expected.add(profile)
+                try:
+                    loaded = plugin_load_probe(args.image, config, values, profile)
+                    detail = None if loaded == expected else (
+                        f"expected {sorted(expected)}, loaded {sorted(loaded)}"
+                    )
+                except (RuntimeError, ValueError, KeyError) as error:
+                    loaded, detail = set(), str(error)
+                checks.append(
+                    {
+                        "name": f"plugin-load:{profile}",
+                        "result": "PASS" if detail is None else "FAIL",
+                        "detail": detail,
                     }
                 )
 

@@ -69,7 +69,7 @@ after the `2026.8.1` upgrade landed. Those counts are what the current tree prod
   the pinned images, the negative credential proof is rejected over TCP, fixed
   workflows run through real `vcrun`/Lobster leaving a non-empty knowledge
   base, and teardown removes every container, volume, and runtime file.
-- The exact-image gate (G6) passes 10/10 against an image rebuilt
+- The exact-image gate (G6) passes 15/15 against an image rebuilt
   from this tree with `docker build --no-cache --pull`, and again against the
   image `bootstrap.sh` builds during the deployment gate.
 - The reference retrieval-scale gate passes 160/160 cases: fuzzy

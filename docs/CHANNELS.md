@@ -166,13 +166,17 @@ correct.
    compose exec openclaw-gateway openclaw channels status
    ```
 
-   All four are expected to exit `0`. They still emit findings. `docs/RUNBOOK.md` §5.1 lists
-   them with a disposition each — including the three `agents.entries` warnings
-   `config validate` prints and the `Legacy config keys detected` block
-   `doctor` prints, neither of which is new or actionable here. That list was
-   re-measured for this release on `PRIMARY_CHANNEL=none`; the two
-   channel-dependent rows below are carried from the `2026.7.1` record, so on a
-   channel profile expect the shape rather than a byte-exact match.
+   All four are expected to exit `0`. They still emit findings.
+   `docs/RUNBOOK.md` §5.1 lists them with a disposition each — including the
+   three `agents.entries` warnings `config validate` prints and the `Legacy
+   config keys detected` block `doctor` prints, neither of which is new or
+   actionable here. That list was
+   re-measured for this release: the `none` profile on a live deployment, and
+   all four channel profiles by rendering each one and running its `doctor` and
+   `security audit` inside the built image in a sealed container. Both
+   channel-dependent rows below reproduced. What no cycle of this package has
+   done is authenticate a profile against a live channel service, so treat the
+   commands below as proven up to the point your credentials take over.
 
    `doctor` is the one of the four that can stop and ask. With a terminal
    attached it halts on `Apply recommended config repairs now?` with `Yes`

@@ -476,12 +476,20 @@ channel matrix. A row a gate closes outright carries a `—` in that column.
   §5.6's "a warning is not a pass" rule does not mean commissioning is blocked
   by them — it means each one must be dispositioned. The expected set below was
   recorded on this release against a deployment bootstrapped with
-  `PRIMARY_CHANNEL=none`. The `doctor` row marked **On a channel profile only**
-  describes output a `none` deployment cannot produce, so it is carried from
-  the `2026.7.1` record rather than re-measured; the per-profile `security
-  audit` totals carry their own provenance note with the baseline table
-  below. If you see a finding that is **not** on this list, treat it as
-  a genuine deviation and investigate it — but read the list as the shape of
+  `PRIMARY_CHANNEL=none`. The two channel-scoped rows were measured on this
+  release too, without credentials: each of the four channel profiles was
+  rendered and its `doctor` and `security audit` run inside the built image in
+  a sealed container (`--network none`, read-only root). The `Doctor warnings`
+  message-tool block appears on all four and on no `none` render, and
+  `security.trust_model.multi_user_heuristic` appears on `slack`, `discord` and
+  `telegram` but not `msteams` — the split the baseline table below records.
+  What that method cannot reach is the credential boundary itself: no profile
+  was authenticated against a live channel service, so "the plugin loads, the
+  policy resolves and the audit totals hold" is proven, and "this token
+  delivers a message" is not.
+
+  If you see a finding that is **not** on this list, treat it as a genuine
+  deviation and investigate it — but read the list as the shape of
   the output rather than a byte-exact transcript: `doctor` prints several of
   these blocks once per agent, so their counts move with the roster.
 

@@ -108,8 +108,8 @@
     {
       "executable": false,
       "path": "CHANGELOG.md",
-      "sha256": "c5e7d8ff5f11849abab9060e887f22abe389683beb4b4974d654612fd1f3262a",
-      "size": 27511
+      "sha256": "074a913e43e8455e7ca69169c02b346531e8c71c1360cc6ca9b4664465d07a7b",
+      "size": 29552
     },
     {
       "executable": false,
@@ -246,8 +246,8 @@
     {
       "executable": false,
       "path": "docs/CHANNELS.md",
-      "sha256": "326803f9ad3bfb0bb0f362f15c40edcc9ad10536d72422b6470001396786be1a",
-      "size": 30260
+      "sha256": "b924142223c4f19f967a05bbc23261f83bcc4dfdbddeec9948bca5ecacb31b1c",
+      "size": 30506
     },
     {
       "executable": false,
@@ -276,14 +276,14 @@
     {
       "executable": false,
       "path": "docs/PRODUCTION_READINESS.md",
-      "sha256": "c6c60622c36dba97f726b6998df726b6c4271f212cb3a95b997c97bdc80fe49f",
+      "sha256": "19193691eecc0eb864edaee754ec4e8fb612398d9d21827767fc3c1ad3e8d793",
       "size": 16877
     },
     {
       "executable": false,
       "path": "docs/RUNBOOK.md",
-      "sha256": "01bf2ee3db7b8354a13b8c0937bdcc123ecd7de4d0ae61b44e13e118cb0ffebb",
-      "size": 126822
+      "sha256": "e41cafd4e8d9f586b2c94762b7010d02a8073f51139f6521c065be5704222ced",
+      "size": 127307
     },
     {
       "executable": false,
@@ -300,8 +300,8 @@
     {
       "executable": false,
       "path": "docs/V3_RELEASE_EVIDENCE.md",
-      "sha256": "7bb19f3c12433da24e79fb893c9c3c60452115744d2c8d178be7a340c555d9e3",
-      "size": 14329
+      "sha256": "c3b4204bc2db81c3f998d61f5bc2a17ccc6869e1b9351216be24319dc6f48b12",
+      "size": 14369
     },
     {
       "executable": false,
@@ -312,7 +312,7 @@
     {
       "executable": false,
       "path": "evals/V3_EVAL_RESULTS.md",
-      "sha256": "f85f12563ad0234f2bdf4d9acb109d780e4886bc22467740941a4a203c7de807",
+      "sha256": "9be44d78bd822e5960847a33e4d752e54e8f60c237c3241f23d1426afc4c0029",
       "size": 11403
     },
     {
@@ -684,8 +684,8 @@
     {
       "executable": true,
       "path": "scripts/run_g6_image.py",
-      "sha256": "8a39ea0d6dffb05ba3ddf761d676efad2d0094744789a73c3ae2145ecb66cac2",
-      "size": 22925
+      "sha256": "c8e31c914c1a1c130f5f4968c9e5792d5104f8ec98410bf7eafb5bb5aac8aca5",
+      "size": 26069
     },
     {
       "executable": true,
@@ -882,8 +882,8 @@
     {
       "executable": false,
       "path": "tests/g6/test_image_gate_contract.py",
-      "sha256": "333579b5e8f5a6507a2026756b89b656d18165e905421ef5af98fd8d1b978775",
-      "size": 9219
+      "sha256": "66156d2b22c734c49dcf28c3c77bd21c2102cc58d2e751164210f2a3d7fac10f",
+      "size": 9578
     },
     {
       "executable": false,
